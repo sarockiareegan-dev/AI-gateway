@@ -299,6 +299,7 @@ features = ["extension-module"]
 profile = "release"
 editable-profile = "dev"
 include = [
+    "agami/**/*.py",
     "litellm/proxy/_experimental/out/**",
     "litellm/router_strategy/complexity_router/artifacts/*.json",
     "litellm/router_strategy/complexity_router/fuse_presets.json",

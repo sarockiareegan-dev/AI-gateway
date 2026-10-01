@@ -103,6 +103,7 @@ jobs:
           - shard: misc
             artifact-name: misc
             test-path: >-
+              tests/test_agami
               tests/test_litellm/batches
               tests/test_litellm/secret_managers
               tests/test_litellm/a2a_protocol
