@@ -30,6 +30,7 @@ from agami.adapters.litellm_compat import load_actor
 from agami.auth.context import Actor
 from agami.auth.model_ownership import authorize_org_model_write, raise_for_org_model_write
 from agami.auth.permissions import Action
+from agami.routing.org_models import org_model_name
 from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.constants import LITELLM_PROXY_ADMIN_NAME
@@ -1464,11 +1465,11 @@ async def _add_org_model_to_db(
     prisma_client: PrismaClient,
     slot: AbstractAsyncContextManager[_ProxyModelTable] | None = None,
 ) -> "_ProxyModelRow | LiteLLM_ProxyModelTable":
-    """Stores the model under a unique internal name so two organizations can each own a model with the same
-    public name without the router load-balancing across tenants."""
     organization_id: Final = model_params.model_info.organization_id
+    if organization_id is None:
+        raise ValueError("An organization model needs model_info.organization_id")
     model_params.model_info.organization_public_model_name = model_params.model_name
-    model_params.model_name = f"model_name_org_{organization_id}_{uuid.uuid4()}"
+    model_params.model_name = org_model_name(organization_id, model_params.model_name)
     return await _add_model_to_db(
         model_params=model_params,
         user_api_key_dict=user_api_key_dict,

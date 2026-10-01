@@ -6,8 +6,9 @@ import httpx
 from fastapi import HTTPException, status
 
 import litellm
+from agami.routing.org_models import org_model_name
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
-from litellm.router_utils.common_utils import _is_proxy_admin_request
+from litellm.router_utils.common_utils import _is_proxy_admin_request, get_request_organization_id
 
 # Client-supplied params that make the router or the call path fabricate a
 # failure or a delay instead of calling the provider. The ``mock_testing_*``
@@ -71,6 +72,16 @@ def _raise_if_model_fully_blocked(llm_router: LitellmRouter, model_name: object,
                 request=httpx.Request(method="POST", url="https://github.com/BerriAI/litellm"),
             ),
         )
+
+
+def _organization_model_name(llm_router: LitellmRouter, data: Mapping[str, object]) -> str | None:
+    """The caller's own organization model behind the public name they asked for, if their organization has one."""
+    requested_model: Final = data.get("model")
+    organization_id: Final = get_request_organization_id(data)
+    if organization_id is None or not isinstance(requested_model, str) or not requested_model:
+        return None
+    candidate: Final = org_model_name(organization_id, requested_model)
+    return candidate if candidate in llm_router.model_name_to_deployment_indices else None
 
 
 ROUTE_ENDPOINT_MAPPING: Final = {
@@ -630,9 +641,12 @@ async def _route_request_single_attempt(  # noqa: ANN202  # returns unawaited pr
             # These endpoints don't need a model, use custom_llm_provider directly
             return getattr(litellm, f"{route_type}")(**data)
 
-        team_model_name: Final = llm_router.map_team_model(data["model"], team_id) if team_id is not None else None
-        if team_model_name is not None:
-            data["model"] = team_model_name
+        owned_model_name: Final = (
+            llm_router.map_team_model(data["model"], team_id) if team_id is not None else None
+        ) or _organization_model_name(llm_router, data)
+        if owned_model_name is not None:
+            _raise_if_model_fully_blocked(llm_router=llm_router, model_name=owned_model_name, team_id=team_id)
+            data["model"] = owned_model_name
             return getattr(llm_router, f"{route_type}")(**data)
 
         elif (

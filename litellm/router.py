@@ -44,6 +44,7 @@ from typing_extensions import overload
 
 import litellm
 import litellm.litellm_core_utils.exception_mapping_utils
+from agami.routing.org_models import deployment_usable_by
 from litellm import get_secret_str
 from litellm._logging import verbose_router_logger
 from litellm._uuid import uuid
@@ -165,6 +166,7 @@ from litellm.router_utils.common_utils import (
     _is_proxy_admin_request,
     filter_team_based_models,
     filter_web_search_deployments,
+    get_request_organization_id,
     get_request_team_id,
     provider_for_generic_call,
     resolve_model_group_alias,
@@ -12494,6 +12496,44 @@ class Router:
         return isinstance(deployment_model, str) and classify_strategy_router_model(deployment_model) is not None
 
     def _common_checks_available_deployment(
+        self,
+        model: str,
+        messages: list[dict[str, str]] | None = None,
+        input: str | list[object] | None = None,
+        specific_deployment: bool | None = False,
+        request_kwargs: dict[str, object] | None = None,
+    ) -> tuple[str, list | dict]:
+        resolved_model, resolved = self._resolve_candidate_deployments(
+            model=model,
+            messages=messages,
+            input=input,
+            specific_deployment=specific_deployment,
+            request_kwargs=request_kwargs,
+        )
+        deployments: Final = cast(  # cast-ok: deployments are str-keyed dicts; the resolver predates typed returns
+            "list[dict[str, object]] | dict[str, object]", resolved
+        )
+        organization_id: Final = get_request_organization_id(request_kwargs)
+        is_super_admin: Final = _is_proxy_admin_request(request_kwargs)
+        if isinstance(deployments, dict):
+            if not deployment_usable_by(deployments, organization_id, is_super_admin):
+                raise self._no_deployments_error(model)
+            return resolved_model, deployments
+        usable: Final = [d for d in deployments if deployment_usable_by(d, organization_id, is_super_admin)]
+        if deployments and not usable:
+            raise self._no_deployments_error(model)
+        return resolved_model, usable
+
+    @staticmethod
+    def _no_deployments_error(model: str) -> litellm.BadRequestError:
+        """Another organization's deployment is reported exactly like a missing one, so its existence never leaks."""
+        return litellm.BadRequestError(
+            message=f"You passed in model={model}. {RouterErrors.no_healthy_deployments.value}",
+            model=model,
+            llm_provider="",
+        )
+
+    def _resolve_candidate_deployments(
         self,
         model: str,
         messages: list[dict[str, str]] | None = None,

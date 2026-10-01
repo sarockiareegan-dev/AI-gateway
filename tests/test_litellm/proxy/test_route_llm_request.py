@@ -8,6 +8,9 @@ from unittest.mock import MagicMock
 
 from fastapi import HTTPException
 
+import litellm
+from agami.routing.org_models import org_model_name
+from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.route_llm_request import ProxyModelNotFoundError, route_request
 
 
@@ -1325,3 +1328,91 @@ def test_proxy_model_not_found_error_keeps_the_raw_model_only_in_the_client_resp
     assert raw_model in error.detail["error"]
     assert raw_model not in error.spend_log_error_message
     assert error.spend_log_error_message.startswith("/chat/completions: Invalid model name passed in")
+
+
+def _org_deployment(organization_id: str, deployment_id: str) -> dict[str, object]:
+    return {
+        "model_name": org_model_name(organization_id, "gpt-4o"),
+        "litellm_params": {"model": "openai/gpt-4o", "api_key": "fake", "mock_response": organization_id},
+        "model_info": {
+            "id": deployment_id,
+            "organization_id": organization_id,
+            "organization_public_model_name": "gpt-4o",
+        },
+    }
+
+
+def _org_router() -> "litellm.Router":
+    return litellm.Router(
+        model_list=[
+            _org_deployment("org-a", "org-a-east"),
+            _org_deployment("org-a", "org-a-west"),
+            _org_deployment("org-b", "org-b-1"),
+            {
+                "model_name": "gpt-4o",
+                "litellm_params": {"model": "openai/gpt-4o", "api_key": "fake", "mock_response": "global"},
+                "model_info": {"id": "global-1"},
+            },
+        ]
+    )
+
+
+def _caller_metadata(organization_id: str | None, role: LitellmUserRoles = LitellmUserRoles.INTERNAL_USER) -> dict:
+    return {
+        "user_api_key_auth": UserAPIKeyAuth(user_role=role, org_id=organization_id),
+        **({"user_api_key_org_id": organization_id} if organization_id is not None else {}),
+    }
+
+
+async def _complete(router: "litellm.Router", model: str, metadata: dict) -> str:
+    call: Final = await route_request(
+        data={"model": model, "messages": [{"role": "user", "content": "hi"}], "metadata": metadata},
+        llm_router=router,
+        user_model=None,
+        route_type="acompletion",
+    )
+    response: Final = await call
+    return response.choices[0].message.content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("organization_id", "served_by"), [("org-a", "org-a"), ("org-b", "org-b"), (None, "global")])
+async def test_public_model_name_resolves_to_the_callers_own_organization(
+    organization_id: str | None, served_by: str
+) -> None:
+    assert await _complete(_org_router(), "gpt-4o", _caller_metadata(organization_id)) == served_by
+
+
+@pytest.mark.asyncio
+async def test_organization_model_load_balances_only_across_its_own_deployments() -> None:
+    router: Final = _org_router()
+
+    deployments: Final = await router.async_get_healthy_deployments(
+        model=org_model_name("org-a", "gpt-4o"), request_kwargs={"metadata": _caller_metadata("org-a")}
+    )
+
+    assert {deployment["model_info"]["id"] for deployment in deployments} == {"org-a-east", "org-a-west"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", [org_model_name("org-a", "gpt-4o"), "org-a-east"])
+@pytest.mark.parametrize("organization_id", ["org-b", None])
+async def test_another_organizations_model_is_unreachable_by_name_or_id(model: str, organization_id: str | None) -> None:
+    with pytest.raises(litellm.BadRequestError, match="no healthy deployments") as exc_info:
+        await _complete(_org_router(), model, _caller_metadata(organization_id))
+
+    assert "openai/gpt-4o" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_provider_model_name_never_falls_through_to_another_organizations_deployment() -> None:
+    assert await _complete(_org_router(), "openai/gpt-4o", _caller_metadata("org-c")) == "global"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", [org_model_name("org-a", "gpt-4o"), "org-a-east"])
+async def test_owner_and_super_admin_can_address_an_organization_model_directly(model: str) -> None:
+    router: Final = _org_router()
+
+    assert await _complete(router, model, _caller_metadata("org-a")) == "org-a"
+    assert await _complete(router, model, _caller_metadata(None, LitellmUserRoles.PROXY_ADMIN)) == "org-a"

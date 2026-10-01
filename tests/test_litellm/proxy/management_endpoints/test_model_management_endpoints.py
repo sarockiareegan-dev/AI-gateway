@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from agami.auth.context import Actor
 from agami.auth.permissions import Action
 from agami.auth.roles import TenantRole
+from agami.routing.org_models import org_model_name
 from litellm._uuid import uuid
 
 from litellm.proxy._types import (
@@ -688,7 +689,7 @@ class TestOrganizationModelWrites:
         assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_add_org_model_stores_a_tenant_unique_internal_name(self, monkeypatch: pytest.MonkeyPatch):
+    async def test_add_org_model_stores_the_organizations_routing_name(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("LITELLM_SALT_KEY", "sk-test-salt")
 
         class _Table:
@@ -707,7 +708,7 @@ class TestOrganizationModelWrites:
         )
 
         model_info: Final = json.loads(str(row["model_info"]))
-        assert str(row["model_name"]).startswith("model_name_org_org-a_")
+        assert row["model_name"] == org_model_name("org-a", "gpt-4o")
         assert model_info["organization_id"] == "org-a"
         assert model_info["organization_public_model_name"] == "gpt-4o"
 
