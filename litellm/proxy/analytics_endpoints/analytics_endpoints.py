@@ -6,6 +6,7 @@ import fastapi
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from litellm.proxy._types import *
+from litellm.proxy._types import UserAPIKeyAuth, user_api_key_has_admin_view
 from litellm.proxy.analytics_endpoints.cache_activity import CacheActivityResponse, get_cache_activity
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 
@@ -36,6 +37,7 @@ async def get_global_activity(
         list[str] | None, fastapi.Query(description="Only include spend from these key aliases")
     ] = None,
     models: Annotated[list[str] | None, fastapi.Query(description="Only include spend for these models")] = None,
+    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ) -> CacheActivityResponse:
     """
     Cache activity for the Admin UI cache dashboard, aggregated per call_type:
@@ -44,6 +46,11 @@ async def get_global_activity(
     """
     from litellm.proxy.proxy_server import prisma_client
 
+    if not user_api_key_has_admin_view(user_api_key_dict):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "Only proxy admins can view proxy-wide cache activity."},
+        )
     if prisma_client is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

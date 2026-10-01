@@ -4396,6 +4396,24 @@ async def test_view_spend_tags(client, monkeypatch):
         app.dependency_overrides.pop(ps.user_api_key_auth, None)
 
 
+@pytest.mark.parametrize("role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.INTERNAL_USER_VIEW_ONLY])
+def test_view_spend_tags_rejects_non_admins(client, monkeypatch, role):
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock())
+    get_spend_by_tags = AsyncMock(return_value=[])
+    monkeypatch.setattr("litellm.proxy.spend_tracking.spend_management_endpoints.get_spend_by_tags", get_spend_by_tags)
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_role=role, user_id="member", org_id="org-a"
+    )
+
+    try:
+        response = client.get("/spend/tags", headers={"Authorization": "Bearer sk-test"})
+    finally:
+        app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+    assert response.status_code == 403
+    get_spend_by_tags.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_view_spend_tags_no_database(client, monkeypatch):
     """Test /spend/tags endpoint when database is not connected"""

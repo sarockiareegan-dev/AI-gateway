@@ -537,6 +537,7 @@ async def view_spend_tags(
         default=None,
         description="Time till which to view key spend",
     ),
+    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ):
     """
     LiteLLM Enterprise - View Spend Per Request Tag
@@ -560,6 +561,11 @@ async def view_spend_tags(
         if prisma_client is None:
             raise Exception(
                 "Database not connected. Connect a database to your proxy - https://docs.litellm.ai/docs/simple_proxy#managing-auth---virtual-keys"
+            )
+        if not _is_admin_view_safe(user_api_key_dict=user_api_key_dict):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "Only proxy admins can view proxy-wide tag spend."},
             )
 
         # run the following SQL query on prisma
