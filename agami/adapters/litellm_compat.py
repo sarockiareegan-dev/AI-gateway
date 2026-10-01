@@ -1,8 +1,8 @@
 """Read-only mapping from LiteLLM's user, organization membership and team rows to an Agami Actor."""
 
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from types import MappingProxyType
-from typing import Final
+from typing import Final, TypeAlias
 
 from pydantic import TypeAdapter
 
@@ -15,6 +15,9 @@ from litellm.proxy._types import LitellmUserRoles
 _VIEW_ONLY_USER_ROLES: Final = frozenset(
     {LitellmUserRoles.INTERNAL_USER_VIEW_ONLY, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY}
 )
+UserLookup: TypeAlias = Callable[[str], Awaitable[LiteLLM_UserTable | None]]
+TeamsLookup: TypeAlias = Callable[[Sequence[str]], Awaitable[Sequence[LiteLLM_TeamTable]]]
+
 _USER_METADATA: Final[TypeAdapter[dict[str, object]]] = TypeAdapter(dict[str, object])
 _TEAM_ROLE_BY_MEMBER_ROLE: Final = MappingProxyType({"admin": TenantRole.TEAM_ADMIN, "user": TenantRole.TEAM_MEMBER})
 
@@ -62,3 +65,23 @@ def actor_from_litellm(user: LiteLLM_UserTable, teams: Iterable[LiteLLM_TeamTabl
         organization_roles=organization_roles,
         team_memberships=team_memberships,
     )
+
+
+async def load_actor(
+    user_id: str | None,
+    key_user_role: str | None,
+    fetch_user: UserLookup,
+    fetch_teams: TeamsLookup,
+) -> Actor:
+    """Keys without a user row (the master key, service keys) act only with their key-level role."""
+    user: Final = await fetch_user(user_id) if user_id else None
+    if user is None:
+        return Actor(
+            user_id=user_id or "",
+            is_super_admin=key_user_role == LitellmUserRoles.PROXY_ADMIN.value,
+            is_active=True,
+            organization_roles=MappingProxyType({}),
+            team_memberships=MappingProxyType({}),
+        )
+    teams: Final = await fetch_teams(tuple(user.teams)) if user.teams else ()
+    return actor_from_litellm(user, teams)

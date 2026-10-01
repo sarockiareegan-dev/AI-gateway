@@ -12,6 +12,7 @@ model/{model_id}/update - PATCH endpoint for model update.
 
 import asyncio
 import datetime
+import functools
 import json
 from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
@@ -25,6 +26,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 import litellm
+from agami.adapters.litellm_compat import load_actor
+from agami.auth.context import Actor
+from agami.auth.model_ownership import authorize_org_model_write, raise_for_org_model_write
+from agami.auth.permissions import Action
 from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.constants import LITELLM_PROXY_ADMIN_NAME
@@ -42,6 +47,7 @@ from litellm.proxy._types import (
     CommonProxyErrors,
     LiteLLM_ProxyModelTable,
     LiteLLM_TeamTable,
+    LiteLLM_UserTable,
     LitellmTableNames,
     LitellmUserRoles,
     ModelInfoDelete,
@@ -95,6 +101,7 @@ from litellm.proxy.spend_tracking.ptu_feature_flag import (
 )
 from litellm.proxy.utils import PrismaClient, ProxyLogging
 from litellm.repositories.model_repository import ModelRepository
+from litellm.repositories.organization_repository import OrganizationRepository
 from litellm.repositories.prisma_protocols import TableActions
 from litellm.repositories.table_repositories import ModelTableRepository
 from litellm.repositories.team_repository import TeamRepository
@@ -1451,6 +1458,60 @@ async def _add_team_model_to_db(
     return model_response
 
 
+async def _add_org_model_to_db(
+    model_params: Deployment,
+    user_api_key_dict: UserAPIKeyAuth,
+    prisma_client: PrismaClient,
+    slot: AbstractAsyncContextManager[_ProxyModelTable] | None = None,
+) -> "_ProxyModelRow | LiteLLM_ProxyModelTable":
+    """Stores the model under a unique internal name so two organizations can each own a model with the same
+    public name without the router load-balancing across tenants."""
+    organization_id: Final = model_params.model_info.organization_id
+    model_params.model_info.organization_public_model_name = model_params.model_name
+    model_params.model_name = f"model_name_org_{organization_id}_{uuid.uuid4()}"
+    return await _add_model_to_db(
+        model_params=model_params,
+        user_api_key_dict=user_api_key_dict,
+        prisma_client=prisma_client,
+        slot=slot,
+    )
+
+
+async def _load_actor(user_api_key_dict: UserAPIKeyAuth, prisma_client: PrismaClient) -> Actor:
+    from litellm.proxy.auth.auth_checks import get_user_object
+    from litellm.proxy.proxy_server import user_api_key_cache
+    from litellm.types.proxy.auth.auth_checks import UserNotFoundError
+
+    async def fetch_user(user_id: str) -> LiteLLM_UserTable | None:
+        try:
+            return await get_user_object(
+                user_id=user_id,
+                prisma_client=prisma_client,
+                user_api_key_cache=user_api_key_cache,
+                user_id_upsert=False,
+            )
+        except UserNotFoundError:
+            return None
+
+    async def fetch_teams(team_ids: Sequence[str]) -> Sequence[LiteLLM_TeamTable]:
+        rows: Final = await TeamRepository(prisma_client).table.find_many(where={"team_id": {"in": list(team_ids)}})
+        return tuple(LiteLLM_TeamTable.model_validate(row.model_dump()) for row in rows)
+
+    return await load_actor(
+        user_id=user_api_key_dict.user_id,
+        key_user_role=user_api_key_dict.user_role,
+        fetch_user=fetch_user,
+        fetch_teams=fetch_teams,
+    )
+
+
+async def _organization_exists(prisma_client: PrismaClient, organization_id: str) -> bool:
+    row: Final = await OrganizationRepository(prisma_client).table.find_unique(
+        where={"organization_id": organization_id}
+    )
+    return row is not None
+
+
 async def _update_team_model_in_db(
     db_model: Deployment,
     patch_data: updateDeployment,
@@ -1975,12 +2036,34 @@ class ModelManagementAuthChecks:
         allow_missing_team: bool = False,
         member_operation: Literal["create", "update"] | None = None,
         incoming_model_params: updateDeployment | None = None,
+        model_action: Action = Action.EDIT,
+        actor_loader: Callable[[UserAPIKeyAuth, PrismaClient], Awaitable[Actor]] = _load_actor,
+        organization_lookup: Callable[[PrismaClient, str], Awaitable[bool]] = _organization_exists,
     ) -> Literal[True] | MemberAutoRouterWrite:
         if user_api_key_dict.user_role in (
             LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
             LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
         ):
             raise HTTPException(status_code=403, detail="View-only users cannot manage models.")
+        stored_organization_id: Final = model_params.model_info.organization_id
+        incoming_organization_id: Final = (
+            incoming_model_params.model_info.organization_id
+            if incoming_model_params is not None and incoming_model_params.model_info is not None
+            else None
+        )
+        if stored_organization_id is not None or incoming_organization_id is not None:
+            raise_for_org_model_write(
+                await authorize_org_model_write(
+                    actor=await actor_loader(user_api_key_dict, prisma_client),
+                    action=model_action,
+                    stored_organization_id=stored_organization_id,
+                    incoming_organization_id=incoming_organization_id,
+                    organization_exists=functools.partial(organization_lookup, prisma_client),
+                ),
+                action=model_action,
+                organization_id=stored_organization_id,
+            )
+            return True
         ## Check team model auth
         if model_params.model_info.team_id is not None:
             team_obj_row: Final = await _repo_team_table(prisma_client).find_unique(
@@ -2097,6 +2180,7 @@ async def delete_model(
             prisma_client=prisma_client,
             premium_user=premium_user,
             allow_missing_team=True,
+            model_action=Action.DELETE,
         )
 
         # update DB
@@ -2287,6 +2371,7 @@ async def add_new_model(
             prisma_client=prisma_client,
             premium_user=premium_user,
             member_operation="create",
+            model_action=Action.CREATE,
         )
         member_write: Final = write_authorization if isinstance(write_authorization, MemberAutoRouterWrite) else None
 
@@ -2337,7 +2422,11 @@ async def add_new_model(
             try:
                 _original_litellm_model_name: Final = model_params.model_name
                 add_model: Final = (
-                    _add_model_to_db if model_params.model_info.team_id is None else _add_team_model_to_db
+                    _add_team_model_to_db
+                    if model_params.model_info.team_id is not None
+                    else _add_org_model_to_db
+                    if model_params.model_info.organization_id is not None
+                    else _add_model_to_db
                 )
                 model_response = await add_model(
                     model_params=priced_model_params,

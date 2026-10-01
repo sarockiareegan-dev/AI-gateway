@@ -3,12 +3,17 @@ import asyncio
 import contextlib
 import json
 from collections.abc import Iterator, Mapping
+from types import MappingProxyType
 from typing import Dict, Final, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from agami.auth.context import Actor
+from agami.auth.permissions import Action
+from agami.auth.roles import TenantRole
 from litellm._uuid import uuid
 
 from litellm.proxy._types import (
@@ -23,6 +28,7 @@ from litellm.proxy._types import (
 from litellm.proxy.common_utils.encrypt_decrypt_utils import encrypt_value_helper
 from litellm.proxy.management_endpoints.model_management_endpoints import (
     ModelManagementAuthChecks,
+    _add_org_model_to_db,
     _get_team_deployments,
     _raise_if_rate_limits_required_but_missing,
     clear_cache,
@@ -578,6 +584,132 @@ class TestModelManagementAuthChecks:
                 user_api_key_dict=self.normal_user,
             )
         assert exc_info.value.code == "403"
+
+
+def _org_actor(org_roles: Mapping[str, frozenset[TenantRole]]) -> Actor:
+    return Actor(
+        user_id="org_user",
+        is_super_admin=False,
+        is_active=True,
+        organization_roles=MappingProxyType(dict(org_roles)),
+        team_memberships=MappingProxyType({}),
+    )
+
+
+def _org_deployment(organization_id: str, model_name: str = "gpt-4o") -> Deployment:
+    return Deployment(
+        model_name=model_name,
+        litellm_params=LiteLLM_Params(model="openai/gpt-4o"),
+        model_info=ModelInfo(id="org-model-1", organization_id=organization_id),
+    )
+
+
+class TestOrganizationModelWrites:
+    org_user: Final = UserAPIKeyAuth(user_id="org_user", user_role=LitellmUserRoles.INTERNAL_USER)
+
+    @staticmethod
+    def _loader(actor: Actor):
+        async def load(_user_api_key_dict: UserAPIKeyAuth, _prisma_client: PrismaClient) -> Actor:
+            return actor
+
+        return load
+
+    @staticmethod
+    async def _known_org(_prisma_client: PrismaClient, organization_id: str) -> bool:
+        return organization_id in ("org-a", "org-b")
+
+    async def _check(
+        self,
+        model_params: Deployment,
+        actor: Actor,
+        model_action: Action,
+        incoming_model_params: updateDeployment | None = None,
+    ):
+        return await ModelManagementAuthChecks.can_user_make_model_call(
+            model_params=model_params,
+            user_api_key_dict=self.org_user,
+            prisma_client=MockPrismaClient(),
+            premium_user=False,
+            incoming_model_params=incoming_model_params,
+            model_action=model_action,
+            actor_loader=self._loader(actor),
+            organization_lookup=self._known_org,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model_action", [Action.CREATE, Action.EDIT, Action.DELETE])
+    async def test_org_admin_writes_their_organizations_models_without_premium(self, model_action: Action):
+        actor: Final = _org_actor({"org-a": frozenset({TenantRole.ORG_ADMIN})})
+
+        assert await self._check(_org_deployment("org-a"), actor, model_action) is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model_action", [Action.CREATE, Action.EDIT, Action.DELETE])
+    async def test_org_admin_is_denied_another_organizations_models(self, model_action: Action):
+        actor: Final = _org_actor({"org-a": frozenset({TenantRole.ORG_ADMIN})})
+
+        with pytest.raises(HTTPException) as exc_info:
+            await self._check(_org_deployment("org-b"), actor, model_action)
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_creating_in_a_missing_organization_is_a_400(self):
+        actor: Final = _org_actor({"ghost": frozenset({TenantRole.ORG_ADMIN})})
+
+        with pytest.raises(HTTPException) as exc_info:
+            await self._check(_org_deployment("ghost"), actor, Action.CREATE)
+
+        assert exc_info.value.status_code == 400
+        assert "ghost" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_an_update_cannot_reassign_the_stored_organization(self):
+        actor: Final = _org_actor({"org-a": frozenset({TenantRole.ORG_ADMIN}), "org-b": frozenset({TenantRole.ORG_ADMIN})})
+        patch_data: Final = updateDeployment(model_info=ModelInfo(id="org-model-1", organization_id="org-b"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await self._check(_org_deployment("org-a"), actor, Action.EDIT, incoming_model_params=patch_data)
+
+        assert exc_info.value.status_code == 400
+        assert "cannot be changed" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_an_update_cannot_adopt_a_global_model_into_an_organization(self):
+        global_model: Final = Deployment(
+            model_name="gpt-4o", litellm_params=LiteLLM_Params(model="openai/gpt-4o"), model_info=ModelInfo(id="g")
+        )
+        patch_data: Final = updateDeployment(model_info=ModelInfo(id="g", organization_id="org-a"))
+        actor: Final = _org_actor({"org-a": frozenset({TenantRole.ORG_ADMIN})})
+
+        with pytest.raises(HTTPException) as exc_info:
+            await self._check(global_model, actor, Action.EDIT, incoming_model_params=patch_data)
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_add_org_model_stores_a_tenant_unique_internal_name(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("LITELLM_SALT_KEY", "sk-test-salt")
+
+        class _Table:
+            async def create(self, *, data: Mapping[str, object]) -> Mapping[str, object]:
+                return data
+
+        @contextlib.asynccontextmanager
+        async def slot():
+            yield _Table()
+
+        row: Final = await _add_org_model_to_db(
+            model_params=_org_deployment("org-a", model_name="gpt-4o"),
+            user_api_key_dict=self.org_user,
+            prisma_client=MockPrismaClient(),
+            slot=slot(),
+        )
+
+        model_info: Final = json.loads(str(row["model_info"]))
+        assert str(row["model_name"]).startswith("model_name_org_org-a_")
+        assert model_info["organization_id"] == "org-a"
+        assert model_info["organization_public_model_name"] == "gpt-4o"
 
 
 class MockModelTable:
