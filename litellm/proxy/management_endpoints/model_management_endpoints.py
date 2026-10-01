@@ -878,10 +878,18 @@ def _ptu_priced_deployment(model_params: Deployment) -> Deployment:
     )
 
 
+def _stored_model_name(db_model: Deployment, requested_model_name: str | None) -> str:
+    """Renaming an organization model renames its public name; the routing name stays derived from it."""
+    organization_id: Final = db_model.model_info.organization_id
+    if organization_id is None or requested_model_name is None:
+        return requested_model_name or db_model.model_name
+    return org_model_name(organization_id, requested_model_name)
+
+
 def update_db_model(db_model: Deployment, updated_patch: updateDeployment) -> PrismaCompatibleUpdateDBModel:
     if updated_patch.model_info is not None:
         _raise_if_ptu_cost_attribution_disabled(updated_patch.model_info.model_dump(exclude_none=True))
-    merged_model_name: Final = updated_patch.model_name or db_model.model_name
+    merged_model_name: Final = _stored_model_name(db_model, updated_patch.model_name)
     merged_litellm_params: Final = db_model.litellm_params.model_dump(exclude_none=True)
     stored_model_info: Final = db_model.model_info.model_dump(exclude_none=True)
     echoed_pricing: Final = echoed_cost_map_pricing_fields(stored_model_info)
@@ -946,6 +954,10 @@ def update_db_model(db_model: Deployment, updated_patch: updateDeployment) -> Pr
     for field in ptu_released:
         merged_model_info.pop(field, None)
         merged_litellm_params.pop(field, None)
+    if db_model.model_info.organization_id is not None:
+        merged_model_info["organization_public_model_name"] = (
+            updated_patch.model_name or db_model.model_info.organization_public_model_name
+        )
 
     # convert to prisma compatible format
 
@@ -1102,7 +1114,9 @@ async def patch_model(
         effective_params: Final = _effective_complexity_router_params(
             patch_data.litellm_params, db_model.litellm_params
         )
-        requested_model_name: Final = patch_data.model_name
+        requested_model_name: Final = (
+            _stored_model_name(db_model, patch_data.model_name) if patch_data.model_name is not None else None
+        )
         stored_model_name: str | None = None
 
         async def write_row(update_data: PrismaCompatibleUpdateDBModel) -> _ProxyModelRow | None:
@@ -2018,11 +2032,8 @@ class ModelManagementAuthChecks:
         ):
             raise HTTPException(status_code=403, detail="View-only users cannot manage models.")
         stored_organization_id: Final = model_params.model_info.organization_id
-        incoming_organization_id: Final = (
-            incoming_model_params.model_info.organization_id
-            if incoming_model_params is not None and incoming_model_params.model_info is not None
-            else None
-        )
+        incoming_model_info: Final = incoming_model_params.model_info if incoming_model_params is not None else None
+        incoming_organization_id: Final = incoming_model_info.organization_id if incoming_model_info else None
         if stored_organization_id is not None or incoming_organization_id is not None:
             raise_for_org_model_write(
                 await authorize_org_model_write(
@@ -2031,6 +2042,7 @@ class ModelManagementAuthChecks:
                     stored_organization_id=stored_organization_id,
                     incoming_organization_id=incoming_organization_id,
                     organization_exists=functools.partial(organization_lookup, prisma_client),
+                    incoming_team_id=incoming_model_info.team_id if incoming_model_info else None,
                 ),
                 action=model_action,
                 organization_id=stored_organization_id,
@@ -2601,11 +2613,21 @@ async def update_model(
                 if value is not None or _existing_litellm_params_dict.get(key) is not None
             }
 
-            renamed_to: Final = (
-                model_params.model_name
-                if model_params.model_name not in (None, deployment.model_name)
-                and deployment.model_info.team_id is None
-                else None
+            requested_model_name: Final = (
+                _stored_model_name(deployment, model_params.model_name)
+                if deployment.model_info.team_id is None
+                else deployment.model_name
+            )
+            renamed_to: Final = requested_model_name if requested_model_name != deployment.model_name else None
+            model_info_update: Final = MappingProxyType(
+                {
+                    **({"member_auto_router": member_marker} if member_marker is not None else {}),
+                    **(
+                        {"organization_public_model_name": model_params.model_name}
+                        if renamed_to is not None and deployment.model_info.organization_id is not None
+                        else {}
+                    ),
+                }
             )
             base_update: Final[PrismaCompatibleUpdateDBModel] = {
                 "litellm_params": json.dumps(merged_dictionary),
@@ -2619,11 +2641,11 @@ async def update_model(
             _data: Final[PrismaCompatibleUpdateDBModel] = (
                 {  # mutable-ok: Prisma serializes only concrete update dicts
                     **renamed_update,
-                    "model_info": deployment.model_info.model_copy(
-                        update=MappingProxyType({"member_auto_router": member_marker})
-                    ).model_dump_json(exclude_none=True),
+                    "model_info": deployment.model_info.model_copy(update=model_info_update).model_dump_json(
+                        exclude_none=True
+                    ),
                 }
-                if member_marker is not None
+                if model_info_update
                 else renamed_update
             )
             async with _auto_router_capability_slot(

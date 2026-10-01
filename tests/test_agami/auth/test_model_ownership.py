@@ -83,6 +83,21 @@ async def test_an_update_cannot_move_a_model_between_owners(actor: Actor, stored
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("actor", [ORG_ADMIN, SUPER_ADMIN])
+async def test_an_organization_model_cannot_be_handed_to_a_team(actor: Actor) -> None:
+    decision: Final = await authorize_org_model_write(
+        actor=actor,
+        action=Action.EDIT,
+        stored_organization_id=ORG,
+        incoming_organization_id=None,
+        organization_exists=_exists,
+        incoming_team_id="team-1",
+    )
+
+    assert decision == OwnershipChangeRejected()
+
+
+@pytest.mark.asyncio
 async def test_an_update_restating_the_same_organization_is_authorized_normally() -> None:
     assert await _decide(ORG_ADMIN, Action.EDIT, ORG, ORG) == Allowed()
     assert await _decide(ORG_VIEWER, Action.EDIT, ORG, ORG) == Denied(DenialReason.NOT_PERMITTED)

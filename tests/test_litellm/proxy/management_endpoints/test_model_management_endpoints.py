@@ -34,6 +34,7 @@ from litellm.proxy.management_endpoints.model_management_endpoints import (
     _raise_if_rate_limits_required_but_missing,
     clear_cache,
     delete_team_models,
+    update_db_model,
 )
 from litellm.proxy.utils import PrismaClient
 from litellm.router import Router
@@ -687,6 +688,43 @@ class TestOrganizationModelWrites:
             await self._check(global_model, actor, Action.EDIT, incoming_model_params=patch_data)
 
         assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_an_update_cannot_hand_an_organization_model_to_a_team(self):
+        actor: Final = _org_actor({"org-a": frozenset({TenantRole.ORG_ADMIN})})
+        patch_data: Final = updateDeployment(model_info=ModelInfo(id="org-model-1", team_id="team-1"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await self._check(_org_deployment("org-a"), actor, Action.EDIT, incoming_model_params=patch_data)
+
+        assert exc_info.value.status_code == 400
+
+    @staticmethod
+    def _stored_org_model() -> Deployment:
+        return Deployment(
+            model_name=org_model_name("org-a", "gpt-4o"),
+            litellm_params=LiteLLM_Params(model="openai/gpt-4o"),
+            model_info=ModelInfo(id="org-model-1", organization_id="org-a", organization_public_model_name="gpt-4o"),
+        )
+
+    def test_renaming_an_organization_model_renames_its_public_and_routing_names(self):
+        result: Final = update_db_model(db_model=self._stored_org_model(), updated_patch=updateDeployment(model_name="gpt-4.1"))
+
+        model_info: Final = json.loads(result["model_info"])
+        assert result["model_name"] == org_model_name("org-a", "gpt-4.1")
+        assert model_info["organization_public_model_name"] == "gpt-4.1"
+        assert model_info["organization_id"] == "org-a"
+
+    def test_the_public_name_cannot_drift_from_the_routing_name(self):
+        result: Final = update_db_model(
+            db_model=self._stored_org_model(),
+            updated_patch=updateDeployment(
+                model_info=ModelInfo(id="org-model-1", organization_public_model_name="other-name")
+            ),
+        )
+
+        assert result["model_name"] == org_model_name("org-a", "gpt-4o")
+        assert json.loads(result["model_info"])["organization_public_model_name"] == "gpt-4o"
 
     @pytest.mark.asyncio
     async def test_add_org_model_stores_the_organizations_routing_name(self, monkeypatch: pytest.MonkeyPatch):
@@ -1378,6 +1416,49 @@ class TestUpdateModel:
 
             mock_prisma.db.litellm_proxymodeltable.update.assert_awaited_once()
             mock_clear_cache.assert_awaited_once_with()
+
+    @pytest.mark.asyncio
+    async def test_renaming_an_organization_model_keeps_its_organization_routing_name(self):
+        from litellm.proxy.management_endpoints.model_management_endpoints import update_model
+        from litellm.types.router import updateLiteLLMParams
+
+        model_id: Final = "org-model-1"
+        existing_row: Final = MagicMock()
+        existing_row.litellm_params = {"model": "openai/gpt-4o"}
+        existing_row.model_dump.return_value = {
+            "model_name": org_model_name("org-a", "gpt-4o"),
+            "litellm_params": existing_row.litellm_params,
+            "model_info": {"id": model_id, "organization_id": "org-a", "organization_public_model_name": "gpt-4o"},
+        }
+        mock_prisma: Final = MagicMock()
+        mock_prisma.db.litellm_proxymodeltable.find_unique = AsyncMock(return_value=existing_row)
+        mock_prisma.db.litellm_proxymodeltable.update = AsyncMock(return_value=MagicMock())
+        mock_router: Final = MagicMock()
+        mock_router.get_model_ids.return_value = [model_id]
+        module: Final = "litellm.proxy.management_endpoints.model_management_endpoints"
+
+        with (
+            patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch("litellm.proxy.proxy_server.llm_router", mock_router),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(f"{module}.ModelManagementAuthChecks.can_user_make_model_call", new=AsyncMock(return_value=None)),  # test-quality-ok: authorization is covered by TestOrganizationModelWrites
+            patch(f"{module}.sync_access_groups_for_renamed_model", new=AsyncMock()) as sync_access_groups,  # test-quality-ok: access group sync needs a live DB
+            patch(f"{module}.sync_model_allowlists_for_renamed_model", new=AsyncMock()),  # test-quality-ok: allowlist sync needs a live DB
+            patch(f"{module}.clear_cache", new=AsyncMock(return_value=ReconcileOutcome(still_desired=None, live_after=None))),  # test-quality-ok: router reload needs a live proxy
+        ):
+            await update_model(
+                model_params=updateDeployment(
+                    model_name="gpt-4.1",
+                    litellm_params=updateLiteLLMParams(),
+                    model_info=ModelInfo(id=model_id),
+                ),
+                user_api_key_dict=UserAPIKeyAuth(user_id="admin", user_role=LitellmUserRoles.PROXY_ADMIN),
+            )
+
+        data: Final = mock_prisma.db.litellm_proxymodeltable.update.await_args.kwargs["data"]
+        assert data["model_name"] == org_model_name("org-a", "gpt-4.1")
+        assert json.loads(data["model_info"])["organization_public_model_name"] == "gpt-4.1"
+        assert sync_access_groups.await_args.kwargs["new_name"] == org_model_name("org-a", "gpt-4.1")
 
 
 class TestUpdatePublicModelGroups:

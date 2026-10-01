@@ -30,9 +30,12 @@ async def authorize_org_model_write(
     stored_organization_id: str | None,
     incoming_organization_id: str | None,
     organization_exists: OrganizationExists,
+    incoming_team_id: str | None = None,
 ) -> OrgModelWriteDecision:
     """``stored_organization_id`` is the owner on record, or the requested owner when creating."""
     if action is not Action.CREATE and incoming_organization_id not in (None, stored_organization_id):
+        return OwnershipChangeRejected()
+    if stored_organization_id is not None and incoming_team_id is not None:
         return OwnershipChangeRejected()
     if stored_organization_id is None:
         return Allowed()
