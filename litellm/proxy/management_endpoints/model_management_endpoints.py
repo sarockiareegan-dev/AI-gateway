@@ -26,7 +26,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 import litellm
-from agami.adapters.litellm_compat import load_actor
 from agami.auth.context import Actor
 from agami.auth.model_ownership import authorize_org_model_write, raise_for_org_model_write
 from agami.auth.permissions import Action
@@ -48,7 +47,6 @@ from litellm.proxy._types import (
     CommonProxyErrors,
     LiteLLM_ProxyModelTable,
     LiteLLM_TeamTable,
-    LiteLLM_UserTable,
     LitellmTableNames,
     LitellmUserRoles,
     ModelInfoDelete,
@@ -60,6 +58,7 @@ from litellm.proxy._types import (
     TeamModelDeleteRequest,
     UserAPIKeyAuth,
 )
+from litellm.proxy.auth.agami_access import load_request_actor
 from litellm.proxy.auth.entitlements import AUTO_ROUTER_LICENSE_REMEDY
 from litellm.proxy.auth.team_grants import team_model_aliases
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
@@ -1478,34 +1477,6 @@ async def _add_org_model_to_db(
     )
 
 
-async def _load_actor(user_api_key_dict: UserAPIKeyAuth, prisma_client: PrismaClient) -> Actor:
-    from litellm.proxy.auth.auth_checks import get_user_object
-    from litellm.proxy.proxy_server import user_api_key_cache
-    from litellm.types.proxy.auth.auth_checks import UserNotFoundError
-
-    async def fetch_user(user_id: str) -> LiteLLM_UserTable | None:
-        try:
-            return await get_user_object(
-                user_id=user_id,
-                prisma_client=prisma_client,
-                user_api_key_cache=user_api_key_cache,
-                user_id_upsert=False,
-            )
-        except UserNotFoundError:
-            return None
-
-    async def fetch_teams(team_ids: Sequence[str]) -> Sequence[LiteLLM_TeamTable]:
-        rows: Final = await TeamRepository(prisma_client).table.find_many(where={"team_id": {"in": list(team_ids)}})
-        return tuple(LiteLLM_TeamTable.model_validate(row.model_dump()) for row in rows)
-
-    return await load_actor(
-        user_id=user_api_key_dict.user_id,
-        key_user_role=user_api_key_dict.user_role,
-        fetch_user=fetch_user,
-        fetch_teams=fetch_teams,
-    )
-
-
 async def _organization_exists(prisma_client: PrismaClient, organization_id: str) -> bool:
     row: Final = await OrganizationRepository(prisma_client).table.find_unique(
         where={"organization_id": organization_id}
@@ -2038,7 +2009,7 @@ class ModelManagementAuthChecks:
         member_operation: Literal["create", "update"] | None = None,
         incoming_model_params: updateDeployment | None = None,
         model_action: Action = Action.EDIT,
-        actor_loader: Callable[[UserAPIKeyAuth, PrismaClient], Awaitable[Actor]] = _load_actor,
+        actor_loader: Callable[[UserAPIKeyAuth, PrismaClient], Awaitable[Actor]] = load_request_actor,
         organization_lookup: Callable[[PrismaClient, str], Awaitable[bool]] = _organization_exists,
     ) -> Literal[True] | MemberAutoRouterWrite:
         if user_api_key_dict.user_role in (

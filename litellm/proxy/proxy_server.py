@@ -253,6 +253,7 @@ from functools import lru_cache, partial
 
 import litellm
 import litellm._redis
+from agami.routing.org_models import deployment_org_model_name, org_model_names
 from litellm import Router
 from litellm._logging import _redact_string, verbose_proxy_logger, verbose_router_logger
 from litellm.caching.caching import DualCache, RedisCache
@@ -317,6 +318,7 @@ from litellm.proxy._types import *
 from litellm.proxy.analytics_endpoints.analytics_endpoints import (
     router as analytics_router,
 )
+from litellm.proxy.auth.agami_access import admin_model_visibility
 from litellm.proxy.auth.auth_checks import (
     ROLE_BASED_PERMISSIONS_ADAPTER,
     ExperimentalUIJWTToken,
@@ -10945,6 +10947,11 @@ async def model_list(
             include_model_access_groups=include_model_access_groups or False,
             only_model_access_groups=only_model_access_groups or False,
         )
+        if llm_router is not None:
+            expand_visibility: Final = await admin_model_visibility(
+                user_api_key_dict, prisma_client, llm_router.model_list
+            )
+            all_models = expand_visibility.visible_model_names(all_models, org_model_names(llm_router.model_list))
 
         # Hide paused/unhealthy models from the public listing
         if hidden_names:
@@ -14637,6 +14644,9 @@ async def model_info_v2(
             model_name=model,
         )
 
+    visibility: Final = await admin_model_visibility(user_api_key_dict, prisma_client, all_models)
+    all_models = [m for m in all_models if visibility.allows_deployment(m)]
+
     if user_models_only:
         all_models = await non_admin_all_models(
             all_models=all_models,
@@ -15221,6 +15231,9 @@ def _translate_model_name_for_response(model: dict) -> dict:
     """
     if not isinstance(model, dict):
         return model
+    organization_owner: Final = deployment_org_model_name(model)
+    if organization_owner is not None:
+        return {**model, "model_name": organization_owner.public_name}
     model_info: Final = model.get("model_info") or {}
     if not isinstance(model_info, dict):
         return model
@@ -15367,12 +15380,15 @@ async def model_info_v1(
     if litellm_model_id is not None:
         # user is trying to get specific model from litellm router
         deployment_info: Final = llm_router.get_deployment(model_id=litellm_model_id)
-        if deployment_info is None:
+        deployment_dict: Final = deployment_info.model_dump(exclude_none=True) if deployment_info is not None else None
+        if deployment_dict is None or not (
+            await admin_model_visibility(user_api_key_dict, prisma_client, (deployment_dict,))
+        ).allows_deployment(deployment_dict):
             raise HTTPException(
                 status_code=400,
                 detail={"error": f"Model id = {litellm_model_id} not found on litellm proxy"},
             )
-        _deployment_info_dict = _get_proxy_model_info(model=deployment_info.model_dump(exclude_none=True))
+        _deployment_info_dict = _get_proxy_model_info(model=deployment_dict)
         single_model_list: list[dict] = [_deployment_info_dict]
         if prisma_client is not None:
             single_model_list = await _populate_team_access_on_models(
@@ -15420,10 +15436,12 @@ async def model_info_v1(
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
     )
+    visibility: Final = await admin_model_visibility(user_api_key_dict, prisma_client, all_models)
     all_models = [
         model
         for model in all_models
         if not _byok_row_outside_caller_teams(model.get("model_info") or {}, allowed_team_ids)
+        and visibility.allows_deployment(model)
     ]
 
     if prisma_client is not None:
@@ -15735,9 +15753,17 @@ async def model_group_info(
             user_api_key_cache=user_api_key_cache,
         )
     )
-    model_groups: list[ModelGroupInfoProxy] = _get_model_group_info(
-        llm_router=llm_router, all_models_str=all_models_str, model_group=model_group
-    )
+    org_names: Final = org_model_names(llm_router.model_list)
+    group_visibility: Final = await admin_model_visibility(user_api_key_dict, prisma_client, llm_router.model_list)
+    visible_models_str: Final = group_visibility.visible_model_names(all_models_str, org_names)
+    model_groups: list[ModelGroupInfoProxy] = [
+        group.model_copy(update={"model_group": org_names[group.model_group].public_name})
+        if group.model_group in org_names
+        else group
+        for group in _get_model_group_info(
+            llm_router=llm_router, all_models_str=visible_models_str, model_group=model_group
+        )
+    ]
 
     # Append A2A agents to model groups
     from litellm.proxy.agent_endpoints.model_list_helpers import (

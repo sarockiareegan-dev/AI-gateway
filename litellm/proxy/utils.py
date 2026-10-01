@@ -83,6 +83,7 @@ from pydantic import TypeAdapter
 import litellm
 import litellm.litellm_core_utils
 import litellm.litellm_core_utils.litellm_logging
+from agami.routing.org_models import ModelVisibility, org_model_names
 from litellm import (
     EmbeddingResponse,
     ImageResponse,
@@ -124,6 +125,7 @@ from litellm.proxy._types import (
     AlertType,
     CallInfo,
     LiteLLM_VerificationTokenView,
+    LitellmUserRoles,
     Member,
     UserAPIKeyAuth,
 )
@@ -8175,7 +8177,11 @@ async def get_available_models_for_user(
         team_id=effective_team_id,
     )
 
-    return all_models
+    if llm_router is None:
+        return all_models
+    return ModelVisibility.for_key(
+        user_api_key_dict.org_id, user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
+    ).visible_model_names(all_models, org_model_names(llm_router.model_list))
 
 
 def _safe_get_model_info(model: str, get_model_info: Callable[[str], ModelInfo]) -> ModelInfo | None:
