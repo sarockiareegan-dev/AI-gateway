@@ -16,9 +16,11 @@ import pytest
 import litellm
 from litellm import DualCache, Router
 from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy.auth.entitlements import EntitlementService
 from litellm.proxy.hooks.dynamic_rate_limiter_v3 import (
     _PROXY_DynamicRateLimitHandlerV3 as DynamicRateLimitHandler,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 
 
 class TimeController:
@@ -50,14 +52,11 @@ async def test_priority_weight_allocation(monkeypatch):
 
     This validates the core fix where before it would split 50/50.
     """
-    # Set up environment for premium feature
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
-
     # Set up priority reservations
     litellm.priority_reservation = {"high": 0.9, "low": 0.1}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "test-model"
     total_tpm = 1000
@@ -133,14 +132,11 @@ async def test_concurrent_priority_requests(monkeypatch):
 
     This tests the exact scenario mentioned: priorities 0.9 and 0.1 should be 0.9/0.1, not 0.5/0.5.
     """
-    # Set up environment for premium feature
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
-
     # Set up the exact scenario from the issue
     litellm.priority_reservation = {"high": 0.9, "low": 0.1}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "test-model"
     total_tpm = 1000
@@ -221,16 +217,11 @@ async def test_100_concurrent_priority_requests(time_controller, monkeypatch):
     - 30 low priority requests (should get 100 TPM each)
     - Spread across 10 seconds to simulate real-world load
     """
-    # Set up environment for premium feature
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
-
     # Set up priority reservations
     litellm.priority_reservation = {"high": 0.9, "low": 0.1}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(
-        internal_usage_cache=dual_cache, time_provider=time_controller.now
-    )
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, time_provider=time_controller.now, entitlements=licensed_entitlements())
 
     model = "stress-test-model"
     total_tpm = 1000
@@ -391,13 +382,10 @@ async def test_concurrent_pre_call_hooks_stress(monkeypatch):
     Premium users (80% allocation) should have >90% success rate.
     Standard users (20% allocation) should have ~70% success rate with 30% random limiting.
     """
-    # Set up environment for premium feature
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
-
     litellm.priority_reservation = {"premium": 0.8, "standard": 0.2}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "pre-call-stress-model"
     total_tpm = 2000
@@ -648,13 +636,12 @@ async def test_fake_calls_case_1_no_rate_limiting_at_capacity(monkeypatch):
 
     Once saturation hits 50%, strict mode enforces priority-based limits.
     """
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
 
     # Set up priority reservations
     litellm.priority_reservation = {"key_a": 0.75, "key_b": 0.25}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "fake-call-test-1"
     total_rpm = 100
@@ -771,12 +758,11 @@ async def test_fake_calls_case_2_priority_queue_during_saturation(monkeypatch):
 
     When total traffic exceeds capacity, rate limiting enforces priority reservations.
     """
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
 
     litellm.priority_reservation = {"key_a": 0.75, "key_b": 0.25}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "fake-call-test-2"
     total_rpm = 100
@@ -904,13 +890,12 @@ async def test_fake_calls_case_3_spillover_capacity_default_keys(monkeypatch):
 
     Tests spillover behavior where default keys share remaining capacity.
     """
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
 
     litellm.priority_reservation = {"key_a": 0.75}
     litellm.priority_reservation_settings.default_priority = 0.25
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "fake-call-test-3"
     total_rpm = 100
@@ -1040,12 +1025,11 @@ async def test_fake_calls_case_4_over_allocated_with_normalization(monkeypatch):
     - Due to concurrent burst, total successful may exceed 100 RPM in the test window
     - This test verifies normalization works and total capacity is reasonably bounded
     """
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
 
     litellm.priority_reservation = {"key_a": 0.60, "key_b": 0.80}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "fake-call-test-4"
     total_rpm = 100
@@ -1174,13 +1158,12 @@ async def test_fake_calls_case_5_default_value_priority_reservation(monkeypatch)
 
     Tests complex scenario with explicit priorities and default priority.
     """
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
 
     litellm.priority_reservation = {"key_a": 0.50, "key_b": 0.20, "key_c": 0.05}
     litellm.priority_reservation_settings.default_priority = 0.05
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "fake-call-test-5"
     total_rpm = 100
@@ -1302,13 +1285,12 @@ async def test_default_priority_shared_pool(monkeypatch):
     - Key A, B, C (no priority) should share ONE 25 RPM pool
     - NOT get 25 RPM each (which would be 75 RPM total)
     """
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
 
     litellm.priority_reservation = {"prod": 0.75}
     litellm.priority_reservation_settings.default_priority = 0.25
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "test-default-pool"
     total_rpm = 100
@@ -1392,11 +1374,10 @@ async def test_async_log_success_event_increments_by_actual_tokens(monkeypatch):
 
     from litellm.types.utils import ModelResponse, Usage
 
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
     litellm.priority_reservation = {"dev": 0.1, "prod": 0.9}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "test-token-increment"
     llm_router = Router(
@@ -1490,7 +1471,6 @@ async def test_saturation_check_cache_ttl_configuration(monkeypatch):
     - After expiration, fresh values should be fetched from Redis
     - This prevents nodes from having stale saturation data in multi-node deployments
     """
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
 
     # Set a short TTL for testing (5 seconds)
     original_ttl = litellm.priority_reservation_settings.saturation_check_cache_ttl
@@ -1498,7 +1478,7 @@ async def test_saturation_check_cache_ttl_configuration(monkeypatch):
 
     try:
         dual_cache = DualCache()
-        handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+        handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
         model = "test-saturation-ttl"
         llm_router = Router(
@@ -1596,11 +1576,10 @@ async def test_async_log_success_event_uses_team_priority_from_auth_metadata(mon
 
     from litellm.types.utils import ModelResponse, Usage
 
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
     litellm.priority_reservation = {"team_priority": 0.8, "default": 0.2}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "test-team-priority"
     llm_router = Router(
@@ -1692,11 +1671,10 @@ async def test_priority_429_includes_model_name_and_configured_limits(monkeypatc
     """
     from fastapi import HTTPException
 
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
     litellm.priority_reservation = {"prod": 0.5}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "gpt-4o-test"
     total_tpm = 1_000_000
@@ -1787,11 +1765,10 @@ async def test_tpm_only_model_enforces_priority_and_model_capacity(monkeypatch):
 
     from litellm.types.utils import ModelResponse, Usage
 
-    monkeypatch.setenv("LITELLM_LICENSE", "test-license-key")
     litellm.priority_reservation = {"dev": 0.25, "prod": 0.5}
 
     dual_cache = DualCache()
-    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache)
+    handler = DynamicRateLimitHandler(internal_usage_cache=dual_cache, entitlements=licensed_entitlements())
 
     model = "tpm-only-model"
     llm_router = Router(
@@ -1945,3 +1922,16 @@ async def test_post_call_success_hook_priority_header_is_always_http_encodable(t
     http_response = Response(headers={key: str(value) for key, value in additional_headers.items()})
     assert http_response.headers.get("x-litellm-priority") == expected_priority_header
     assert http_response.headers["x-litellm-rate-limiter-version"] == "v3"
+
+@pytest.mark.parametrize(
+    ("entitlements", "is_licensed"),
+    [(licensed_entitlements(), True), (EntitlementService(public_key=None), False)],
+)
+def test_priority_reservation_weight_requires_a_valid_license(monkeypatch, entitlements, is_licensed):
+    monkeypatch.setattr(litellm, "priority_reservation", {"high": 0.9})
+    handler = DynamicRateLimitHandler(internal_usage_cache=DualCache(), entitlements=entitlements)
+
+    weight = handler._get_priority_weight("high")
+
+    expected = 0.9 if is_licensed else litellm.priority_reservation_settings.default_priority
+    assert weight == expected

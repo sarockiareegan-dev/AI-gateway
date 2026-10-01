@@ -7805,11 +7805,9 @@ def _premium_user_check(feature: str | None = None):
     from litellm.proxy.proxy_server import premium_user
 
     if feature:
-        detail_msg = f"This feature is only available for LiteLLM Enterprise users: {feature}. {CommonProxyErrors.not_premium_user.value}"
+        detail_msg = f"{feature} is a premium feature. {CommonProxyErrors.not_premium_user.value}"
     else:
-        detail_msg = (
-            f"This feature is only available for LiteLLM Enterprise users. {CommonProxyErrors.not_premium_user.value}"
-        )
+        detail_msg = CommonProxyErrors.not_premium_user.value
 
     if not premium_user:
         raise HTTPException(

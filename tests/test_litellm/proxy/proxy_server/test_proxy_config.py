@@ -2348,7 +2348,7 @@ async def test_ProxyConfig__init_non_llm_configs_premium_invalid_worker_registry
 async def test_ProxyConfig__init_non_llm_configs_worker_registry_requires_premium(monkeypatch):
     monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     pc = ProxyConfig()
-    with pytest.raises(ValueError, match="Trying to use `worker_registry`You must be a LiteLLM") as exc_info:
+    with pytest.raises(ValueError, match="Trying to use `worker_registry`This is a premium feature") as exc_info:
         await pc._init_non_llm_configs(
             config={"worker_registry": [{"worker_id": "worker-a", "name": "Worker A", "url": "http://localhost:4001"}]},
             config_file_path=None,

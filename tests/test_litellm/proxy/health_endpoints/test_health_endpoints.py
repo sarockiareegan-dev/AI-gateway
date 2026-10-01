@@ -21,6 +21,7 @@ import litellm.proxy.health_endpoints._health_endpoints as _health_endpoints_mod
 from litellm.litellm_core_utils.health_check_helpers import TEST_IMAGE_BASE64
 from litellm.models.credentials import CredentialItem
 from litellm.proxy._types import LitellmUserRoles, ProxyException, UserAPIKeyAuth
+from litellm.proxy.auth.entitlements import EntitlementService
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.router import Router
 from litellm.proxy.health_endpoints._health_endpoints import (
@@ -35,6 +36,7 @@ from litellm.proxy.health_endpoints._health_endpoints import (
 )
 
 # Import shared proxy test helpers from conftest
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 from tests.test_litellm.proxy.conftest import create_proxy_test_client
 
 
@@ -272,64 +274,30 @@ async def test_health_services_endpoint_sqs(status, error_message):
 
 @pytest.mark.asyncio
 async def test_health_license_endpoint_with_active_license():
-    license_data = {
-        "expiration_date": "2099-01-01",
-        "allowed_features": ["feature-a"],
-        "max_users": 100,
-        "max_teams": 5,
-    }
-    mock_license_check = SimpleNamespace(
-        license_str="test-license",
-        public_key=None,
-        airgapped_license_data=license_data,
-        verify_license_without_api_request=MagicMock(return_value=True),
-    )
+    license_check = licensed_entitlements(features=("feature-a",), max_users=100, max_teams=5)
+    assert license_check.entitlements is not None
 
     with (
-        patch(
-            "litellm.proxy.proxy_server._license_check",
-            mock_license_check,
-        ),
-        patch(
-            "litellm.proxy.proxy_server.premium_user",
-            True,
-        ),
-        patch(
-            "litellm.proxy.proxy_server.premium_user_data",
-            license_data,
-        ),
+        patch("litellm.proxy.proxy_server._license_check", license_check),
+        patch("litellm.proxy.proxy_server.premium_user", True),
     ):
         response = await health_license_endpoint(user_api_key_dict=MagicMock())
 
     assert response["has_license"] is True
     assert response["license_type"] == "enterprise"
-    assert response["expiration_date"] == "2099-01-01"
+    assert response["expiration_date"] == license_check.entitlements.expires_at.date().isoformat()
     assert response["allowed_features"] == ["feature-a"]
     assert response["limits"] == {"max_users": 100, "max_teams": 5}
 
 
 @pytest.mark.asyncio
 async def test_health_license_endpoint_without_valid_license():
-    mock_license_check = SimpleNamespace(
-        license_str="invalid-key",
-        public_key=None,
-        airgapped_license_data=None,
-        verify_license_without_api_request=MagicMock(return_value=False),
-    )
+    license_check = EntitlementService(public_key=None)
+    license_check.load("invalid-key")
 
     with (
-        patch(
-            "litellm.proxy.proxy_server._license_check",
-            mock_license_check,
-        ),
-        patch(
-            "litellm.proxy.proxy_server.premium_user",
-            False,
-        ),
-        patch(
-            "litellm.proxy.proxy_server.premium_user_data",
-            None,
-        ),
+        patch("litellm.proxy.proxy_server._license_check", license_check),
+        patch("litellm.proxy.proxy_server.premium_user", False),
     ):
         response = await health_license_endpoint(user_api_key_dict=MagicMock())
 

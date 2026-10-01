@@ -29,7 +29,7 @@ from litellm.proxy._types import (
     UserAPIKeyAuth,
 )
 from litellm.proxy.auth.auth_checks import invalidate_team_member_spend_state
-from litellm.proxy.auth.litellm_license import LicenseCheck
+from litellm.proxy.auth.entitlements import EntitlementService
 from litellm.proxy.common_utils.timezone_utils import get_budget_reset_time
 from litellm.proxy.db.exception_handler import PrismaDBExceptionHandler
 from litellm.proxy.hooks.user_management_event_hooks import UserManagementEventHooks
@@ -772,7 +772,7 @@ async def bulk_create_users(
     users: Sequence[BulkNewUserItem],
     user_api_key_dict: UserAPIKeyAuth,
     prisma_client: PrismaClient,
-    license_check: LicenseCheck,
+    license_check: EntitlementService,
     litellm_proxy_admin_name: str,
     user_api_key_cache: "UserApiKeyCache",
     generate_key: KeyGenerator = generate_key_helper_fn,

@@ -2,7 +2,6 @@
 Dynamic rate limiter v3 - Saturation-aware priority-based rate limiting
 """
 
-import os
 from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Final, Literal
@@ -15,6 +14,7 @@ from litellm._logging import verbose_proxy_logger
 from litellm.caching.caching import DualCache
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy.auth.entitlements import LICENSE_ENV_VAR, EntitlementService, get_entitlement_service
 from litellm.proxy.common_utils.proxy_rate_limit_error import (
     ProxyRateLimitError,
     map_v3_rate_limit_type,
@@ -87,7 +87,9 @@ class _PROXY_DynamicRateLimitHandlerV3(CustomLogger):
         self,
         internal_usage_cache: DualCache,
         time_provider: Callable[[], datetime] | None = None,
+        entitlements: EntitlementService | None = None,
     ):
+        self.entitlements: Final = entitlements or get_entitlement_service()
         self.internal_usage_cache = InternalUsageCache(dual_cache=internal_usage_cache)
         self.v3_limiter = _PROXY_MaxParallelRequestsHandler_v3(self.internal_usage_cache, time_provider=time_provider)
 
@@ -129,9 +131,11 @@ class _PROXY_DynamicRateLimitHandlerV3(CustomLogger):
         if litellm.priority_reservation is None or priority not in litellm.priority_reservation:
             verbose_proxy_logger.debug("Priority Reservation not set for the given priority.")
         elif priority is not None and litellm.priority_reservation is not None:
-            if os.getenv("LITELLM_LICENSE", None) is None:
+            if not self.entitlements.is_premium():
                 verbose_proxy_logger.error(
-                    "PREMIUM FEATURE: Reserving tpm/rpm by priority is a premium feature. Please add a 'LITELLM_LICENSE' to your .env to enable this.\nGet a license: https://docs.litellm.ai/docs/proxy/enterprise."
+                    "PREMIUM FEATURE: Reserving tpm/rpm by priority is a premium feature. "
+                    "Add a valid %s to your environment to enable it.",
+                    LICENSE_ENV_VAR,
                 )
             else:
                 value: Final = litellm.priority_reservation[priority]

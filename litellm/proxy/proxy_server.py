@@ -330,10 +330,15 @@ from litellm.proxy.auth.auth_utils import (
     log_once_if_budget_reservation_disabled,
     warn_once_if_custom_auth_skips_common_checks,
 )
+from litellm.proxy.auth.entitlements import (
+    AUTO_ROUTER_LICENSE_REMEDY,
+    LICENSE_CONFIG_KEY,
+    LICENSE_ENV_VAR,
+    get_entitlement_service,
+)
 from litellm.proxy.auth.fallback_budget import router_fallback_budget_check
 from litellm.proxy.auth.fallback_model_access import router_fallback_access_check
 from litellm.proxy.auth.handle_jwt import JWTHandler
-from litellm.proxy.auth.litellm_license import AUTO_ROUTER_LICENSE_REMEDY, LicenseCheck
 from litellm.proxy.auth.login_throttle import (
     LoginThrottle,
     declared_proxy_ranges,
@@ -852,9 +857,9 @@ from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 
 server_root_path: Final = get_server_root_path()
-_license_check = LicenseCheck()
+_license_check = get_entitlement_service()
 premium_user: bool = _license_check.is_premium()
-premium_user_data: Optional["EnterpriseLicenseData"] = _license_check.airgapped_license_data
+premium_user_data: Optional["EnterpriseLicenseData"] = _license_check.license_data
 global_max_parallel_request_retries_env: Final[str | None] = os.getenv("LITELLM_GLOBAL_MAX_PARALLEL_REQUEST_RETRIES")
 proxy_state: Final = ProxyState()
 SENSITIVE_DATA_MASKER: Final = SensitiveDataMasker()
@@ -2228,7 +2233,7 @@ app.add_middleware(
             # Read from the license check, not the premium_user_data module
             # global: that global is bound once at import and goes stale when
             # the license arrives via the YAML config's environment_variables.
-            license_data=_license_check.airgapped_license_data,
+            license_data=_license_check.license_data,
             litellm_version=version,
         )
         if build_billing_metrics_recorder is not None
@@ -5717,9 +5722,8 @@ class ProxyConfig:
                     #########################################################
                     os.environ[key] = str(value)
 
-            # check if litellm_license in general_settings
-            if "LITELLM_LICENSE" in environment_variables:
-                _license_check.license_str = os.getenv("LITELLM_LICENSE", None)
+            if LICENSE_ENV_VAR in environment_variables:
+                _license_check.load(os.getenv(LICENSE_ENV_VAR))
                 premium_user = _license_check.is_premium()
 
     def _warn_on_misplaced_jwt_keys(self, config: dict) -> tuple[str, ...]:
@@ -6316,7 +6320,7 @@ class ProxyConfig:
             allowed_ips: Final = general_settings.get("allowed_ips", None)
             if allowed_ips is not None and premium_user is False:
                 raise ValueError(
-                    "allowed_ips is an Enterprise Feature. Please add a valid LITELLM_LICENSE to your envionment."
+                    f"allowed_ips is a premium feature. Please add a valid {LICENSE_ENV_VAR} to your environment."
                 )
             ## BUDGET RESCHEDULER ##
             proxy_budget_rescheduler_min_time = general_settings.get(
@@ -6372,9 +6376,8 @@ class ProxyConfig:
             if general_settings.get("enforced_params") is not None and premium_user is not True:
                 raise ValueError("Trying to use `enforced_params`" + CommonProxyErrors.not_premium_user.value)
 
-            # check if litellm_license in general_settings
-            if "litellm_license" in general_settings:
-                _license_check.license_str = general_settings["litellm_license"]
+            if LICENSE_CONFIG_KEY in general_settings:
+                _license_check.load(general_settings[LICENSE_CONFIG_KEY])
                 premium_user = _license_check.is_premium()
 
         router_params: Final[dict] = {

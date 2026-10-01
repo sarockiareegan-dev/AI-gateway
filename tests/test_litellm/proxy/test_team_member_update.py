@@ -45,12 +45,8 @@ async def test_ateam_member_update_admin_requires_premium(monkeypatch):
         await team_member_update(data, request, auth)
 
     assert exc_info.value.status_code == 400
-    expected_msg = (
-        "Assigning team admins is a premium feature. You must be a LiteLLM Enterprise user to use this feature. "
-        "If you have a license please set `LITELLM_LICENSE` in your env. Get a 7 day trial key here: https://www.litellm.ai/#trial. "
-        "Pricing: https://www.litellm.ai/#pricing"
-    )
-    assert exc_info.value.detail == expected_msg
+    assert "Assigning team admins is a premium feature" in exc_info.value.detail
+    assert "AGAMI_LICENSE" in exc_info.value.detail
 
 
 @pytest.fixture

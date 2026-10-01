@@ -988,7 +988,7 @@ async def _raise_if_sso_exceeds_free_user_limit(premium_user: bool, prisma_clien
     billable_users: Final = await UserRepository(prisma_client).count_billable_users()
     if billable_users and billable_users > 5:
         raise ProxyException(
-            message="You must be a LiteLLM Enterprise user to use SSO for more than 5 users. If you have a license please set `LITELLM_LICENSE` in your env. If you want to obtain a license meet with us here: https://enterprise.litellm.ai/demo You are seeing this error message because You configured SSO (one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GENERIC_CLIENT_ID`, or SAML) in your env. Please unset it",
+            message="SSO for more than 5 users is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you configured SSO (one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GENERIC_CLIENT_ID`, or SAML) in your env. Please unset it",
             type=ProxyErrorTypes.auth_error,
             param="premium_user",
             code=status.HTTP_403_FORBIDDEN,
@@ -4623,7 +4623,7 @@ async def debug_sso_login(request: Request):
     if microsoft_client_id is not None or google_client_id is not None or generic_client_id is not None:
         if premium_user is not True:
             raise ProxyException(
-                message="You must be a LiteLLM Enterprise user to use SSO. If you have a license please set `LITELLM_LICENSE` in your env. If you want to obtain a license meet with us here: https://enterprise.litellm.ai/demo You are seeing this error message because You set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
+                message="SSO is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
                 type=ProxyErrorTypes.auth_error,
                 param="premium_user",
                 code=status.HTTP_403_FORBIDDEN,

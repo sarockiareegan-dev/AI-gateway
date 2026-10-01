@@ -98,10 +98,7 @@ async def _enterprise_license_required(
     if not premium_user:
         raise HTTPException(
             status_code=403,
-            detail={
-                "error": "Organizations are only available for LiteLLM Enterprise users. "
-                f"{CommonProxyErrors.not_premium_user.value}"
-            },
+            detail={"error": f"Organizations are a premium feature. {CommonProxyErrors.not_premium_user.value}"},
         )
 
 

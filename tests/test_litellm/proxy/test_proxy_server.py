@@ -3700,39 +3700,27 @@ async def test_load_environment_variables_direct_and_os_environ():
 
 
 @pytest.mark.asyncio
-async def test_load_environment_variables_litellm_license_and_edge_cases():
-    """
-    Test _load_environment_variables method with LITELLM_LICENSE special handling and edge cases
-    """
-    from unittest.mock import MagicMock, patch
-
+async def test_load_environment_variables_agami_license_and_edge_cases():
+    import litellm.proxy.proxy_server as proxy_server_module
     from litellm.proxy.proxy_server import ProxyConfig
+    from tests.test_litellm.proxy.auth.license_test_helpers import issue_test_license, unlicensed_entitlements
 
     proxy_config = ProxyConfig()
+    token = issue_test_license()
+    license_check = unlicensed_entitlements()
 
-    # Test Case 1: LITELLM_LICENSE in environment_variables
-    test_config_with_license = {
-        "environment_variables": {
-            "LITELLM_LICENSE": "test_license_key",
-            "OTHER_VAR": "other_value",
-        }
-    }
+    with (
+        patch("litellm.proxy.proxy_server._license_check", license_check),
+        patch("litellm.proxy.proxy_server.premium_user", False),
+        patch.dict(os.environ, {}, clear=False),
+    ):
+        proxy_config._load_environment_variables(
+            {"environment_variables": {"AGAMI_LICENSE": token, "OTHER_VAR": "other_value"}}
+        )
 
-    # Mock _license_check
-    mock_license_check = MagicMock()
-    mock_license_check.is_premium.return_value = True
-
-    with patch("litellm.proxy.proxy_server._license_check", mock_license_check):
-        with patch.dict(os.environ, {}, clear=False):
-            # Call the method under test
-            proxy_config._load_environment_variables(test_config_with_license)
-
-            # Verify LITELLM_LICENSE was set in environment
-            assert os.environ["LITELLM_LICENSE"] == "test_license_key"
-
-            # Verify license check was updated
-            assert mock_license_check.license_str == "test_license_key"
-            mock_license_check.is_premium.assert_called_once()
+        assert os.environ["AGAMI_LICENSE"] == token
+        assert license_check.is_premium()
+        assert proxy_server_module.premium_user is True
 
     # Test Case 2: No environment_variables in config
     test_config_no_env_vars = {}

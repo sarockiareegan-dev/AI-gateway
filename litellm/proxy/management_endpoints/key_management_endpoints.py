@@ -4404,7 +4404,7 @@ def _check_model_access_group(models: list[str] | None, llm_router: Router | Non
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail={
-                        "error": f"Setting a model access group on a wildcard model is only available for LiteLLM Enterprise users.{CommonProxyErrors.not_premium_user.value}"
+                        "error": f"Setting a model access group on a wildcard model is a premium feature. {CommonProxyErrors.not_premium_user.value}"
                     },
                 )
 
@@ -4663,7 +4663,7 @@ async def generate_key_helper_fn(
             saved_token["metadata"] = json.loads(saved_token["metadata"])
         if isinstance(saved_token["permissions"], str):
             if "get_spend_routes" in saved_token["permissions"] and premium_user is not True:
-                raise ValueError("get_spend_routes permission is only available for LiteLLM Enterprise users")
+                raise ValueError("get_spend_routes permission is a premium feature")
 
             saved_token["permissions"] = json.loads(saved_token["permissions"])
         if isinstance(saved_token["model_max_budget"], str):
