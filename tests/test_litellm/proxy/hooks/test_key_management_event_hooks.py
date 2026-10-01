@@ -393,11 +393,6 @@ class TestRotateVirtualKeyInSecretManager:
                 new_callable=AsyncMock,
             ) as mock_rotate,
             patch("litellm.store_audit_logs", False),
-            patch.object(
-                KeyManagementEventHooks,
-                "_send_key_rotated_email",
-                new_callable=AsyncMock,
-            ),
         ):
             await KeyManagementEventHooks.async_key_rotated_hook(
                 data=data,

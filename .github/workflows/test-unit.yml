@@ -65,10 +65,9 @@ jobs:
             timeout-minutes: 20
             job-timeout-minutes: 60
 
-          - shard: enterprise-routing
-            artifact-name: enterprise-routing
+          - shard: routing
+            artifact-name: routing
             test-path: >-
-              tests/test_litellm/enterprise
               tests/test_litellm/google_genai
               tests/test_litellm/router_utils
               tests/test_litellm/router_strategy
@@ -232,14 +231,6 @@ jobs:
             artifact-name: proxy-extras
             test-path: "tests/litellm-proxy-extras"
             workers: 2
-            reruns: 2
-            timeout-minutes: 20
-            job-timeout-minutes: 60
-
-          - shard: enterprise-package
-            artifact-name: enterprise-package
-            test-path: "tests/enterprise"
-            workers: 4
             reruns: 2
             timeout-minutes: 20
             job-timeout-minutes: 60

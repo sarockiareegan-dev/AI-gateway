@@ -1312,18 +1312,6 @@ async def _common_key_generation_helper(
         user_api_key_dict=user_api_key_dict,
     )
 
-    # APPLY ENTERPRISE KEY MANAGEMENT PARAMS
-    try:
-        from litellm_enterprise.proxy.management_endpoints.key_management_endpoints import (
-            apply_enterprise_key_management_params,
-        )
-
-        data = apply_enterprise_key_management_params(data, team_table)
-    except Exception as e:
-        verbose_proxy_logger.debug(
-            "litellm.proxy.proxy_server.generate_key_fn(): Enterprise key management params not applied - %s", e
-        )
-
     await _enforce_custom_key_policy(
         hook=_custom_key_policy_hook(proxy_server),
         build_policy_request=lambda: CustomKeyPolicyRequest(

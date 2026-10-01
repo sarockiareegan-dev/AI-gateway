@@ -386,7 +386,7 @@ _RUNTIME_GENERAL_SETTINGS_FLAGS: Final = [
     TEAM_ADMIN_EDITABLE_TEAM_FIELDS_SETTING,
 ]
 
-# Extension point: packages outside OSS (e.g. litellm_enterprise) can
+# Extension point: packages outside this one can
 # contribute additional UI settings fields at import time. Each entry
 # maps a field name to a (annotation, FieldInfo) tuple in pydantic
 # create_model's field-definitions format. Registering a field also

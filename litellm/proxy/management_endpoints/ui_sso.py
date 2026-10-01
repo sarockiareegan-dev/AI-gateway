@@ -1061,18 +1061,7 @@ async def google_login(
 
     # check if user defined a custom auth sso sign in handler, if yes, use it
     if user_custom_ui_sso_sign_in_handler is not None:
-        try:
-            from litellm_enterprise.proxy.auth.custom_sso_handler import (
-                EnterpriseCustomSSOHandler,
-            )
-
-            return await EnterpriseCustomSSOHandler.handle_custom_ui_sso_sign_in(
-                request=request,
-            )
-        except ImportError:
-            raise ValueError(
-                "Enterprise features are not available. Custom UI SSO sign-in requires LiteLLM Enterprise."
-            )
+        raise ValueError("Custom UI SSO sign-in handlers are not available in this build")
 
     if (
         microsoft_client_id is None

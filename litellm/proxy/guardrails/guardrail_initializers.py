@@ -3,7 +3,6 @@ from typing import Any, Final
 
 import litellm
 from litellm.integrations.custom_guardrail import CustomGuardrail
-from litellm.proxy._types import CommonProxyErrors
 from litellm.types.guardrails import *
 
 
@@ -175,21 +174,7 @@ def initialize_presidio(litellm_params: LitellmParams, guardrail: Guardrail) -> 
 
 
 def initialize_hide_secrets(litellm_params: LitellmParams, guardrail: Guardrail):
-    try:
-        from litellm_enterprise.enterprise_callbacks.secret_detection import (
-            _ENTERPRISE_SecretDetection,
-        )
-    except ImportError:
-        raise Exception("Trying to use Secret Detection" + CommonProxyErrors.missing_enterprise_package.value)
-
-    _secret_detection_object: Final = _ENTERPRISE_SecretDetection(
-        detect_secrets_config=litellm_params.detect_secrets_config,
-        event_hook=litellm_params.mode,
-        guardrail_name=guardrail.get("guardrail_name", ""),
-        default_on=litellm_params.default_on,
-    )
-    litellm.logging_callback_manager.add_litellm_callback(_secret_detection_object)
-    return _secret_detection_object
+    raise ValueError("The 'hide-secrets' guardrail is not available in this build")
 
 
 def initialize_tool_permission(litellm_params: LitellmParams, guardrail: Guardrail):

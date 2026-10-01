@@ -213,38 +213,10 @@ async def unblock_user(data: BlockUsers):
     }'
     ```
     """
-    try:
-        from enterprise.enterprise_hooks.blocked_user_list import (
-            _ENTERPRISE_BlockedUserList,
-        )
-    except ImportError:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "Blocked user check was never set. This call has no effect."
-                + CommonProxyErrors.missing_enterprise_package_docker.value
-            },
-        )
-
-    if (
-        not any(isinstance(x, _ENTERPRISE_BlockedUserList) for x in litellm.callbacks)
-        or litellm.blocked_user_list is None
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "Blocked user check was never set. This call has no effect."},
-        )
-
-    if isinstance(litellm.blocked_user_list, list):
-        for id in data.user_ids:
-            litellm.blocked_user_list.remove(id)
-    else:
-        raise HTTPException(
-            status_code=500,
-            detail={"error": "`blocked_user_list` must be set as a list. Filepaths can't be updated."},
-        )
-
-    return {"blocked_users": litellm.blocked_user_list}
+    raise HTTPException(
+        status_code=400,
+        detail={"error": "Blocked user check was never set. This call has no effect."},
+    )
 
 
 def new_budget_request(data: NewCustomerRequest) -> BudgetNewRequest | None:
