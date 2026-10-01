@@ -253,7 +253,7 @@ from functools import lru_cache, partial
 
 import litellm
 import litellm._redis
-from agami.routing.org_models import deployment_org_model_name, org_model_names
+from agami.routing.org_models import deployment_org_model_name, org_model_name, org_model_names
 from litellm import Router
 from litellm._logging import _redact_string, verbose_proxy_logger, verbose_router_logger
 from litellm.caching.caching import DualCache, RedisCache
@@ -15756,12 +15756,20 @@ async def model_group_info(
     org_names: Final = org_model_names(llm_router.model_list)
     group_visibility: Final = await admin_model_visibility(user_api_key_dict, prisma_client, llm_router.model_list)
     visible_models_str: Final = group_visibility.visible_model_names(all_models_str, org_names)
+    own_org_model_group: Final = (
+        org_model_name(user_api_key_dict.org_id, model_group)
+        if model_group is not None and user_api_key_dict.org_id is not None
+        else None
+    )
+    requested_model_group: Final = (
+        own_org_model_group if own_org_model_group in visible_models_str else model_group
+    )
     model_groups: list[ModelGroupInfoProxy] = [
         group.model_copy(update={"model_group": org_names[group.model_group].public_name})
         if group.model_group in org_names
         else group
         for group in _get_model_group_info(
-            llm_router=llm_router, all_models_str=visible_models_str, model_group=model_group
+            llm_router=llm_router, all_models_str=visible_models_str, model_group=requested_model_group
         )
     ]
 

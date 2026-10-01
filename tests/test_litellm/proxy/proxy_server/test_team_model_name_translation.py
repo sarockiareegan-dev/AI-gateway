@@ -2002,6 +2002,45 @@ async def test_model_group_info_lists_own_organization_models_under_public_names
     assert "org-b" not in json.dumps([group.model_dump(mode="json") for group in resp["data"]])
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("org_id", "model_group", "expected"),
+    [
+        ("org-a", "gpt-4o", [("gpt-4o", ["openai"])]),
+        ("org-a", org_model_name("org-b", "gpt-4o"), []),
+        (None, "gpt-4o", [("gpt-4o", ["anthropic"])]),
+    ],
+)
+async def test_model_group_info_filter_resolves_the_callers_own_organization_model(
+    monkeypatch, org_id, model_group, expected
+):
+    router = litellm.Router(
+        model_list=[
+            *_org_rows(),
+            {
+                "model_name": "gpt-4o",
+                "litellm_params": {"model": "anthropic/claude-sonnet-4-5", "api_key": "sk-fake"},
+                "model_info": {"id": "global-gpt-4o"},
+            },
+        ]
+    )
+    monkeypatch.setattr(ps, "llm_router", router)
+    monkeypatch.setattr(ps, "llm_model_list", router.model_list)
+    monkeypatch.setattr(ps, "user_model", None)
+    monkeypatch.setattr(ps, "general_settings", {})
+    monkeypatch.setattr(ps, "prisma_client", None)
+    import litellm.proxy.agent_endpoints.model_list_helpers as mlh
+
+    monkeypatch.setattr(
+        mlh, "append_agents_to_model_group", AsyncMock(side_effect=lambda model_groups, **kw: model_groups)
+    )
+    key = UserAPIKeyAuth(api_key="sk-key", org_id=org_id, user_role=LitellmUserRoles.INTERNAL_USER)
+
+    resp = await ps.model_group_info(user_api_key_dict=key, model_group=model_group)
+
+    assert [(group.model_group, group.providers) for group in resp["data"]] == expected
+
+
 def test_listing_translates_organization_models_to_public_names():
     router = MagicMock()
     router.get_model_list.return_value = _org_rows()
