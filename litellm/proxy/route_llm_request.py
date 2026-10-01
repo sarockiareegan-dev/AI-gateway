@@ -1,13 +1,14 @@
 import asyncio
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 import httpx
 from fastapi import HTTPException, status
 
 import litellm
-from agami.routing.org_models import org_model_name
+from agami.routing.org_models import ModelVisibility, org_model_name
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
+from litellm.proxy.auth.agami_access import key_model_visibility
 from litellm.router_utils.common_utils import _is_proxy_admin_request, get_request_organization_id
 
 # Client-supplied params that make the router or the call path fabricate a
@@ -568,9 +569,17 @@ async def _route_request_single_attempt(  # noqa: ANN202  # returns unawaited pr
             # If a model is provided, get its credentials from the router
             model: Final = data.get("model")
             if model and llm_router:
+                request_data: Final = cast(  # cast-ok: the request body is a JSON object keyed by strings
+                    "Mapping[str, object]", data
+                )
+                visibility: Final = (
+                    key_model_visibility(user_api_key_dict)
+                    if user_api_key_dict is not None
+                    else ModelVisibility.for_key(get_request_organization_id(request_data), is_super_admin=False)
+                )
                 try:
                     # Try to get deployment credentials for this model
-                    deployment_creds = llm_router.get_deployment_credentials(model_id=model)
+                    deployment_creds = llm_router.get_deployment_credentials(model_id=model, visibility=visibility)
                     if not deployment_creds:
                         # Try by model group name
                         deployment: Final = llm_router.get_deployment_by_model_group_name(model_group_name=model)
@@ -578,6 +587,7 @@ async def _route_request_single_attempt(  # noqa: ANN202  # returns unawaited pr
                             deployment
                             and deployment.litellm_params
                             and not llm_router._is_deployment_blocked(deployment)
+                            and visibility.allows_owner(deployment.model_info.organization_id)
                         ):
                             deployment_creds = deployment.litellm_params.model_dump(exclude_none=True)
 

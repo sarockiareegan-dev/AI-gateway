@@ -11,6 +11,7 @@ import httpx
 import pytest
 from openai.types.batch_request_counts import BatchRequestCounts
 
+from agami.routing.org_models import GLOBAL_MODELS_ONLY
 from litellm.models.managed_files import LiteLLM_ManagedFileTable
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.proxy.batches_endpoints import litellm_executed_batches
@@ -607,7 +608,9 @@ async def test_resolve_litellm_executed_provider_asks_the_router_for_the_team_sc
     assert (
         await resolve_litellm_executed_provider(router, BATCH_MODEL, "team-1", FakeFilesApiProbe(True, [])) == expected
     )
-    router.get_deployment_credentials_with_provider.assert_called_once_with(model_id=BATCH_MODEL, team_id="team-1")
+    router.get_deployment_credentials_with_provider.assert_called_once_with(
+        model_id=BATCH_MODEL, team_id="team-1", visibility=GLOBAL_MODELS_ONLY
+    )
 
 
 async def test_create_stores_a_validating_batch_and_completes_it_in_the_background() -> None:

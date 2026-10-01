@@ -43,6 +43,7 @@ import pytest
 import respx
 import litellm
 import litellm.proxy.batches_endpoints.endpoints as endpoints
+from agami.routing.org_models import GLOBAL_MODELS_ONLY, ModelVisibility
 import litellm.proxy.proxy_server as proxy_server
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
@@ -170,10 +171,12 @@ class Harness:
         return dict(self.router_acreate.call_args.kwargs)
 
 
-def _creds_lookup(*, model_id: str, team_id: str | None = None) -> dict[str, str] | None:
+def _creds_lookup(
+    *, model_id: str, team_id: str | None = None, visibility: ModelVisibility = GLOBAL_MODELS_ONLY
+) -> dict[str, str] | None:
     # An unknown/hardcoded model_id resolves to None exactly like the real router,
     # which the endpoint turns into a 400 and a missing dispatch - the bug cannot hide.
-    return dict(CREDS[model_id]) if model_id in CREDS else None
+    return dict(CREDS[model_id]) if model_id in CREDS and visibility == GLOBAL_MODELS_ONLY else None
 
 
 @pytest.fixture
@@ -313,7 +316,7 @@ async def test_create__model_encoded_file_id(harness):
     harness.router_acreate.assert_not_called()
 
     # 2. CREDENTIALS - resolved for the model decoded FROM the file id.
-    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
     # 3. SEAM PAYLOAD - exact, whole dict. A new forwarded key breaks this.
     assert harness.acreate_kwargs() == {
@@ -369,7 +372,7 @@ async def test_create__model_encoded_file_id__resolver_gets_decoded_model(harnes
 
     await call_create(harness)
 
-    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
 
 # =========================================================================== #
@@ -393,7 +396,7 @@ async def test_create__model_from_body(harness):
 
     assert harness.litellm_acreate.call_count == 1
     harness.router_acreate.assert_not_called()
-    harness.creds_resolver.assert_called_once_with(model_id="vertex-model")
+    harness.creds_resolver.assert_called_once_with(model_id="vertex-model", visibility=GLOBAL_MODELS_ONLY)
     payload = harness.acreate_kwargs()
     assert payload["custom_llm_provider"] == "vertex_ai"
     assert payload["input_file_id"] == "file-plain"
@@ -413,7 +416,7 @@ async def test_create__model_from_header(harness):
 
     await call_create(harness, headers={"x-litellm-model": "vertex-model"})
 
-    harness.creds_resolver.assert_called_once_with(model_id="vertex-model")
+    harness.creds_resolver.assert_called_once_with(model_id="vertex-model", visibility=GLOBAL_MODELS_ONLY)
     harness.router_acreate.assert_not_called()
 
 
@@ -430,7 +433,7 @@ async def test_create__model_from_query(harness):
 
     await call_create(harness, query={"model": "vertex-model"})
 
-    harness.creds_resolver.assert_called_once_with(model_id="vertex-model")
+    harness.creds_resolver.assert_called_once_with(model_id="vertex-model", visibility=GLOBAL_MODELS_ONLY)
     harness.router_acreate.assert_not_called()
 
 
@@ -453,7 +456,7 @@ async def test_create__body_model_beats_header_and_query(harness):
         query={"model": "vertex-model"},
     )
 
-    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
 
 # =========================================================================== #
@@ -824,7 +827,7 @@ async def test_create__unified_executed_provider_runs_inside_litellm(harness, ex
 
     harness.router_acreate.assert_not_called()
     harness.litellm_acreate.assert_not_called()
-    harness.creds_resolver.assert_called_once_with(model_id="my-vllm", team_id="team-vllm")
+    harness.creds_resolver.assert_called_once_with(model_id="my-vllm", team_id="team-vllm", visibility=GLOBAL_MODELS_ONLY)
     factory.assert_called_once_with(harness.router, harness.logging)
     runner.create.assert_awaited_once()
     create_kwargs = runner.create.call_args.kwargs
@@ -890,7 +893,7 @@ async def test_create__unified_provider_model_never_touches_executed_runner(harn
 
     factory.assert_not_called()
     runner.create.assert_not_called()
-    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", team_id=None)
+    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", team_id=None, visibility=GLOBAL_MODELS_ONLY)
     assert harness.router_kwargs()["model"] == "azure/gpt-4o"
 
 
@@ -951,7 +954,7 @@ async def test_create__model_encoded_beats_unified(harness):
 
     assert harness.litellm_acreate.call_count == 1
     harness.router_acreate.assert_not_called()
-    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
 
 # =========================================================================== #
@@ -997,7 +1000,7 @@ async def test_create__model_encoded_beats_loadbalancing(harness):
 
     assert harness.litellm_acreate.call_count == 1
     harness.router_acreate.assert_not_called()
-    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
 
 @pytest.mark.asyncio
@@ -1402,7 +1405,7 @@ async def test_retrieve__model_encoded_id(retrieve_harness):
     retrieve_harness.router_aretrieve.assert_not_called()
 
     # 2. CREDENTIALS - resolved for the model decoded FROM the batch id.
-    retrieve_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    retrieve_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
     # 3. SEAM PAYLOAD - exact, whole dict forwarded to the provider call.
     #    Note `model` is the DECODED model, not the deployment from creds: the
@@ -1441,7 +1444,9 @@ async def test_retrieve__model_encoded_id__stamps_deployment_model_info_for_cost
 
     await call_retrieve(retrieve_harness, AZURE_BATCH_ID)
 
-    retrieve_harness.router.get_credential_deployment.assert_called_once_with(model_id="azure/gpt-4o")
+    retrieve_harness.router.get_credential_deployment.assert_called_once_with(
+        model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY
+    )
     litellm_metadata = retrieve_harness.aretrieve_kwargs()["litellm_metadata"]
     assert litellm_metadata["model_info"]["id"] == "dep-123"
     assert litellm_metadata["user_api_key_alias"] == "qa-key"
@@ -1484,7 +1489,7 @@ async def test_retrieve__model_encoded_beats_loadbalancing(retrieve_harness):
 
     assert retrieve_harness.litellm_aretrieve.call_count == 1
     retrieve_harness.router_aretrieve.assert_not_called()
-    retrieve_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    retrieve_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
 
 # --------------------------------------------------------------------------- #
@@ -1506,7 +1511,7 @@ async def test_retrieve__unified_batch_id_routes_to_router(retrieve_harness):
     # Credentials are resolved for the deployment behind the unified id so the batch's
     # output file can be read for cost accounting. This id resolves to nothing here, and
     # the retrieve must still serve the batch rather than fail on the lookup.
-    retrieve_harness.creds_resolver.assert_called_once_with(model_id="gpt-4o-mini")
+    retrieve_harness.creds_resolver.assert_called_once_with(model_id="gpt-4o-mini", visibility=GLOBAL_MODELS_ONLY)
 
     # router receives the (still-encoded) batch id verbatim - this layer does
     # not decode it for the unified path.
@@ -2048,7 +2053,7 @@ async def test_list__model_from_body_routes_and_encodes(list_harness):
 
     assert list_harness.litellm_alist.call_count == 1
     list_harness.router_alist.assert_not_called()
-    list_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    list_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
     assert resp.data[0].id == encode_file_id_with_model("batch-1", "azure/gpt-4o", id_type="batch")
     assert resp.data[1].id == encode_file_id_with_model("batch-2", "azure/gpt-4o", id_type="batch")
 
@@ -2362,7 +2367,7 @@ async def test_cancel__model_encoded_id(cancel_harness):
     cancel_harness.router_acancel.assert_not_called()
 
     # CREDENTIALS - resolved for the model decoded from the batch id.
-    cancel_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    cancel_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
     # SEAM PAYLOAD - exact dict. NOTE current behavior: `model` is the
     # DEPLOYMENT name from creds, NOT the decoded model (cancel, unlike
@@ -2400,7 +2405,7 @@ async def test_cancel__model_encoded_beats_unified(cancel_harness):
 
     assert cancel_harness.litellm_acancel.call_count == 1
     cancel_harness.router_acancel.assert_not_called()
-    cancel_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o")
+    cancel_harness.creds_resolver.assert_called_once_with(model_id="azure/gpt-4o", visibility=GLOBAL_MODELS_ONLY)
 
 
 # --------------------------------------------------------------------------- #
@@ -3069,7 +3074,7 @@ async def test_create__header_model_allows_key_with_model_grant(harness):
 
     await call_create(harness, user=_key_restricted_to("vertex-model"), headers={"x-litellm-model": "vertex-model"})
 
-    harness.creds_resolver.assert_called_once_with(model_id="vertex-model")
+    harness.creds_resolver.assert_called_once_with(model_id="vertex-model", visibility=GLOBAL_MODELS_ONLY)
     assert harness.acreate_kwargs()["custom_llm_provider"] == "vertex_ai"
 
 

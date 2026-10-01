@@ -44,7 +44,13 @@ from typing_extensions import overload
 
 import litellm
 import litellm.litellm_core_utils.exception_mapping_utils
-from agami.routing.org_models import deployment_usable_by
+from agami.routing.org_models import (
+    EVERY_MODEL,
+    GLOBAL_MODELS_ONLY,
+    ModelVisibility,
+    deployment_usable_by,
+    org_model_name,
+)
 from litellm import get_secret_str
 from litellm._logging import verbose_router_logger
 from litellm._uuid import uuid
@@ -6347,7 +6353,7 @@ class Router:
             selected_deployment_id: Final = (deployment.get("model_info") or {}).get("id")
             data: Final = deployment["litellm_params"].copy()
             resolved_credentials: Final = self.get_deployment_credentials_with_provider(
-                model_id=selected_deployment_id or model
+                model_id=selected_deployment_id or model, visibility=EVERY_MODEL
             )
             if resolved_credentials is not None:
                 data.update(resolved_credentials)
@@ -10055,16 +10061,22 @@ class Router:
 
         return None
 
-    def get_deployment_credentials(self, model_id: str) -> dict | None:
+    def get_deployment_credentials(
+        self, model_id: str, visibility: ModelVisibility = GLOBAL_MODELS_ONLY
+    ) -> dict | None:
         """
         Returns -> dict of credentials for a given model id.
 
         Returns None if the deployment is paused via `LiteLLM_ProxyModelTable.blocked`,
         so file/batch/passthrough callers that resolve credentials directly cannot keep
-        using a paused deployment.
+        using a paused deployment, or if it belongs to an organization `visibility` excludes.
         """
         deployment: Final = self.get_deployment(model_id=model_id)
-        if deployment is None or self._is_deployment_blocked(deployment):
+        if (
+            deployment is None
+            or self._is_deployment_blocked(deployment)
+            or not visibility.allows_owner(deployment.model_info.organization_id)
+        ):
             return None
         return CredentialLiteLLMParams.model_validate(
             deployment.litellm_params.model_dump(exclude_none=True)
@@ -10142,7 +10154,9 @@ class Router:
                 {
                     **deployment.litellm_params.model_dump(exclude_none=True),
                     **(
-                        self.get_deployment_credentials_with_provider(deployment.model_info.id or "")
+                        self.get_deployment_credentials_with_provider(
+                            deployment.model_info.id or "", visibility=EVERY_MODEL
+                        )
                         or MappingProxyType({})
                     ),
                 }
@@ -10319,27 +10333,47 @@ class Router:
             return display_name
         return None
 
-    def get_credential_deployment(self, model_id: str, team_id: str | None = None) -> Deployment | None:
+    def get_credential_deployment(
+        self, model_id: str, team_id: str | None = None, visibility: ModelVisibility = GLOBAL_MODELS_ONLY
+    ) -> Deployment | None:
         """
         The deployment a passthrough endpoint (files, batches, etc.) resolves for a
-        model id or model name: by deployment id first, then by model_name, then by
+        model id or model name: by deployment id first, then by the public name of a
+        model owned by an organization `visibility` covers, then by model_name, then by
         the team's exact public model name, then by wildcard pattern (team wildcards
         before global ones, so a global "openai/*" never shadows the team's own
         entry). Name and wildcard lookups never resolve another team's deployment.
 
-        Returns None when nothing matches or the match is paused via
-        `LiteLLM_ProxyModelTable.blocked`, so callers cannot bypass an admin pause
-        by resolving the deployment directly.
+        Returns None when nothing matches, the match is paused via
+        `LiteLLM_ProxyModelTable.blocked` (so callers cannot bypass an admin pause
+        by resolving the deployment directly), or it belongs to an organization
+        `visibility` excludes.
         """
         deployment: Final = (
             self.get_deployment(model_id=model_id)
+            or self._get_org_public_name_deployment(model_id=model_id, visibility=visibility)
             or self._get_model_group_deployment_usable_by_team(model_group_name=model_id, team_id=team_id)
             or self._get_team_public_name_deployment(model_id=model_id, team_id=team_id)
             or self._get_wildcard_deployment_usable_by_team(model_id=model_id, team_id=team_id)
         )
-        if deployment is None or self._is_deployment_blocked(deployment):
+        if (
+            deployment is None
+            or self._is_deployment_blocked(deployment)
+            or not visibility.allows_owner(deployment.model_info.organization_id)
+        ):
             return None
         return deployment
+
+    def _get_org_public_name_deployment(self, model_id: str, visibility: ModelVisibility) -> Deployment | None:
+        return next(
+            (
+                deployment
+                for organization_id in sorted(visibility.organization_ids)
+                if (deployment := self.get_deployment_by_model_group_name(org_model_name(organization_id, model_id)))
+                is not None
+            ),
+            None,
+        )
 
     def _get_team_public_name_deployment(self, model_id: str, team_id: str | None) -> Deployment | None:
         if team_id is None:
@@ -10369,7 +10403,7 @@ class Router:
         return None
 
     def get_deployment_credentials_with_provider(
-        self, model_id: str, team_id: str | None = None
+        self, model_id: str, team_id: str | None = None, visibility: ModelVisibility = GLOBAL_MODELS_ONLY
     ) -> dict[str, Any] | None:
         """
         Get API credentials and provider info from a model name in model_list.
@@ -10386,6 +10420,8 @@ class Router:
                 wildcard lookups never resolve a deployment owned by a
                 different team, so shared model names can't leak another
                 team's credentials.
+            visibility: The organizations whose models the caller may use.
+                Defaults to global models only.
 
         Returns:
             Dictionary containing api_key, api_base, custom_llm_provider, etc.
@@ -10397,7 +10433,7 @@ class Router:
             credentials = router.get_deployment_credentials_with_provider("gpt-4o-litellm")
             # Returns: {"api_key": "sk-...", "custom_llm_provider": "openai", "model": "gpt-4o", ...}
         """
-        deployment: Final = self.get_credential_deployment(model_id=model_id, team_id=team_id)
+        deployment: Final = self.get_credential_deployment(model_id=model_id, team_id=team_id, visibility=visibility)
         if deployment is None:
             return None
 

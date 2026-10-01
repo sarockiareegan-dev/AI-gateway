@@ -91,3 +91,7 @@ class ModelVisibility:
         return [
             name for name in names if self.allows_owner(owner.organization_id if (owner := owners.get(name)) else None)
         ]
+
+
+GLOBAL_MODELS_ONLY: Final = ModelVisibility(frozenset(), sees_every_organization=False)
+EVERY_MODEL: Final = ModelVisibility(frozenset(), sees_every_organization=True)

@@ -27,6 +27,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 import litellm
+from agami.routing.org_models import GLOBAL_MODELS_ONLY, ModelVisibility
 from litellm._logging import verbose_proxy_logger
 from litellm.batches.batch_utils import (
     _count_entry_tokens,
@@ -43,6 +44,7 @@ from litellm.proxy._types import (
     SpecialModelNames,
     UserAPIKeyAuth,
 )
+from litellm.proxy.auth.agami_access import key_model_visibility
 from litellm.proxy.auth.auth_utils import get_model_rate_limit_from_metadata
 from litellm.proxy.common_utils.proxy_rate_limit_error import (
     ProxyRateLimitError,
@@ -200,7 +202,7 @@ class _PROXY_BatchRateLimiter(CustomLogger):
 
         return None
 
-    def _resolve_batch_provider(self, batch_model: str | None) -> str | None:
+    def _resolve_batch_provider(self, batch_model: str | None, visibility: ModelVisibility) -> str | None:
         """Resolve the provider from the deployment that serves ``batch_model``.
 
         The provider is read from trusted router credentials rather than the
@@ -223,6 +225,7 @@ class _PROXY_BatchRateLimiter(CustomLogger):
                 llm_router=llm_router,
                 model_id=batch_model,
                 operation_context="batch input file read (rate limiting)",
+                visibility=visibility,
             )
         except HTTPException:
             return None
@@ -385,7 +388,9 @@ class _PROXY_BatchRateLimiter(CustomLogger):
 
         skip_providers: Final = general_settings.get("skip_batch_input_file_rate_limiting_for_providers") or []
         if skip_providers:
-            batch_provider: Final = self._resolve_batch_provider(self._get_batch_routing_model(data))
+            batch_provider: Final = self._resolve_batch_provider(
+                self._get_batch_routing_model(data), key_model_visibility(user_api_key_dict)
+            )
             if batch_provider and batch_provider in skip_providers:
                 verbose_proxy_logger.debug("Skipping batch input file processing for provider=%s", batch_provider)
                 return True, None
@@ -509,6 +514,7 @@ class _PROXY_BatchRateLimiter(CustomLogger):
         file_id: str,
         custom_llm_provider: str,
         data: dict,
+        visibility: ModelVisibility = GLOBAL_MODELS_ONLY,
     ) -> tuple[str, dict[str, Any]]:
         """
         Map proxy-facing file IDs to provider file IDs and credentials.
@@ -536,6 +542,7 @@ class _PROXY_BatchRateLimiter(CustomLogger):
                         llm_router=llm_router,
                         model_id=model_from_file_id,
                         operation_context="batch input file read (rate limiting)",
+                        visibility=visibility,
                     )
                     fetch_kwargs.update(_extract_file_access_credentials(credentials))
                     fetch_kwargs["model"] = model_from_file_id
@@ -553,6 +560,7 @@ class _PROXY_BatchRateLimiter(CustomLogger):
                     llm_router=llm_router,
                     model_id=request_model,
                     operation_context="batch input file read (rate limiting)",
+                    visibility=visibility,
                 )
                 fetch_kwargs.update(_extract_file_access_credentials(credentials))
                 fetch_kwargs["model"] = request_model
@@ -911,6 +919,11 @@ class _PROXY_BatchRateLimiter(CustomLogger):
                     file_id=file_id,
                     custom_llm_provider=custom_llm_provider,
                     data=data or {},
+                    visibility=(
+                        key_model_visibility(user_api_key_dict)
+                        if user_api_key_dict is not None
+                        else GLOBAL_MODELS_ONLY
+                    ),
                 )
                 # For non-managed files, use the standard litellm.afile_content
                 file_content = await litellm.afile_content(
