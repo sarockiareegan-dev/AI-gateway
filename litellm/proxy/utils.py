@@ -5524,7 +5524,7 @@ class PrismaClient:
         return 0
 
     def _is_engine_alive(self) -> bool:
-        if self._engine_pid <= 0:
+        if self._engine_pid <= 0 or sys.platform == "win32":
             return True
         try:
             os.kill(self._engine_pid, 0)
@@ -5808,7 +5808,7 @@ class PrismaClient:
         1. os.waitpid() in a dedicated thread, works with all event loops.
         2. pidfd_open kernel fd registered with asyncio.
         3. os.kill(pid, 0) polling (1s), last-resort fallback when neither
-           waitpid thread nor pidfd are available.
+           waitpid thread nor pidfd are available. Skipped on Windows.
 
         """
         if self._watching_engine or self._engine_pidfd >= 0 or self._engine_wait_thread is not None:
@@ -5830,6 +5830,12 @@ class PrismaClient:
         elif pidfd_ok:
             verbose_proxy_logger.info(
                 "Watching engine PID %s via pidfd.",
+                pid,
+            )
+        elif sys.platform == "win32":
+            verbose_proxy_logger.info(
+                "Not polling engine PID %s: os.kill(pid, 0) sends CTRL_C_EVENT on Windows. "
+                "The DB health watchdog still detects engine death.",
                 pid,
             )
         else:
