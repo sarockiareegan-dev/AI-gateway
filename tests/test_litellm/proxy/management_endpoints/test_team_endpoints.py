@@ -12859,6 +12859,71 @@ async def test_list_available_teams_filters_joined_and_validates_rows(monkeypatc
     assert find_many_kwargs["where"] == {"team_id": {"in": ["team-open"]}}
 
 
+def _member_of(organization_id: str) -> LiteLLM_UserTable:
+    return LiteLLM_UserTable(
+        user_id="u-1",
+        teams=[],
+        organization_memberships=[
+            LiteLLM_OrganizationMembershipTable(
+                user_id="u-1",
+                organization_id=organization_id,
+                user_role=LitellmUserRoles.INTERNAL_USER.value,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_available_teams_hides_other_organizations_teams(monkeypatch):
+    from fastapi import Request
+
+    import litellm
+    from litellm.proxy.management_endpoints.team_endpoints import list_available_teams
+
+    monkeypatch.setattr(
+        litellm, "default_internal_user_params", {"available_teams": ["global-team", "org-a-team", "org-b-team"]}
+    )
+    user_row = MagicMock()
+    user_row.model_dump = lambda: _member_of("org-a").model_dump()
+    team_rows = [
+        MagicMock(model_dump=lambda team_id=team_id, org=org: {"team_id": team_id, "organization_id": org})
+        for team_id, org in (("global-team", None), ("org-a-team", "org-a"), ("org-b-team", "org-b"))
+    ]
+    mock_prisma_client = MagicMock()
+    mock_prisma_client.db.litellm_usertable.find_unique = AsyncMock(return_value=user_row)
+    mock_prisma_client.db.litellm_teamtable.find_many = AsyncMock(return_value=team_rows)
+
+    with patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client):
+        result = await list_available_teams(
+            http_request=MagicMock(spec=Request), user_api_key_dict=UserAPIKeyAuth(user_id="u-1")
+        )
+
+    assert sorted(team.team_id for team in result) == ["global-team", "org-a-team"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("team_org", "joinable"), [(None, True), ("org-a", True), ("org-b", False)])
+async def test_available_team_self_join_stays_inside_the_callers_organizations(monkeypatch, team_org, joinable):
+    import litellm
+    from litellm.proxy.management_endpoints.team_endpoints import _is_available_team
+
+    monkeypatch.setattr(litellm, "default_internal_user_params", {"available_teams": ["open-team"]})
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock())
+
+    with patch(
+        "litellm.proxy.management_endpoints.team_endpoints.get_user_object",
+        new=AsyncMock(return_value=_member_of("org-a")),
+    ):
+        result = await _is_available_team(
+            team=LiteLLM_TeamTable(team_id="open-team", organization_id=team_org),
+            user_api_key_dict=UserAPIKeyAuth(user_id="u-1", user_role=LitellmUserRoles.INTERNAL_USER),
+        )
+
+    assert result is joinable
+
+
 @pytest.mark.asyncio
 async def test_get_team_metadata_schema_returns_configured_fields():
     from litellm.proxy.management_endpoints.team_endpoints import get_team_metadata_schema

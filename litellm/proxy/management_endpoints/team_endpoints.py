@@ -106,6 +106,7 @@ from litellm.proxy.auth.auth_checks import (
     get_user_object,
     invalidate_team_member_spend_state,
 )
+from litellm.proxy.auth.auth_checks_organization import get_user_organization_info
 from litellm.proxy.auth.auth_utils import (
     enforce_batch_enqueued_token_limit_is_admin_only,
     enforce_output_token_estimates_are_admin_only,
@@ -836,12 +837,34 @@ def _get_default_team_param(field: str) -> object:
     return value
 
 
-def _is_available_team(team_id: str, user_api_key_dict: UserAPIKeyAuth) -> bool:
-    if litellm.default_internal_user_params is None:
+def _configured_available_team_ids() -> frozenset[str]:
+    params: Final = litellm.default_internal_user_params
+    return frozenset(params.get("available_teams") or ()) if params is not None else frozenset()
+
+
+async def _caller_organization_ids(user_api_key_dict: UserAPIKeyAuth) -> frozenset[str]:
+    from litellm.proxy.proxy_server import prisma_client, proxy_logging_obj, user_api_key_cache
+    from litellm.types.proxy.auth.auth_checks import UserNotFoundError
+
+    if user_api_key_dict.user_id is None or prisma_client is None:
+        return frozenset()
+    try:
+        user: Final = await get_user_object(
+            user_id=user_api_key_dict.user_id,
+            prisma_client=prisma_client,
+            user_api_key_cache=user_api_key_cache,
+            user_id_upsert=False,
+            proxy_logging_obj=proxy_logging_obj,
+        )
+    except UserNotFoundError:
+        return frozenset()
+    return frozenset(get_user_organization_info(user)[0]) if user is not None else frozenset()
+
+
+async def _is_available_team(team: LiteLLM_TeamTable, user_api_key_dict: UserAPIKeyAuth) -> bool:
+    if team.team_id not in _configured_available_team_ids():
         return False
-    if "available_teams" in litellm.default_internal_user_params:
-        return team_id in litellm.default_internal_user_params["available_teams"]
-    return False
+    return team.organization_id is None or team.organization_id in await _caller_organization_ids(user_api_key_dict)
 
 
 async def get_all_team_memberships(
@@ -2822,10 +2845,7 @@ async def _validate_team_member_add_permissions(
     if await _is_user_org_admin_for_team(user_api_key_dict=user_api_key_dict, team_obj=complete_team_data):
         return
 
-    if not _is_available_team(
-        team_id=complete_team_data.team_id,
-        user_api_key_dict=user_api_key_dict,
-    ):
+    if not await _is_available_team(team=complete_team_data, user_api_key_dict=user_api_key_dict):
         raise HTTPException(
             status_code=403,
             detail={
@@ -5138,33 +5158,29 @@ async def list_available_teams(
             detail={"error": CommonProxyErrors.db_not_connected_error.value},
         )
 
-    available_teams = cast(
-        list[str] | None,
-        (
-            litellm.default_internal_user_params.get("available_teams")
-            if litellm.default_internal_user_params is not None
-            else None
-        ),
-    )
-    if available_teams is None:
+    configured_team_ids: Final = _configured_available_team_ids()
+    if not configured_team_ids:
         return []
 
-    # filter out teams that the user is already a member of
-    user_info: Final = await _user_db(prisma_client).find_unique(where={"user_id": user_api_key_dict.user_id})
+    user_info: Final = await _user_db(prisma_client).find_unique(
+        where={"user_id": user_api_key_dict.user_id}, include={"organization_memberships": True}
+    )
     if user_info is None:
         raise HTTPException(
             status_code=404,
             detail={"error": "User not found"},
         )
-    user_info_correct_type: Final = LiteLLM_UserTable.model_validate(user_info.model_dump())
+    user: Final = LiteLLM_UserTable.model_validate(user_info.model_dump())
+    organization_ids: Final = frozenset(get_user_organization_info(user)[0])
 
-    available_teams = [team for team in available_teams if team not in user_info_correct_type.teams]
-
-    available_teams_db: Final = await _team_db(prisma_client).find_many(where={"team_id": {"in": available_teams}})
-
-    available_teams_correct_type = [LiteLLM_TeamTable.model_validate(team.model_dump()) for team in available_teams_db]
-
-    return available_teams_correct_type
+    teams: Final = await _team_db(prisma_client).find_many(
+        where={"team_id": {"in": sorted(configured_team_ids - frozenset(user.teams))}}
+    )
+    return [
+        team
+        for team in (LiteLLM_TeamTable.model_validate(row.model_dump()) for row in teams)
+        if team.organization_id is None or team.organization_id in organization_ids
+    ]
 
 
 async def _get_org_admin_org_ids(
@@ -6176,10 +6192,7 @@ async def team_member_permissions(
         and not _user_has_admin_view(user_api_key_dict)
         and not _is_user_team_admin(user_api_key_dict=user_api_key_dict, team_obj=complete_team_data)
         and not await _is_user_org_admin_for_team(user_api_key_dict=user_api_key_dict, team_obj=complete_team_data)
-        and not _is_available_team(
-            team_id=complete_team_data.team_id,
-            user_api_key_dict=user_api_key_dict,
-        )
+        and not await _is_available_team(team=complete_team_data, user_api_key_dict=user_api_key_dict)
     ):
         raise HTTPException(
             status_code=403,

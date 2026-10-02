@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from litellm._uuid import uuid
+from litellm.proxy._types import DeleteOrganizationRequest, LitellmUserRoles, UserAPIKeyAuth
 from tests.test_litellm.proxy.management_endpoints.jwt_key_mapping_doubles import (
     CascadingJWTMappingTable,
     JWTMappingRow,
@@ -1545,3 +1546,24 @@ async def test_delete_organization_evicts_the_cache_of_the_keys_it_deletes(monke
     assert all(cache.get_cache(key=cache_key) is None for cache_key in doomed_cache_keys)
     assert all(cache.get_cache(key=cache_key) == {"retained": True} for cache_key in kept_cache_keys)
     assert jwt_table.rows == (kept_row,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "role", [LitellmUserRoles.ORG_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER]
+)
+async def test_only_a_proxy_admin_can_delete_an_organization(monkeypatch, role):
+    from litellm.proxy.management_endpoints.organization_endpoints import delete_organization
+
+    prisma_client: Final = AsyncMock()
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await delete_organization(
+            data=DeleteOrganizationRequest(organization_ids=["org-a"]),
+            user_api_key_dict=UserAPIKeyAuth(api_key="sk-org-a", user_role=role, organization_id="org-a"),
+        )
+
+    assert exc_info.value.status_code == 401
+    prisma_client.db.litellm_organizationtable.delete.assert_not_called()
+    prisma_client.db.litellm_teamtable.delete_many.assert_not_called()
