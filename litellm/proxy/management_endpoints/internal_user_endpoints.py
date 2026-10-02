@@ -2576,18 +2576,7 @@ async def _resolve_org_filter_for_user_search(
 ) -> list[str] | None:
     """
     Return a list of org IDs to filter by, or ``None`` for no filter.
-
-    Reads the ``scope_user_search_to_org`` UI-setting flag and applies
-    role-based access rules when the flag is ON.
     """
-    from litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints import (
-        get_ui_settings_cached,
-    )
-
-    ui_settings: Final = await get_ui_settings_cached()
-    if not ui_settings.get("scope_user_search_to_org", False):
-        return None  # flag OFF — no filtering
-
     if _user_has_admin_view(user_api_key_dict):
         return None  # proxy admin — see everything
 
@@ -2628,7 +2617,7 @@ async def _resolve_org_filter_for_user_search(
     raise HTTPException(
         status_code=403,
         detail={
-            "error": "scope_user_search_to_org is enabled. Only proxy admins, organization admins, or team admins can search users."
+            "error": "Only proxy admins, organization members, or team admins can search users."
         },
     )
 
@@ -2653,13 +2642,13 @@ async def _resolve_team_org_filter(
     except HTTPException:
         raise HTTPException(
             status_code=403,
-            detail={"error": f"scope_user_search_to_org is enabled but team '{team_id}' was not found."},
+            detail={"error": f"Team '{team_id}' was not found."},
         )
 
     if not _is_user_team_admin(user_api_key_dict, team_obj):
         raise HTTPException(
             status_code=403,
-            detail={"error": "scope_user_search_to_org is enabled. You must be an admin of this team to search users."},
+            detail={"error": "You must be an admin of this team to search users."},
         )
 
     if team_obj.organization_id:
@@ -2668,7 +2657,7 @@ async def _resolve_team_org_filter(
     raise HTTPException(
         status_code=403,
         detail={
-            "error": "scope_user_search_to_org is enabled and this team is not part of an organization. Contact your proxy admin to adjust this setting."
+            "error": "This team is not part of an organization, so its admins cannot search users."
         },
     )
 
@@ -2696,15 +2685,10 @@ async def ui_view_users(
     """
     Filter users based on partial match of user_id or email with pagination.
 
-    Behaviour depends on the ``scope_user_search_to_org`` UI-setting flag
-    (stored in the ``litellm_uisettings`` table):
-
-    * **Flag OFF (default):** any authenticated user can search all users.
-    * **Flag ON:**
-      - Proxy admins see all users.
-      - Org admins see only users in their org(s).
-      - Team admins for an org-bound team see users in that org.
-      - Others receive a 403.
+    * Proxy admins see all users.
+    * Organization members see only users in their org(s).
+    * Team admins for an org-bound team see users in that org.
+    * Others receive a 403.
     """
     from litellm.proxy.proxy_server import (
         prisma_client,
@@ -2742,7 +2726,6 @@ async def ui_view_users(
                 "mode": "insensitive",  # Case-insensitive search
             }
 
-        # Apply org filter when scope_user_search_to_org is ON and caller is not proxy admin
         if org_filter_ids is not None:
             where_conditions["organization_memberships"] = {"some": {"organization_id": {"in": org_filter_ids}}}
 
