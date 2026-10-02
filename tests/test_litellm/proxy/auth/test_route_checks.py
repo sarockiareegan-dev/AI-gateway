@@ -2700,6 +2700,41 @@ def test_org_admin_of_multiple_orgs_can_operate_on_both():
     assert _user_is_org_admin({"organizations": ["org-A", "org-B"]}, user_obj) is True
 
 
+def _org_admin_route_check(route: str, global_role: LitellmUserRoles) -> None:
+    user_obj = _make_org_admin_user("org-A").model_copy(update={"user_role": global_role.value})
+    request = MagicMock(spec=Request)
+    request.method = "GET"
+    RouteChecks.non_proxy_admin_allowed_routes_check(
+        user_obj=user_obj,
+        _user_role=global_role,
+        route=route,
+        request=request,
+        valid_token=UserAPIKeyAuth(user_id="org-admin-user", user_role=global_role),
+        request_data={"organization_id": "org-A"},
+    )
+
+
+@pytest.mark.parametrize(
+    "route",
+    ["/guardrails/usage/overview", "/customer/info", "/policies/attachments/list", "/audit", "/budget/list"],
+)
+@pytest.mark.parametrize("global_role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN])
+def test_own_organization_id_does_not_open_proxy_wide_viewer_routes(route, global_role):
+    with pytest.raises(Exception, match="Only proxy admin"):
+        _org_admin_route_check(route, global_role)
+
+
+@pytest.mark.parametrize("route", ["/spend/logs/ui", "/global/activity", "/tag/list"])
+def test_org_admin_role_does_not_reach_unscoped_spend_views(route):
+    with pytest.raises(Exception, match="Only proxy admin"):
+        _org_admin_route_check(route, LitellmUserRoles.ORG_ADMIN)
+
+
+@pytest.mark.parametrize("route", ["/user/list", "/team/daily/activity", "/organization/spend/report"])
+def test_org_admin_keeps_organization_scoped_views(route):
+    _org_admin_route_check(route, LitellmUserRoles.ORG_ADMIN)
+
+
 # ── LIT-4221: /team/update org-context resolution from team_id ────────────────
 from litellm.proxy.auth.auth_checks_organization import (
     add_team_org_context_to_request_body,

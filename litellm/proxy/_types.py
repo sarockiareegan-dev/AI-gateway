@@ -1027,7 +1027,19 @@ class LiteLLMRoutes(enum.Enum):
     )
 
     # All routes accesible by an Org Admin
-    org_admin_allowed_routes = org_admin_only_routes + management_routes + self_managed_routes + admin_viewer_routes
+    org_scoped_viewer_routes = [
+        "/user/list",
+        "/user/daily/activity",
+        "/team/daily/activity",
+        "/team/daily/activity/aggregated",
+        "/spend/logs/ui/{request_id}",
+        "/key/spend/report",
+        "/user/spend/report",
+        "/team/spend/report",
+        "/organization/spend/report",
+    ]
+
+    org_admin_allowed_routes = org_admin_only_routes + management_routes + self_managed_routes + org_scoped_viewer_routes
 
 
 class LiteLLMPromptInjectionParams(LiteLLMPydanticObjectBase):

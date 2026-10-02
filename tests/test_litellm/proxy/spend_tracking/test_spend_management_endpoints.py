@@ -702,6 +702,15 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def as_proxy_admin():
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin_user"
+    )
+    yield
+    app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+
 @pytest.fixture(autouse=True)
 def add_anthropic_api_key_to_env(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-1234567890")
@@ -749,7 +758,7 @@ def reset_proxy_auth_globals(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ui_view_spend_logs_with_user_id(client, monkeypatch):
+async def test_ui_view_spend_logs_with_user_id(client, monkeypatch, as_proxy_admin):
     mock_spend_logs = [
         {
             "id": "log1",
@@ -825,7 +834,7 @@ async def test_ui_view_spend_logs_with_user_id(client, monkeypatch):
     ],
 )
 async def test_ui_view_spend_logs_with_session_id(
-    client, monkeypatch, session_id_query, expected_request_ids
+    client, monkeypatch, session_id_query, expected_request_ids, as_proxy_admin
 ):
     def make_log(request_id, session_id):
         return {
@@ -2269,7 +2278,7 @@ async def test_ui_view_session_spend_logs_includes_permitted_team_logs(client, m
 
 
 @pytest.mark.asyncio
-async def test_ui_view_spend_logs_date_range_filter(client, monkeypatch):
+async def test_ui_view_spend_logs_date_range_filter(client, monkeypatch, as_proxy_admin):
     today = datetime.datetime.now(timezone.utc)
     mock_spend_logs = [
         {
@@ -7927,3 +7936,56 @@ def test_ui_view_request_response_internal_user_missing_row_forbidden(client, mo
         assert custom_logger.requested_ids == []
     finally:
         app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+
+class _CapturingSpendLogs:
+    def __init__(self):
+        self.litellm_spendlogs = self
+        self.where_seen: list[dict] = []
+
+    async def find_many(self, *args, **kwargs):
+        self.where_seen.append(kwargs.get("where", {}))
+        return []
+
+
+@pytest.mark.parametrize("role", [LitellmUserRoles.ORG_ADMIN, LitellmUserRoles.TEAM, LitellmUserRoles.CUSTOMER])
+def test_spend_logs_scopes_every_non_admin_role_to_the_caller(client, monkeypatch, role):
+    db = _CapturingSpendLogs()
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock(db=db))
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(user_role=role, user_id="caller")
+    today = datetime.datetime.now(timezone.utc).date()
+    try:
+        response = client.get(
+            "/spend/logs",
+            params={
+                "start_date": str(today - datetime.timedelta(days=1)),
+                "end_date": str(today),
+                "summarize": "false",
+                "user_id": "someone-else",
+            },
+            headers={"Authorization": "Bearer sk-test"},
+        )
+    finally:
+        app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+    assert response.status_code == 200
+    assert [where["user"] for where in db.where_seen] == ["caller"]
+
+
+@pytest.mark.parametrize("route", ["/spend/logs", "/spend/logs/ui"])
+def test_spend_logs_refuse_a_non_admin_key_without_a_user(client, monkeypatch, route):
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock(db=_CapturingSpendLogs()))
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_role=LitellmUserRoles.INTERNAL_USER, team_id="team-1"
+    )
+    start_date, end_date = _default_date_range()
+    try:
+        response = client.get(
+            route,
+            params={"start_date": start_date, "end_date": end_date},
+            headers={"Authorization": "Bearer sk-test"},
+        )
+    finally:
+        app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+    assert response.status_code == 403

@@ -688,10 +688,7 @@ async def get_global_activity(
             )
 
         db_response: Sequence[_ActivityRow] | None
-        if (
-            user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER
-            or user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER_VIEW_ONLY
-        ):
+        if not _is_admin_view_safe(user_api_key_dict):
             db_response = await get_global_activity_internal_user(user_api_key_dict, start_date_obj, end_date_obj)
         else:
             sql_query: Final = """
@@ -853,10 +850,7 @@ async def get_global_activity_model(
             )
 
         db_response: Sequence[_ActivityModelRow] | None
-        if (
-            user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER
-            or user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER_VIEW_ONLY
-        ):
+        if not _is_admin_view_safe(user_api_key_dict):
             db_response = await get_global_activity_model_internal_user(user_api_key_dict, start_date_obj, end_date_obj)
         else:
             sql_query: Final = """
@@ -2691,6 +2685,11 @@ async def ui_view_spend_logs(
                             {"user": user_api_key_dict.user_id}
                         ]
                 where_conditions.pop("team_id", None)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"error": "Viewing spend logs needs a key that belongs to a user, or a team_id you can view."},
+                )
         # Calculate skip value for pagination
         skip: Final = (page - 1) * page_size
 
@@ -3406,10 +3405,12 @@ async def view_spend_logs(
     """
     from litellm.proxy.proxy_server import prisma_client
 
-    if (
-        user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER
-        or user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER_VIEW_ONLY
-    ):
+    if not _is_admin_view_safe(user_api_key_dict):
+        if user_api_key_dict.user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "Viewing spend logs needs a key that belongs to a user, or a proxy admin key."},
+            )
         user_id = user_api_key_dict.user_id
 
     try:
@@ -4730,16 +4731,7 @@ def _can_user_view_spend_log(user_api_key_dict: UserAPIKeyAuth) -> bool:
     """
     Check if the requesting user can view their own spend logs.
     """
-    user_role: Final = user_api_key_dict.user_role
-    user_id: Final = user_api_key_dict.user_id
-    return (
-        user_role
-        in (
-            LitellmUserRoles.INTERNAL_USER,
-            LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
-        )
-        and user_id is not None
-    )
+    return not _is_admin_view_safe(user_api_key_dict) and user_api_key_dict.user_id is not None
 
 
 async def _user_can_view_spend_log_owner(
