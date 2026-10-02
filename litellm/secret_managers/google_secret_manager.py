@@ -22,9 +22,9 @@ class GoogleSecretManager(GCSBucketBase):
             refresh_interval (int, optional): The refresh interval in seconds. Defaults to 86400. (24 hours)
             always_read_secret_manager (bool, optional): Whether to always read from the secret manager. Defaults to False. Since we do want to cache values
         """
-        from litellm.proxy.proxy_server import premium_user
+        from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.SECRET_MANAGERS):
             raise ValueError(
                 f"Google Secret Manager requires an Enterprise License {CommonProxyErrors.not_premium_user.value}"
             )

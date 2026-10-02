@@ -23,6 +23,12 @@ from litellm.secret_managers.main import (
 )
 from unittest.mock import AsyncMock, patch, MagicMock
 
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
+
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
+
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
+
 
 def load_vertex_ai_credentials():
     # Define the path to the vertex_key.json file
@@ -236,7 +242,7 @@ def test_google_secret_manager():
     }
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()),
         patch.object(
             GoogleSecretManager,
             "sync_construct_request_headers",
@@ -272,7 +278,7 @@ def test_google_secret_manager_read_in_memory():
     os.environ["GOOGLE_SECRET_MANAGER_PROJECT_ID"] = "litellm-ci-cd"
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()),
         patch.object(
             GoogleSecretManager,
             "sync_construct_request_headers",

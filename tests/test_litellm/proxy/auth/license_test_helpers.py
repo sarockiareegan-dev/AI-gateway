@@ -2,8 +2,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Final
 
 import jwt
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from litellm.proxy.auth import entitlements as entitlements_module
 from litellm.proxy.auth.entitlements import LICENSE_ALGORITHM, LICENSE_ISSUER, EntitlementService
 
 _SIGNING_KEY: Final = Ed25519PrivateKey.generate()
@@ -44,4 +46,9 @@ def licensed_entitlements(
 ) -> EntitlementService:
     service: Final = unlicensed_entitlements()
     service.load(issue_test_license(features=features, max_users=max_users, max_teams=max_teams))
+    return service
+
+
+def install_entitlements(monkeypatch: pytest.MonkeyPatch, service: EntitlementService) -> EntitlementService:
+    monkeypatch.setattr(entitlements_module, "get_entitlement_service", lambda: service)
     return service

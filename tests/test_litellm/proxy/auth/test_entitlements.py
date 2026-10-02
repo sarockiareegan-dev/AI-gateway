@@ -14,11 +14,14 @@ from litellm.proxy.auth.entitlements import (
     EntitlementService,
     ExpiredLicense,
     InvalidLicense,
+    LicenseFeature,
     NoLicense,
     ValidLicense,
+    is_licensed,
     load_public_key,
     verify_license,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 NOW: Final = datetime(2030, 6, 1, 12, 0, tzinfo=timezone.utc)
 SIGNING_KEY: Final = Ed25519PrivateKey.generate()
@@ -190,3 +193,54 @@ def test_load_public_key_rejects_missing_file(tmp_path: Path) -> None:
 
 def test_bundled_public_key_is_a_usable_ed25519_key() -> None:
     assert load_public_key(BUNDLED_PUBLIC_KEY_PATH) is not None
+
+
+@pytest.mark.parametrize(
+    ("features", "expected"),
+    [(["sso"], True), (["*"], True), (["organizations"], False), ([], False)],
+)
+def test_is_licensed_checks_the_named_feature(features: list[str], expected: bool) -> None:
+    assert is_licensed(LicenseFeature.SSO, _service(_issue(_claims(features=features)))) is expected
+
+
+def test_is_licensed_lapses_at_expiry_without_reload() -> None:
+    clock_now: list[datetime] = [NOW]  # mutable-ok: simulates time passing for the injected clock
+    service: Final = EntitlementService(public_key=PUBLIC_KEY, clock=lambda: clock_now[0])
+    service.load(_issue(_claims(features=["*"])))
+    assert is_licensed(LicenseFeature.SSO, service)
+
+    clock_now[0] = NOW + timedelta(days=31)
+
+    assert not is_licensed(LicenseFeature.SSO, service)
+
+
+def test_is_licensed_reads_the_proxy_license_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=(LicenseFeature.AUDIT_LOGS.value,)))
+
+    assert is_licensed(LicenseFeature.AUDIT_LOGS)
+    assert not is_licensed(LicenseFeature.SSO)
+
+@pytest.mark.parametrize(
+    ("features", "expected"),
+    [(["sso"], True), (["*"], True), (["organizations"], False), ([], False)],
+)
+def test_is_licensed_checks_the_named_feature(features: list[str], expected: bool) -> None:
+    assert is_licensed(LicenseFeature.SSO, _service(_issue(_claims(features=features)))) is expected
+
+
+def test_is_licensed_lapses_at_expiry_without_reload() -> None:
+    clock_now: list[datetime] = [NOW]  # mutable-ok: simulates time passing for the injected clock
+    service: Final = EntitlementService(public_key=PUBLIC_KEY, clock=lambda: clock_now[0])
+    service.load(_issue(_claims(features=["*"])))
+    assert is_licensed(LicenseFeature.SSO, service)
+
+    clock_now[0] = NOW + timedelta(days=31)
+
+    assert not is_licensed(LicenseFeature.SSO, service)
+
+
+def test_is_licensed_reads_the_proxy_license_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=(LicenseFeature.AUDIT_LOGS.value,)))
+
+    assert is_licensed(LicenseFeature.AUDIT_LOGS)
+    assert not is_licensed(LicenseFeature.SSO)

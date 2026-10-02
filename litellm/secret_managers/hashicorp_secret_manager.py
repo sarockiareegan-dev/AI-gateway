@@ -92,7 +92,8 @@ def _as_json_object(value: object) -> Mapping[str, object] | None:
 
 class HashicorpSecretManager(BaseSecretManager):
     def __init__(self):
-        from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
+        from litellm.proxy._types import CommonProxyErrors
+        from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 
         # Vault-specific config
         self.vault_addr = os.getenv("HCP_VAULT_ADDR", "http://127.0.0.1:8200")
@@ -118,7 +119,7 @@ class HashicorpSecretManager(BaseSecretManager):
 
         self._verify_required_credentials_exist()
 
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.SECRET_MANAGERS):
             raise ValueError(
                 f"Hashicorp secret manager is only available for premium users. {CommonProxyErrors.not_premium_user.value}"
             )

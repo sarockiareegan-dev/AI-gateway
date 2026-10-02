@@ -11,6 +11,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypeAlias
 
@@ -34,6 +35,20 @@ AUTO_ROUTER_LICENSE_REMEDY: Final = "An Agami license with the 'auto_router' fea
 BUNDLED_PUBLIC_KEY_PATH: Final = Path(__file__).with_name("agami_license_public_key.pem")
 
 Clock: TypeAlias = Callable[[], datetime]
+
+
+class LicenseFeature(str, Enum):
+    SSO = "sso"
+    ORGANIZATIONS = "organizations"
+    SECRET_MANAGERS = "secret_managers"
+    LOGGING_INTEGRATIONS = "logging_integrations"
+    GUARDRAILS = "guardrails"
+    SPEND_REPORTS = "spend_reports"
+    BUDGETS = "budgets"
+    ACCESS_CONTROL = "access_control"
+    AUDIT_LOGS = "audit_logs"
+    EMAIL_BRANDING = "email_branding"
+    FINE_TUNING = "fine_tuning"
 
 
 class _LicenseClaims(BaseModel):
@@ -214,3 +229,7 @@ class EntitlementService:
 @functools.cache
 def get_entitlement_service() -> EntitlementService:
     return EntitlementService.from_environment()
+
+
+def is_licensed(feature: LicenseFeature, entitlements: EntitlementService | None = None) -> bool:
+    return (entitlements or get_entitlement_service()).grants_feature(feature.value)
