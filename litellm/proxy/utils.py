@@ -129,6 +129,7 @@ from litellm.proxy._types import (
     Member,
     UserAPIKeyAuth,
 )
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.route_checks import RouteChecks
 from litellm.proxy.common_utils.callback_utils import add_guardrail_to_applied_guardrails_header
 from litellm.proxy.common_utils.config_sync_pubsub import publish_config_param_change
@@ -7816,6 +7817,17 @@ def _premium_user_check(feature: str | None = None):
             status_code=403,
             detail={"error": detail_msg},
         )
+
+
+def require_license_feature(license_feature: LicenseFeature, feature_name: str | None = None) -> None:
+    if is_licensed(license_feature):
+        return
+    detail_msg: Final = (
+        f"{feature_name} is a premium feature. {CommonProxyErrors.not_premium_user.value}"
+        if feature_name
+        else CommonProxyErrors.not_premium_user.value
+    )
+    raise HTTPException(status_code=403, detail={"error": detail_msg})
 
 
 def is_known_model(model: str | None, llm_router: Router | None) -> bool:

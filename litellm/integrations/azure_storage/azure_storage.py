@@ -320,9 +320,10 @@ class AzureBlobStorageLogger(CustomBatchLogger):
         """
         Checks if the user is a premium user, raises an error if not
         """
-        from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
+        from litellm.proxy._types import CommonProxyErrors
+        from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.LOGGING_INTEGRATIONS):
             raise ValueError(
                 f"AzureBlobStorageLogger is only available for premium users. {CommonProxyErrors.not_premium_user}"
             )
