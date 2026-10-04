@@ -11,6 +11,7 @@ from litellm.types.proxy.management_endpoints.ui_sso import (
     DefaultTeamSSOParams,
     SSOConfig,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 client = TestClient(app)
 
@@ -2343,6 +2344,7 @@ def test_update_internal_user_settings_writes_audit_log(mock_proxy_config, monke
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     monkeypatch.setattr(litellm, "default_internal_user_params", {})
 
     async def _admin_auth():
@@ -2436,6 +2438,7 @@ def test_update_sso_settings_writes_redacted_audit_log(mock_proxy_config, monkey
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     monkeypatch.setattr(
         proxy_server_module.proxy_config,
         "_encrypt_env_variables",
@@ -2508,6 +2511,7 @@ def test_update_sso_settings_audit_captures_redacted_before_snapshot(
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     monkeypatch.setattr(
         proxy_server_module.proxy_config,
         "_encrypt_env_variables",
@@ -2577,6 +2581,7 @@ def test_add_allowed_ip_writes_audit_log(mock_proxy_config, monkeypatch):
     monkeypatch.setattr(proxy_server_module, "general_settings", {})
     monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     async def _admin_auth():
         return UserAPIKeyAuth(
@@ -2696,6 +2701,7 @@ def test_delete_allowed_ip_writes_deleted_audit_log(monkeypatch):
         proxy_server_module, "general_settings", {"allowed_ips": ["203.0.113.77"]}
     )
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     monkeypatch.setattr(proxy_server_module.proxy_config, "get_config", _get_config)
     monkeypatch.setattr(proxy_server_module.proxy_config, "save_config", _save_config)
 
@@ -2789,6 +2795,7 @@ def test_update_ui_theme_settings_writes_audit_log(mock_proxy_config, monkeypatc
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     monkeypatch.setattr(
         proxy_server_module.proxy_config,
         "_encrypt_env_variables",
@@ -2840,6 +2847,7 @@ def test_update_ui_settings_writes_audit_log(monkeypatch):
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     async def _admin_auth():
         return UserAPIKeyAuth(

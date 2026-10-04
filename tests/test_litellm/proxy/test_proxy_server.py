@@ -42,6 +42,7 @@ from litellm.proxy._types import (
 )
 from litellm.proxy.auth.login_throttle import LoginThrottle
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 from litellm.proxy.hooks.parallel_request_limiter_v3 import RequestRateLimiterStash
 from litellm.proxy.proxy_server import app, initialize, openai_exception_handler
 from litellm.utils import _invalidate_model_cost_lowercase_map
@@ -11968,6 +11969,7 @@ async def test_create_config_audit_log_writes_redacted_entry(monkeypatch):
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     caller = UserAPIKeyAuth(api_key="hashed-key-abc", user_id="admin-7")
     await create_config_audit_log(
@@ -12042,6 +12044,7 @@ async def test_update_config_general_settings_emits_audit_log(monkeypatch):
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     admin = UserAPIKeyAuth(
         api_key="hashed-admin",
@@ -12436,6 +12439,7 @@ async def test_delete_config_general_settings_emits_deleted_audit_log(monkeypatc
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     admin = UserAPIKeyAuth(
         api_key="hashed-admin",
@@ -12471,6 +12475,7 @@ def test_update_config_audits_every_written_section(_update_config_setup, monkey
     prisma.db.litellm_auditlog.create = audit_create
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     try:
         resp = client.post(
             "/config/update",
@@ -12513,6 +12518,7 @@ def test_delete_callback_audits_litellm_settings_deletion(_update_config_setup, 
     prisma.db.litellm_auditlog.create = audit_create
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     from litellm.proxy.proxy_server import proxy_config as real_proxy_config
 
@@ -12546,6 +12552,7 @@ def test_delete_callback_audits_before_reload_failure(_update_config_setup, monk
     prisma.db.litellm_auditlog.create = audit_create
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     from litellm.proxy.proxy_server import proxy_config as real_proxy_config
 
@@ -12588,6 +12595,7 @@ def test_update_config_redacts_all_environment_variable_values(_update_config_se
     prisma.db.litellm_auditlog.create = audit_create
     monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     try:
         resp = client.post(
             "/config/update",
