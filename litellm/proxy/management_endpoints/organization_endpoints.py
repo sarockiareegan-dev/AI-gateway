@@ -37,6 +37,7 @@ from litellm.proxy.auth.auth_checks import (
     get_jwt_key_mapping_cache_keys_for_tokens,
     get_user_object,
 )
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.auth_cache_invalidation_pubsub import evict_and_broadcast
 from litellm.proxy.common_utils.timezone_utils import get_budget_reset_time
@@ -93,9 +94,7 @@ if TYPE_CHECKING:
 async def _enterprise_license_required(
     _user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
 ) -> None:
-    from litellm.proxy.proxy_server import premium_user
-
-    if not premium_user:
+    if not is_licensed(LicenseFeature.ORGANIZATIONS):
         raise HTTPException(
             status_code=403,
             detail={"error": f"Organizations are a premium feature. {CommonProxyErrors.not_premium_user.value}"},

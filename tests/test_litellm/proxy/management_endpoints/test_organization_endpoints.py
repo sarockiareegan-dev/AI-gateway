@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from litellm._uuid import uuid
 from litellm.proxy._types import DeleteOrganizationRequest, LitellmUserRoles, UserAPIKeyAuth
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 from tests.test_litellm.proxy.management_endpoints.jwt_key_mapping_doubles import (
     CascadingJWTMappingTable,
     JWTMappingRow,
@@ -1372,7 +1373,6 @@ async def test_new_organization_temp_budget_fields_go_to_budget_row_not_metadata
     prisma_client.db.litellm_organizationtable.create = AsyncMock(return_value={"organization_id": "org-1"})
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", MagicMock())
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True, raising=False)
 
     response = await new_organization(
         data=NewOrganizationRequest(
@@ -1460,11 +1460,11 @@ def _organization_test_client() -> TestClient:
 
 
 @pytest.mark.parametrize(("method", "path"), _organization_route_targets())
-def test_organization_routes_are_blocked_without_enterprise_license(monkeypatch, method, path):
-    """Every /organization route is enterprise-only, even for a proxy admin sending a valid request."""
+def test_organization_routes_are_blocked_without_organizations_feature(monkeypatch, method, path):
+    """Every /organization route needs the organizations feature, even for a proxy admin sending a valid request."""
     import litellm.proxy.proxy_server as proxy_server
 
-    monkeypatch.setattr(proxy_server, "premium_user", False, raising=False)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
     monkeypatch.setattr(proxy_server, "prisma_client", None, raising=False)
 
     response = _organization_test_client().request(method, path, **_organization_request(method, path))
@@ -1474,12 +1474,12 @@ def test_organization_routes_are_blocked_without_enterprise_license(monkeypatch,
 
 
 @pytest.mark.parametrize(("method", "path"), _organization_route_targets())
-def test_organization_routes_reach_their_handler_with_enterprise_license(monkeypatch, method, path):
-    """The same request a license refuses above now reaches the handler, which is the code reporting the missing database."""
+def test_organization_routes_reach_their_handler_with_organizations_feature(monkeypatch, method, path):
+    """The same request refused above now reaches the handler, which is the code reporting the missing database."""
     import litellm.proxy.proxy_server as proxy_server
     from litellm.proxy._types import CommonProxyErrors
 
-    monkeypatch.setattr(proxy_server, "premium_user", True, raising=False)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("organizations",)))
     monkeypatch.setattr(proxy_server, "prisma_client", None, raising=False)
 
     response = _organization_test_client().request(method, path, **_organization_request(method, path))
@@ -1533,7 +1533,6 @@ async def test_delete_organization_evicts_the_cache_of_the_keys_it_deletes(monke
     prisma_client.db.litellm_jwtkeymapping = jwt_table
     prisma_client.db.litellm_organizationtable.delete = AsyncMock(return_value=MagicMock())
 
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True, raising=False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", cache)
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", None)
