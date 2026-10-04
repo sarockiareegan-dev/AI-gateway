@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 import litellm
 import litellm.proxy.proxy_server as ps
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 
 def _default_date_range():
@@ -6892,7 +6893,7 @@ def test_key_spend_report_scopes_to_caller_key(client, monkeypatch):
         query_raw_returns=[{"api_key": "hashed-caller-key", "total_cost": 1.5}]
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER,
         user_id="alice",
@@ -6919,7 +6920,7 @@ def test_key_spend_report_scopes_to_caller_key(client, monkeypatch):
 def test_key_spend_report_non_admin_override_403(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER,
         user_id="alice",
@@ -6944,7 +6945,7 @@ def test_key_spend_report_non_admin_override_403(client, monkeypatch):
 def test_key_spend_report_admin_override_sk_key_gets_hashed(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="hashed-admin-key"
     )
@@ -6970,7 +6971,7 @@ def test_key_spend_report_admin_override_sk_key_gets_hashed(client, monkeypatch)
 def test_user_spend_report_scopes_to_caller_user_id(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma(query_raw_returns=[{"api_key": "k1"}])
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice", api_key="hashed-k"
     )
@@ -6992,7 +6993,7 @@ def test_user_spend_report_scopes_to_caller_user_id(client, monkeypatch):
 def test_user_spend_report_non_admin_override_403(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice", api_key="hashed-k"
     )
@@ -7015,7 +7016,7 @@ def test_user_spend_report_non_admin_override_403(client, monkeypatch):
 def test_team_spend_report_scopes_to_key_team(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma(query_raw_returns=[{"api_key": "k1"}])
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER,
         user_id="alice",
@@ -7040,7 +7041,7 @@ def test_team_spend_report_scopes_to_key_team(client, monkeypatch):
 def test_team_spend_report_no_team_400(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice", api_key="hashed-k"
     )
@@ -7062,7 +7063,7 @@ def test_org_spend_report_proxy_admin_override(client, monkeypatch):
         team_rows=[{"team_id": "team-a"}, {"team_id": "team-b"}],
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="hashed-admin"
     )
@@ -7102,7 +7103,7 @@ def test_org_spend_report_org_admin_auto_scopes_to_own_org(client, monkeypatch):
         ),
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER,
         user_id=user_id,
@@ -7134,7 +7135,7 @@ def test_org_spend_report_non_org_admin_403(client, monkeypatch):
         ),
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER,
         user_id=user_id,
@@ -7156,7 +7157,7 @@ def test_org_spend_report_non_org_admin_403(client, monkeypatch):
 def test_org_spend_report_no_org_400(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice", api_key="hashed-k"
     )
@@ -7173,10 +7174,10 @@ def test_org_spend_report_no_org_400(client, monkeypatch):
 
 
 @pytest.mark.parametrize("path", _SCOPED_SPEND_REPORT_PATHS)
-def test_scoped_spend_report_not_premium_403(client, monkeypatch, path):
+def test_scoped_spend_report_without_spend_reports_feature_403(client, monkeypatch, path):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="hashed-admin"
     )
@@ -7192,11 +7193,30 @@ def test_scoped_spend_report_not_premium_403(client, monkeypatch, path):
         app.dependency_overrides.pop(ps.user_api_key_auth, None)
 
 
+def test_scoped_spend_report_allowed_with_only_spend_reports_feature(client, monkeypatch):
+    mock_prisma = _spend_report_mock_prisma(query_raw_returns=[])
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("spend_reports",)))
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="hashed-admin"
+    )
+    try:
+        response = client.get(
+            "/key/spend/report",
+            params={"start_date": "2026-07-01", "end_date": "2026-07-31"},
+            headers={"Authorization": "Bearer sk-test"},
+        )
+        assert response.status_code == 200
+        mock_prisma.db.query_raw.assert_awaited_once()
+    finally:
+        app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+
 @pytest.mark.parametrize("path", _SCOPED_SPEND_REPORT_PATHS)
 def test_scoped_spend_report_missing_dates_400(client, monkeypatch, path):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="hashed-admin"
     )
@@ -7211,7 +7231,7 @@ def test_scoped_spend_report_missing_dates_400(client, monkeypatch, path):
 def test_scoped_spend_report_invalid_date_format_400(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin", api_key="hashed-admin"
     )
@@ -7230,7 +7250,7 @@ def test_scoped_spend_report_invalid_date_format_400(client, monkeypatch):
 def test_scoped_spend_report_reversed_range_400(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice", api_key="hashed-k"
     )
@@ -7249,7 +7269,7 @@ def test_scoped_spend_report_reversed_range_400(client, monkeypatch):
 def test_scoped_spend_report_range_over_max_400(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice", api_key="hashed-k"
     )
@@ -7268,7 +7288,7 @@ def test_scoped_spend_report_range_over_max_400(client, monkeypatch):
 def test_scoped_spend_report_range_at_max_allowed(client, monkeypatch):
     mock_prisma = _spend_report_mock_prisma(query_raw_returns=[])
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements())
     app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice", api_key="hashed-k"
     )

@@ -16,6 +16,7 @@ from litellm.proxy.spend_tracking.spend_tracking_utils import (
     get_spend_by_team,
     get_spend_by_team_and_customer,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 
 @pytest.mark.asyncio
@@ -490,7 +491,7 @@ async def test_global_spend_report_team_group_forwards_team_id(monkeypatch):
     mock_prisma.db.query_raw = AsyncMock(return_value=[])
 
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("spend_reports",)))
 
     await get_global_spend_report(
         start_date="2026-07-01",
@@ -507,6 +508,31 @@ async def test_global_spend_report_team_group_forwards_team_id(monkeypatch):
     params = mock_prisma.db.query_raw.call_args[0][1:]
     assert "team_x" in params, "team_id must be forwarded into the DB query params"
     assert "sl.team_id = $3" in sql, f"team query must filter on team_id. SQL was:\n{sql}"
+
+
+@pytest.mark.asyncio
+async def test_global_spend_report_rejected_without_spend_reports_feature(monkeypatch):
+    from fastapi import HTTPException
+
+    from litellm.proxy.spend_tracking.spend_management_endpoints import get_global_spend_report
+
+    mock_prisma = MagicMock()
+    mock_prisma.db.query_raw = AsyncMock(return_value=[])
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+
+    with pytest.raises(HTTPException, match="premium"):
+        await get_global_spend_report(
+            start_date="2026-07-01",
+            end_date="2026-07-03",
+            group_by="team",
+            api_key=None,
+            internal_user_id=None,
+            team_id=None,
+            customer_id=None,
+        )
+
+    mock_prisma.db.query_raw.assert_not_awaited()
 
 
 @pytest.mark.asyncio
