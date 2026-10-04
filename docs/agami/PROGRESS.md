@@ -54,7 +54,11 @@ The audit ranked 9 leaks. Six are fixed
 
 ### Checkpoint A: cross-tenant leaks still open
 
-- [ ] Leak 6, `proxy_admin_viewer` is a global super-reader. Route level: GET default-allow in `route_checks.py` (`_check_proxy_admin_viewer_access`) and the `/user/info` carve-out. Handler level: `_user_has_admin_view` and `user_api_key_has_admin_view` in `_types.py`, `_is_admin_view_safe` in `spend_management_endpoints.py`, plus every key, team, user, org, spend, tag, budget and guardrail read that treats the viewer as admin. Needs a decision first (see Open decisions)
+- [ ] Leak 6, `proxy_admin_viewer` is a global super-reader. Decided on Oct 4: the viewer becomes per-organization and sees only the organizations it belongs to. Size: `_user_has_admin_view` / `user_api_key_has_admin_view` have about 80 call sites in 30 source files, about 40 more sites compare against `PROXY_ADMIN_VIEW_ONLY` directly, and about 250 test references pin the old behaviour. Plan
+  - [ ] A1, close the leak centrally. `user_api_key_has_admin_view` in `_types.py` and `_user_has_admin_view` return True only for `PROXY_ADMIN`. In `route_checks.py` the viewer loses GET default-allow (`_check_proxy_admin_viewer_access`) and the `/user/info` carve-out, and is gated like `internal_user_viewer` instead. After A1 a viewer sees only its own data, which is safe but less useful. Update the tests that pin global viewer reads to assert the scoped result
+  - [ ] A2, restore org-wide reads. Add one helper that returns the organizations a caller may read (org admin memberships, plus every membership when the global role is the viewer), next to `_get_org_admin_org_ids` in `team_endpoints.py`, and use it where org admins already get org-wide reads: `/team/list`, `/v2/team/list`, `/team/info`, `/user/list`, `/organization/info`, `/organization/daily/activity`, and the org-scoped spend views. Writes stay blocked by the existing viewer write denylist
+  - [ ] A3, review the direct `PROXY_ADMIN_VIEW_ONLY` comparisons one by one (`key_management_endpoints.py`, `team_endpoints.py` `validate_membership`, `internal_user_endpoints.py`, `customer_endpoints.py`, `auth_checks.py`, `spend_management_endpoints.py` `_is_admin_view_safe`, the MCP, prompt, agent, workflow and guardrail endpoints). Keep the ones that block viewer writes, remove the ones that grant global reads
+  - [ ] A4, proxy-wide config reads (callbacks, config overrides, health, model cost map, coordination Redis) are not tenant data but do expose operator settings. Default: admin only, unless a customer-facing UI page needs them
 - [ ] Leak 8, `/v2/guardrails/list` shows every guardrail with no team to every organization (params are masked). `LiteLLM_GuardrailsTable` has no `organization_id`, so this needs either a schema column (schema-only migration, no row rewrites) or a rule that team-less DB guardrails are admin-only
 - [ ] Leak 9, inside one team (not cross-tenant): plain members see every teammate's key and token hash through `/team/info`, `/team/list` and `/key/info`. The `token` pop in `team_info` only touches a copy
 - [ ] Gap, not a leak: org admins cannot see org-wide keys, users or team activity unless they are a team member. Reuse `_get_org_admin_org_ids` in `team_endpoints.py`. Do not reuse `_user_has_admin_privileges`, which is not org-scoped
@@ -94,7 +98,7 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 
 ## Open decisions
 
-- `proxy_admin_viewer` semantics (blocks leak 6). Option 1: keep it as a platform-operator role that may read every tenant, and stop granting it to customers. Option 2: make it per-organization, which matches how `agami/adapters/litellm_compat.py` already maps it to an org-scoped `VIEWER`. Option 2 fits the requirement, but every handler listed under leak 6 has to change
+- Decided Oct 4: `proxy_admin_viewer` is per-organization (leak 6 plan above). This matches how `agami/adapters/litellm_compat.py` already maps it to an org-scoped `VIEWER`
 - Names and grouping for the Checkpoint C features, for example one `jwt_auth` feature or separate `jwt_auth` and `oauth2_auth`
 
 ## Local test setup (Windows)
@@ -119,4 +123,4 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-Decide the `proxy_admin_viewer` question, then fix leak 6. It is the last open cross-tenant read path and it breaks the core isolation rule whenever a customer user holds that role. Checkpoint B is small and mechanical and can run alongside or right after it
+Leak 6 step A1: narrow the two admin-view helpers and the viewer route gate, then fix the tests that pin global viewer reads. It is the last open cross-tenant read path and it breaks the core isolation rule whenever a customer user holds that role. Checkpoint B is small and mechanical and can run alongside or right after it
