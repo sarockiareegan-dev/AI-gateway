@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
 
 from litellm.proxy.hooks.key_management_event_hooks import KeyManagementEventHooks
 
@@ -168,7 +170,7 @@ async def test_key_generated_audit_log_uses_license_default(
     from litellm.proxy._types import GenerateKeyRequest, GenerateKeyResponse, UserAPIKeyAuth
 
     monkeypatch.setattr("litellm.store_audit_logs", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", premium_user)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",) if premium_user else ("sso",)))
     monkeypatch.delenv("LITELLM_STORE_AUDIT_LOGS", raising=False)
 
     response = GenerateKeyResponse(key="sk-test-key", token_id="token-123")

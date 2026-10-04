@@ -19,6 +19,8 @@ import logging
 load_dotenv()
 
 import pytest
+
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 import litellm
 from litellm._logging import verbose_proxy_logger
 
@@ -172,7 +174,7 @@ async def test_create_audit_log_for_update_premium_user():
     Test that the audit log is created when a premium user updates a team
     """
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements(features=("audit_logs",))),
         patch("litellm.store_audit_logs", True),
         patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma,
     ):
@@ -226,12 +228,12 @@ def prisma_client():
 
 @pytest.mark.skip(reason="Requires reliable external DB connection (prisma).")
 @pytest.mark.asyncio()
-async def test_create_audit_log_in_db(prisma_client):
+async def test_create_audit_log_in_db(prisma_client, monkeypatch):
     print("prisma client=", prisma_client)
 
     setattr(litellm.proxy.proxy_server, "prisma_client", prisma_client)
     setattr(litellm.proxy.proxy_server, "master_key", "sk-1234")
-    setattr(litellm.proxy.proxy_server, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     setattr(litellm, "store_audit_logs", True)
 
     await litellm.proxy.proxy_server.prisma_client.connect()

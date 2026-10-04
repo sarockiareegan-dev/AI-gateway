@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
 import litellm
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.proxy._types import LiteLLM_AuditLogs, LitellmTableNames
@@ -66,7 +68,7 @@ def test_is_audit_logging_enabled_precedence(
     expected: bool,
 ):
     monkeypatch.setattr(litellm, "store_audit_logs", configured_value)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", premium_user)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",) if premium_user else ("sso",)))
     if environment_value is None:
         monkeypatch.delenv("LITELLM_STORE_AUDIT_LOGS", raising=False)
     else:
@@ -187,7 +189,7 @@ class TestCreateAuditLogForUpdateWithCallbacks:
         monkeypatch.setattr(litellm, "audit_log_callbacks", [mock_logger])
 
         with (
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements(features=("audit_logs",))),
             patch("litellm.store_audit_logs", True),
             patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma,
         ):
@@ -209,7 +211,7 @@ class TestCreateAuditLogForUpdateWithCallbacks:
         monkeypatch.setattr(litellm, "audit_log_callbacks", [mock_logger])
 
         with (
-            patch("litellm.proxy.proxy_server.premium_user", False),
+            patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements(features=("sso",))),
             patch("litellm.store_audit_logs", True),
             patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma,
         ):
@@ -241,7 +243,7 @@ class TestCreateAuditLogForUpdateWithCallbacks:
         monkeypatch.setattr(litellm, "audit_log_callbacks", [mock_logger])
 
         with (
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements(features=("audit_logs",))),
             patch("litellm.store_audit_logs", True),
             patch("litellm.proxy.proxy_server.prisma_client", None),
         ):
@@ -260,7 +262,7 @@ class TestCreateAuditLogForUpdateWithCallbacks:
         monkeypatch.setattr(litellm, "audit_log_callbacks", [mock_logger])
 
         with (
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements(features=("audit_logs",))),
             patch("litellm.store_audit_logs", True),
             patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma,
         ):

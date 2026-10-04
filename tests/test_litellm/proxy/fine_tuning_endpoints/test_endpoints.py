@@ -24,11 +24,13 @@ import litellm
 import litellm.proxy.fine_tuning_endpoints.endpoints as endpoints
 import litellm.proxy.proxy_server as proxy_server
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
+from litellm.proxy.auth import entitlements
 from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
 from litellm.proxy.utils import ProxyLogging
 from litellm.router import Router
 from litellm.types.llms.openai import LiteLLMFineTuningJobCreate
 from litellm.types.utils import LiteLLMFineTuningJob, SpecialEnums
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 RAW_FILE_ID = "file-victim-abc123"
 RAW_JOB_ID = "ftjob-victim-abc123"
@@ -140,7 +142,7 @@ def seams():
             stack.enter_context(patch.object(litellm, name, mock))
         stack.enter_context(patch.object(proxy_server, "llm_router", router))
         stack.enter_context(patch.object(proxy_server, "proxy_logging_obj", logging))
-        stack.enter_context(patch.object(proxy_server, "premium_user", True))
+        stack.enter_context(patch.object(entitlements, "get_entitlement_service", return_value=licensed_entitlements()))
         stack.enter_context(patch.object(proxy_server, "general_settings", {}))
         stack.enter_context(patch.object(proxy_server, "proxy_config", MagicMock()))
         stack.enter_context(patch.object(proxy_server, "version", "test-version"))
@@ -273,3 +275,22 @@ async def test_cancel__unified_job_id_allowed_when_managed_files_required(seams)
         await _cancel(_unified_job_id())
 
     assert seams.router.acancel_fine_tuning_job.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_create__rejected_without_the_fine_tuning_feature(seams, monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+
+    with pytest.raises(ProxyException, match="premium"):
+        await _create(RAW_FILE_ID)
+
+    seams.assert_no_provider_call()
+
+
+@pytest.mark.asyncio
+async def test_create__allowed_with_only_the_fine_tuning_feature(seams, monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("fine_tuning",)))
+
+    await _create(RAW_FILE_ID)
+
+    seams.litellm_calls["acreate_fine_tuning_job"].assert_awaited_once()
