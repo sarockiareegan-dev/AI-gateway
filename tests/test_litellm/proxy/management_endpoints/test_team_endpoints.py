@@ -74,6 +74,7 @@ from litellm.types.proxy.management_endpoints.team_endpoints import (
     TeamMemberAddResult,
 )
 from litellm.types.utils import StandardAuditLogPayload
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 from tests.test_litellm.proxy.management_endpoints.jwt_key_mapping_doubles import (
     CascadingJWTMappingTable,
     JWTMappingRow,
@@ -13406,6 +13407,7 @@ def _wire_audit_log_callback(monkeypatch: pytest.MonkeyPatch) -> _RecordingAudit
     monkeypatch.setattr("litellm.store_audit_logs", True)
     monkeypatch.setattr("litellm.audit_log_callbacks", [audit_logger])
     monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     return audit_logger
 
 
