@@ -7885,25 +7885,33 @@ class TestUserSubjectTeamUnion:
         assert await manager.operator_open_server_ids(admitted) == {"srv-byom"}
         assert await manager.operator_open_server_ids(scoped_key) == set(), "explicit key scope still suppresses BYOM"
 
-    @pytest.mark.parametrize(
-        "role", ["PROXY_ADMIN", "PROXY_ADMIN_VIEW_ONLY"], ids=["proxy_admin", "proxy_admin_view_only"]
-    )
-    async def test_admitted_admin_gets_registry_like_an_admin_key(self, role):
+    async def test_admitted_admin_gets_registry_like_an_admin_key(self):
         """Connect-page parity: admin view rides the HUMAN, not the credential. An admitted session
-        subject with an admin-view role resolves the same full registry an admin KEY does, so the
-        servers the dashboard shows an admin are the servers their OAuth session serves. Regression
-        pin for the customer report where an admin's Claude Code session showed zero tools."""
+        subject with the admin role resolves the same full registry an admin KEY does."""
         from litellm.proxy._types import LitellmUserRoles
 
         manager = self._manager_with(["srv-granted", "srv-secret"])
         admitted = _make_admitted_subject("admin-user")
-        admitted.user_role = LitellmUserRoles[role]
-        key_admin = UserAPIKeyAuth(user_id="admin-user", api_key="sk-hash", user_role=LitellmUserRoles[role])
+        admitted.user_role = LitellmUserRoles.PROXY_ADMIN
+        key_admin = UserAPIKeyAuth(user_id="admin-user", api_key="sk-hash", user_role=LitellmUserRoles.PROXY_ADMIN)
         with patch.object(MCPRequestHandler, "get_allowed_mcp_servers", AsyncMock(return_value=["srv-granted"])):
             admitted_view = set(await manager.get_allowed_mcp_servers(admitted))
             key_admin_view = set(await manager.get_allowed_mcp_servers(key_admin))
-        assert admitted_view == {"srv-granted", "srv-secret"}, "an admitted admin resolves the registry"
+        assert admitted_view == {"srv-granted", "srv-secret"}
         assert key_admin_view == admitted_view, "session and key admin views must be identical"
+
+    async def test_admin_viewer_never_resolves_an_ungranted_server(self):
+        from litellm.proxy._types import LitellmUserRoles
+
+        manager = self._manager_with(["srv-granted", "srv-secret"])
+        admitted = _make_admitted_subject("viewer")
+        admitted.user_role = LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
+        key_viewer = UserAPIKeyAuth(user_id="viewer", api_key="sk-hash", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY)
+        with patch.object(MCPRequestHandler, "get_allowed_mcp_servers", AsyncMock(return_value=["srv-granted"])):
+            admitted_view = set(await manager.get_allowed_mcp_servers(admitted))
+            key_view = set(await manager.get_allowed_mcp_servers(key_viewer))
+        assert "srv-secret" not in admitted_view
+        assert "srv-secret" not in key_view
 
     async def test_admitted_admin_explicit_scope_still_wins(self):
         """An admin whose own user row names servers is entitlement-bound whatever their role: the

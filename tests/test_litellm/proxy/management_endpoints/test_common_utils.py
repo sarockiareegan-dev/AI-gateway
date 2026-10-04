@@ -219,13 +219,13 @@ class TestUserHasAdminView:
         "user_role,expected",
         [
             (LitellmUserRoles.PROXY_ADMIN, True),
-            (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, True),
+            (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, False),
             (LitellmUserRoles.INTERNAL_USER, False),
             (LitellmUserRoles.INTERNAL_USER_VIEW_ONLY, False),
         ],
     )
     def test_user_has_admin_view_by_role(self, user_role, expected):
-        """Parametrized test: admin roles return True, non-admin return False."""
+        """Only the proxy admin sees every tenant; the viewer is scoped to its organizations."""
         mock_auth = MagicMock()
         mock_auth.user_role = user_role
         assert _user_has_admin_view(mock_auth) == expected

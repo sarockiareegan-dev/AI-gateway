@@ -601,9 +601,7 @@ async def test_populate_team_access_sets_direct_access_false_by_default(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_populate_team_access_gives_view_only_admin_full_admin_scope(monkeypatch):
-    """proxy_admin_viewer reads with admin scope - every team ("*") plus direct access
-    to all non-team models - instead of being narrowed to its own user row."""
+async def test_populate_team_access_narrows_view_only_admin_to_its_own_user_row(monkeypatch):
     team_row = _team_row()
     global_row = {
         "model_name": "gpt-4o",
@@ -633,9 +631,8 @@ async def test_populate_team_access_gives_view_only_admin_full_admin_scope(monke
         all_models=[team_row, global_row],
     )
 
-    assert get_all_team_models.await_args.kwargs["user_teams"] == "*"
-    router.get_model_ids.assert_called_once_with(exclude_team_models=True)
-    prisma_client.db.litellm_usertable.find_unique.assert_not_awaited()
+    assert get_all_team_models.await_args.kwargs["user_teams"] != "*"
+    prisma_client.db.litellm_usertable.find_unique.assert_awaited()
 
     by_id = {m["model_info"]["id"]: m for m in result}
     assert by_id["byok-id-1"]["model_info"]["access_via_team_ids"] == ["team-abc-123"]

@@ -11885,26 +11885,16 @@ def _config_field_info_client(monkeypatch, user_role):
     return TestClient(app)
 
 
-def test_config_field_info_redacts_secrets_for_view_only_admin(monkeypatch):
-    """/config/field/info gates on _user_has_admin_view, which also grants
-    PROXY_ADMIN_VIEW_ONLY. A view-only admin reading master_key/database_url verbatim is
-    effectively a full admin. Secret-bearing fields must come back REDACTED for anyone who
-    is not a FULL PROXY_ADMIN, while non-secret fields stay readable."""
+def test_config_field_info_refuses_view_only_admin(monkeypatch):
     from litellm.proxy._types import LitellmUserRoles
 
     client = _config_field_info_client(monkeypatch, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY)
     try:
-        for secret_field in ("master_key", "database_url", "pass_through_endpoints"):
-            resp = client.get("/config/field/info", params={"field_name": secret_field})
-            assert resp.status_code == 200, resp.text
-            body = resp.json()
-            assert body["field_value"] == "REDACTED"
-            assert "secret" not in str(body["field_value"])
-            assert "p4ssw0rd" not in str(body["field_value"])
-
-        resp = client.get("/config/field/info", params={"field_name": "max_parallel_requests"})
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["field_value"] == 100
+        for field in ("master_key", "database_url", "pass_through_endpoints", "max_parallel_requests"):
+            resp = client.get("/config/field/info", params={"field_name": field})
+            assert resp.status_code in (400, 401, 403), resp.text
+            assert "sk-super-secret-master" not in resp.text
+            assert "p4ssw0rd" not in resp.text
     finally:
         app.dependency_overrides.clear()
 

@@ -1355,12 +1355,10 @@ async def test_user_info_nonexistent_user(mocker):
 
 
 @pytest.mark.asyncio
-async def test_user_info_no_user_id_view_only_admin_gets_proxy_admin_payload(mocker):
-    """PROXY_ADMIN_VIEW_ONLY must take the proxy-admin branch; otherwise /user/info
-    silently narrows to the viewer's own row instead of the whole tenant."""
+async def test_user_info_no_user_id_view_only_admin_does_not_get_proxy_admin_payload(mocker):
     from fastapi import Request
 
-    from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth, UserInfoResponse
+    from litellm.proxy._types import LitellmUserRoles, ProxyException, UserAPIKeyAuth, UserInfoResponse
     from litellm.proxy.management_endpoints.internal_user_endpoints import user_info
 
     mock_prisma_client = mocker.MagicMock()
@@ -1379,12 +1377,10 @@ async def test_user_info_no_user_id_view_only_admin_gets_proxy_admin_payload(moc
     )
     mock_request = mocker.MagicMock(spec=Request)
 
-    response = await user_info(
-        user_id=None, user_api_key_dict=viewer, request=mock_request
-    )
+    with pytest.raises(ProxyException, match="User viewer not found"):
+        await user_info(user_id=None, user_api_key_dict=viewer, request=mock_request)
 
-    mock_get_user_info_for_proxy_admin.assert_awaited_once_with(user_api_key_dict=viewer)
-    assert response is admin_payload
+    mock_get_user_info_for_proxy_admin.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -3588,9 +3584,9 @@ def test_enforce_user_info_access_admin_bypass():
     _enforce_user_info_access(user_id="someone_else", user_api_key_dict=admin)
 
 
-def test_enforce_user_info_access_view_only_admin_can_read_other_users():
-    """PROXY_ADMIN_VIEW_ONLY has read parity with PROXY_ADMIN, so the ownership
-    re-check must wave it through for another user's id."""
+def test_enforce_user_info_access_view_only_admin_cannot_read_other_users():
+    from fastapi import HTTPException
+
     from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
     from litellm.proxy.management_endpoints.internal_user_endpoints import (
         _enforce_user_info_access,
@@ -3600,7 +3596,9 @@ def test_enforce_user_info_access_view_only_admin_can_read_other_users():
         user_id="viewer",
         user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
     )
-    _enforce_user_info_access(user_id="someone_else", user_api_key_dict=viewer)
+    with pytest.raises(HTTPException) as exc_info:
+        _enforce_user_info_access(user_id="someone_else", user_api_key_dict=viewer)
+    assert exc_info.value.status_code == 403
 
 
 def test_enforce_user_info_access_view_only_admin_can_read_own():

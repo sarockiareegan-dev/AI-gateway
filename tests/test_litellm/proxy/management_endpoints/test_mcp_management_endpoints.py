@@ -1349,6 +1349,10 @@ class TestListMCPServers:
                 "litellm.proxy.management_endpoints.mcp_management_endpoints.global_mcp_server_manager",
                 mock_manager,
             ),
+            patch(
+                "litellm.proxy.management_endpoints.mcp_management_endpoints.get_all_mcp_servers_for_user",
+                AsyncMock(return_value=[mock_server]),
+            ),
         ):
             from litellm.proxy.management_endpoints.mcp_management_endpoints import (
                 fetch_mcp_server,
@@ -5746,6 +5750,10 @@ async def test_fetch_single_mcp_server_env_vars_full_admin_vs_view_only():
             patch(
                 "litellm.proxy.management_endpoints.mcp_management_endpoints.global_mcp_server_manager.health_check_server",
                 AsyncMock(return_value=health_result),
+            ),
+            patch(
+                "litellm.proxy.management_endpoints.mcp_management_endpoints.get_all_mcp_servers_for_user",
+                AsyncMock(return_value=[server]),
             ),
         ):
             return await mgmt_endpoints.fetch_mcp_server(

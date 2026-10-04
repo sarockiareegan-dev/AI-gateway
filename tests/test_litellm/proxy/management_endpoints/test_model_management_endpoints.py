@@ -6246,13 +6246,6 @@ class TestAutoRouterClassifierDefaultPrompt:
         ).classification_prompt
         assert prompt.startswith(stored)
 
-    def test_the_prompt_preview_is_readable_by_an_admin_viewer_like_the_get_beside_it(self):
-        """Both methods on this path are pure reads, so a role that may call the GET must not be
-        refused the POST purely because default-allow only covers safe methods."""
-        from litellm.proxy._types import LiteLLMRoutes
-
-        assert "/auto_router/classifier/default_prompt" in LiteLLMRoutes.admin_viewer_routes.value
-
     @pytest.mark.parametrize(
         "payload",
         [

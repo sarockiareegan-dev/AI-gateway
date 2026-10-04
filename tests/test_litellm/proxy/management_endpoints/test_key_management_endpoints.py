@@ -9018,43 +9018,8 @@ async def test_validate_key_list_check_key_hash_row_missing():
 
 
 @pytest.mark.asyncio
-async def test_validate_key_list_check_proxy_admin_viewer_skips_db_lookup():
-    """proxy_admin_viewer takes the same unscoped read fast-path as proxy_admin, so no
-    user row is fetched and none of the user/team scoping filters apply."""
-    mock_prisma_client = AsyncMock()
-    mock_prisma_client.db.litellm_usertable.find_unique = AsyncMock(
-        return_value=LiteLLM_UserTable(
-            user_id="viewer-user",
-            user_email="viewer@example.com",
-            teams=[],
-            organization_memberships=[],
-        )
-    )
-
-    user_api_key_dict = UserAPIKeyAuth(
-        user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-        user_id="viewer-user",
-    )
-
-    result = await validate_key_list_check(
-        user_api_key_dict=user_api_key_dict,
-        user_id="someone-else",
-        team_id="team-viewer-is-not-in",
-        organization_id=None,
-        key_alias=None,
-        key_hash=None,
-        prisma_client=mock_prisma_client,
-    )
-
-    assert result is None
-    mock_prisma_client.db.litellm_usertable.find_unique.assert_not_awaited()
-    assert mock_prisma_client.mock_calls == []
-
-
-@pytest.mark.asyncio
-async def test_validate_key_list_check_internal_user_cannot_query_other_user():
-    """Admin-view parity must not leak past the admin roles: an internal user still
-    cannot list another user's keys."""
+@pytest.mark.parametrize("role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
+async def test_validate_key_list_check_internal_user_cannot_query_other_user(role):
     mock_prisma_client = AsyncMock()
     mock_prisma_client.db.litellm_usertable.find_unique = AsyncMock(
         return_value=LiteLLM_UserTable(
@@ -9066,7 +9031,7 @@ async def test_validate_key_list_check_internal_user_cannot_query_other_user():
     )
 
     user_api_key_dict = UserAPIKeyAuth(
-        user_role=LitellmUserRoles.INTERNAL_USER,
+        user_role=role,
         user_id="test-user",
     )
 
