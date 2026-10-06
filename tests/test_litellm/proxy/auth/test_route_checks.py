@@ -1833,6 +1833,67 @@ def test_proxy_admin_viewer_cannot_write_organizations(route, method):
     assert exc_info.value.status_code == 403
 
 
+_PROXY_WIDE_CONFIG_READ_ROUTES: Final = (
+    "/get/config/callbacks",
+    "/callbacks/list",
+    "/callbacks/configs",
+    "/active/callbacks",
+    "/settings",
+    "/config/list",
+    "/config/field/info",
+    "/config/pass_through_endpoint",
+    "/config/cost_discount_config",
+    "/config/cost_margin_config",
+    "/config_overrides/hashicorp_vault",
+    "/config_overrides/cyberark",
+    "/coordination_redis/settings",
+    "/model/cost_map/source",
+    "/schedule/model_cost_map_reload/status",
+    "/model/settings",
+    "/alerting/settings",
+    "/router/settings",
+    "/cache/settings",
+    "/budget/settings",
+    "/get/sso_settings",
+    "/get/internal_user_settings",
+    "/get/default_team_settings",
+    "/debug/asyncio-tasks",
+)
+
+
+@pytest.mark.parametrize("route", _PROXY_WIDE_CONFIG_READ_ROUTES)
+@pytest.mark.parametrize(
+    "role",
+    [
+        LitellmUserRoles.INTERNAL_USER,
+        LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
+        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
+        LitellmUserRoles.ORG_ADMIN,
+    ],
+)
+def test_proxy_wide_config_reads_are_refused_to_every_non_admin_role(route, role):
+    request = MagicMock(spec=Request)
+    request.method = "GET"
+    request.query_params = {}
+    is_org_admin: Final = role == LitellmUserRoles.ORG_ADMIN
+    user_role: Final = LitellmUserRoles.INTERNAL_USER if is_org_admin else role
+    user_obj: Final = (
+        _make_org_admin_user("org-1")
+        if is_org_admin
+        else LiteLLM_UserTable(user_id="caller", user_email="caller@example.com", user_role=user_role.value)
+    )
+
+    with pytest.raises(Exception, match=f"Only proxy admin .* Route={route}\\."):
+        RouteChecks.non_proxy_admin_allowed_routes_check(
+            user_obj=user_obj,
+            _user_role=user_role.value,
+            route=route,
+            request=request,
+            valid_token=UserAPIKeyAuth(user_id=user_obj.user_id, user_role=user_role.value),
+            request_data={"organization_id": "org-1"} if is_org_admin else {},
+        )
+
+
 # Routes returning proxy-wide spend across every team / customer / api_key.
 # Sourced from `LiteLLMRoutes.global_spend_tracking_routes` so any future
 # additions to that list are exercised by these tests automatically.
