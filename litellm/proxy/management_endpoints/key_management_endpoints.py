@@ -91,6 +91,7 @@ from litellm.proxy.management_endpoints.common_utils import (
     _set_object_metadata_field,
     _team_member_has_permission,
     _user_has_admin_view,
+    can_see_every_team_key,
     validate_budget_duration,
     validate_finite_spend,
 )
@@ -7484,13 +7485,21 @@ async def _can_user_query_key_info(
         user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
         or user_api_key_dict.api_key == key
         or key_info.user_id == user_api_key_dict.user_id
-        or await TeamMemberPermissionChecks.user_belongs_to_keys_team(
-            user_api_key_dict=user_api_key_dict,
-            existing_key_row=key_info,
-        )
     ):
         return True
-    return False
+    if key_info.team_id is None:
+        return False
+
+    from litellm.proxy.proxy_server import prisma_client, user_api_key_cache
+
+    team_table: Final = await get_team_object(
+        team_id=key_info.team_id,
+        prisma_client=prisma_client,
+        user_api_key_cache=user_api_key_cache,
+        parent_otel_span=user_api_key_dict.parent_otel_span,
+        check_db_only=True,
+    )
+    return can_see_every_team_key(user_api_key_dict=user_api_key_dict, team_obj=team_table)
 
 
 async def test_key_logging(

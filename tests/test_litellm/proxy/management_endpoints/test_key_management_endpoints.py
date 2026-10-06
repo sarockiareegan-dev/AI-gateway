@@ -20164,3 +20164,38 @@ async def test_can_user_query_key_info_only_proxy_admin_reads_another_users_key(
         await _can_user_query_key_info(user_api_key_dict=caller, key="hashed-other-key", key_info=someone_elses_key)
         is allowed
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("caller", "member_permissions", "allowed"),
+    [
+        pytest.param(UserAPIKeyAuth(user_id="admin-1"), None, True, id="team-admin"),
+        pytest.param(UserAPIKeyAuth(user_id="member-1"), None, False, id="plain-member"),
+        pytest.param(UserAPIKeyAuth(user_id="member-1"), ["/key/list"], True, id="member-granted-key-list"),
+        pytest.param(UserAPIKeyAuth(team_id="team-1", api_key="hashed-team-key"), None, False, id="team-key"),
+    ],
+)
+async def test_can_user_query_key_info_hides_teammates_keys_from_plain_members(caller, member_permissions, allowed):
+    from litellm.proxy.management_endpoints import key_management_endpoints
+
+    team: Final = LiteLLM_TeamTableCachedObj(
+        team_id="team-1",
+        members_with_roles=[
+            Member(user_id="admin-1", role="admin"),
+            Member(user_id="member-1", role="user"),
+            Member(user_id="member-2", role="user"),
+        ],
+        team_member_permissions=member_permissions,
+    )
+    teammates_key: Final = LiteLLM_VerificationToken(token="hashed-member-2-key", user_id="member-2", team_id="team-1")
+
+    with patch.object(  # test-quality-ok: _can_user_query_key_info reads the team through the module-level lookup
+        key_management_endpoints, "get_team_object", AsyncMock(return_value=team)
+    ):
+        assert (
+            await key_management_endpoints._can_user_query_key_info(
+                user_api_key_dict=caller, key="hashed-member-2-key", key_info=teammates_key
+            )
+            is allowed
+        )

@@ -201,32 +201,6 @@ class TeamMemberPermissionChecks:
             )
 
     @staticmethod
-    async def user_belongs_to_keys_team(
-        user_api_key_dict: UserAPIKeyAuth,
-        existing_key_row: LiteLLM_VerificationToken,
-    ) -> bool:
-        """
-        Returns True if the user belongs to the team that the key is assigned to
-        """
-        from litellm.proxy.management_endpoints.key_management_endpoints import (
-            _get_caller_team_role,
-        )
-        from litellm.proxy.proxy_server import prisma_client, user_api_key_cache
-
-        if existing_key_row.team_id is None:
-            return False
-        team_table: Final = await get_team_object(
-            team_id=existing_key_row.team_id,
-            prisma_client=prisma_client,
-            user_api_key_cache=user_api_key_cache,
-            parent_otel_span=user_api_key_dict.parent_otel_span,
-            check_db_only=True,
-        )
-
-        caller_team_role: Final = _get_caller_team_role(team_table=team_table, user_api_key_dict=user_api_key_dict)
-        return caller_team_role is not None
-
-    @staticmethod
     def get_all_available_team_member_permissions() -> list[str]:
         """
         Returns all available team member permissions

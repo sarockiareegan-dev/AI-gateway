@@ -10,8 +10,8 @@ from .conftest import create_scratch_key
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
-# Same-team peers can READ each other's keys (see test_key_info) but cannot
-# DELETE them — delete is stricter than read.
+# Plain same-team members can neither read (see test_key_info) nor delete
+# each other's keys.
 _SCENARIOS = [
     ("self/proxy_admin", Actor.PROXY_ADMIN, "self", 200),
     ("self/org_admin", Actor.ORG_ADMIN, "self", 401),

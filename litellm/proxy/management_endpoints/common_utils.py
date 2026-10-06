@@ -45,6 +45,7 @@ from litellm._logging import verbose_proxy_logger
 from litellm.caching import DualCache
 from litellm.proxy._types import (
     CommonProxyErrors,
+    KeyManagementRoutes,
     KeyRequestBase,
     LiteLLM_ManagementEndpoint_MetadataFields,
     LiteLLM_ManagementEndpoint_MetadataFields_Premium,
@@ -271,6 +272,13 @@ def _team_member_has_permission(
         if member.user_id is not None and member.user_id == user_api_key_dict.user_id:
             return True
     return False
+
+
+def can_see_every_team_key(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_TeamTable) -> bool:
+    """Plain members only see their own keys unless the team granted them /key/list."""
+    return _is_user_team_admin(user_api_key_dict=user_api_key_dict, team_obj=team_obj) or _team_member_has_permission(
+        user_api_key_dict=user_api_key_dict, team_obj=team_obj, permission=KeyManagementRoutes.KEY_LIST.value
+    )
 
 
 async def _user_has_admin_privileges(

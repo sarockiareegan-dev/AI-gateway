@@ -133,6 +133,7 @@ from litellm.proxy.management_endpoints.common_utils import (
     _update_metadata_fields,
     _upsert_budget_and_membership,
     _user_has_admin_view,
+    can_see_every_team_key,
     member_budget_patch,
     org_wide_read_org_ids,
     validate_budget_duration,
@@ -4653,6 +4654,34 @@ async def validate_membership(user_api_key_dict: UserAPIKeyAuth, team_table: Lit
     )
 
 
+async def _team_key_owner_filter(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_TeamTable) -> Mapping[str, str]:
+    if (
+        user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
+        or can_see_every_team_key(user_api_key_dict=user_api_key_dict, team_obj=team_obj)
+        or await _can_read_team_org_wide(user_api_key_dict=user_api_key_dict, team_obj=team_obj)
+    ):
+        return MappingProxyType({})
+    if user_api_key_dict.user_id is not None:
+        return MappingProxyType({"user_id": user_api_key_dict.user_id})
+    return MappingProxyType({"token": user_api_key_dict.token or ""})
+
+
+async def _visible_team_keys(
+    prisma_client: PrismaClient,
+    user_api_key_dict: UserAPIKeyAuth,
+    team_obj: LiteLLM_TeamTable,
+    limit: int | None = None,
+) -> "list[prisma_models.LiteLLM_VerificationToken]":  # mutable-ok: pydantic list[...] fields reject Sequence
+    owner_filter: Final = await _team_key_owner_filter(user_api_key_dict=user_api_key_dict, team_obj=team_obj)
+    return _as_list(
+        await _tokens_db(prisma_client).find_many(
+            take=limit,
+            where={"team_id": team_obj.team_id, **owner_filter},  # mutable-ok: Prisma query filters are dict-shaped
+            include={"litellm_budget_table": True},  # mutable-ok: Prisma query filters are dict-shaped
+        )
+    )
+
+
 async def _add_team_member_budget_table(
     team_member_budget_id: str,
     prisma_client: PrismaClient,
@@ -4805,33 +4834,12 @@ async def team_info(
             _parent_organization_models(team_info) if access_role is not None else None
         )
 
-        ## GET ALL KEYS ##
-        keys = await prisma_client.get_data(
-            team_id=team_id,
-            table_name="key",
-            query_type="find_all",
-            expires=datetime.now(),
+        keys: Final = await _visible_team_keys(
+            prisma_client=prisma_client,
+            user_api_key_dict=user_api_key_dict,
+            team_obj=team_table,
             limit=key_limit,
         )
-
-        if keys is None:
-            keys = []
-
-        if team_info is None:
-            ## make sure we still return a total spend ##
-            spend = 0
-            for k in keys:
-                spend += getattr(k, "spend", 0)
-            team_info = {"spend": spend}
-
-        ## REMOVE HASHED TOKEN INFO before returning ##
-        for key in keys:
-            try:
-                key = key.model_dump()
-            except Exception:
-                # if using pydantic v1
-                key = key.dict()
-            key.pop("token", None)
 
         ## GET ALL MEMBERSHIPS ##
         returned_tm: Final = await get_all_team_memberships(prisma_client, [team_id], user_id=None)
@@ -5789,8 +5797,11 @@ async def list_team(
             if tm.team_id == team.team_id:
                 _team_memberships.append(tm)
 
-        # add all keys that belong to the team
-        keys = _as_list(await _tokens_db(prisma_client).find_many(where={"team_id": team.team_id}))
+        keys = await _visible_team_keys(
+            prisma_client=prisma_client,
+            user_api_key_dict=user_api_key_dict,
+            team_obj=LiteLLM_TeamTable.model_validate(team.model_dump()),
+        )
 
         try:
             returned_responses.append(
