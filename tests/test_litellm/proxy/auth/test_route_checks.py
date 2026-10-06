@@ -1813,8 +1813,9 @@ def _proxy_admin_viewer_route_check(route: str, method: str = "GET", query_param
     )
 
 
-def test_proxy_admin_viewer_may_get_organization_info():
-    _proxy_admin_viewer_route_check("/organization/info")
+@pytest.mark.parametrize("route", ["/organization/info", "/organization/spend/report"])
+def test_proxy_admin_viewer_may_get_organization_reads(route):
+    _proxy_admin_viewer_route_check(route)
 
 
 @pytest.mark.parametrize(

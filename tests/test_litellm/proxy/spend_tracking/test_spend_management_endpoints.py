@@ -264,15 +264,14 @@ from litellm.types.utils import BudgetConfig
 async def test_is_admin_view_safe_true():
     auth = UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin_user")
     assert spend_management_endpoints._is_admin_view_safe(auth) is True
-    auth_view = UserAPIKeyAuth(
-        user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, user_id="admin_view"
-    )
-    assert spend_management_endpoints._is_admin_view_safe(auth_view) is True
 
 
 @pytest.mark.asyncio
-async def test_is_admin_view_safe_false():
-    auth = UserAPIKeyAuth(user_role=LitellmUserRoles.INTERNAL_USER, user_id="user_1")
+@pytest.mark.parametrize(
+    "role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY]
+)
+async def test_is_admin_view_safe_false(role):
+    auth = UserAPIKeyAuth(user_role=role, user_id="user_1")
     assert spend_management_endpoints._is_admin_view_safe(auth) is False
 
 
@@ -6832,8 +6831,11 @@ def test_resolve_spend_report_scope_defaults_to_caller():
     assert resolved == "team-blue"
 
 
-def test_resolve_spend_report_scope_non_admin_override_forbidden():
-    auth = UserAPIKeyAuth(user_role=LitellmUserRoles.INTERNAL_USER, user_id="alice")
+@pytest.mark.parametrize(
+    "role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY]
+)
+def test_resolve_spend_report_scope_non_admin_override_forbidden(role):
+    auth = UserAPIKeyAuth(user_role=role, user_id="alice")
     with pytest.raises(HTTPException) as exc_info:
         spend_management_endpoints._resolve_spend_report_scope(
             user_api_key_dict=auth,
@@ -6855,12 +6857,8 @@ def test_resolve_spend_report_scope_non_admin_matching_override_allowed():
     assert resolved == "team-blue"
 
 
-@pytest.mark.parametrize(
-    "role",
-    [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY],
-)
-def test_resolve_spend_report_scope_admin_override_allowed(role):
-    auth = UserAPIKeyAuth(user_role=role, user_id="admin")
+def test_resolve_spend_report_scope_admin_override_allowed():
+    auth = UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin")
     resolved = spend_management_endpoints._resolve_spend_report_scope(
         user_api_key_dict=auth,
         requested="team-red",
@@ -7121,6 +7119,49 @@ def test_org_spend_report_org_admin_auto_scopes_to_own_org(client, monkeypatch):
         org_param, team_ids_param = args[3], args[4]
         assert org_param == "org-acme"
         assert team_ids_param == ("team-a",)
+    finally:
+        app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+
+@pytest.mark.parametrize(
+    "requested_org, expected_status", [("org-acme", 200), ("org-other", 403)]
+)
+def test_org_spend_report_admin_viewer_reads_only_its_own_org(
+    client, monkeypatch, requested_org, expected_status
+):
+    user_id = "org-viewer"
+    mock_prisma = _spend_report_mock_prisma(
+        query_raw_returns=[{"api_key": "k1"}],
+        team_rows=[{"team_id": "team-a"}],
+        user_row=_org_member_user_row(
+            user_id=user_id,
+            organization_id="org-acme",
+            membership_role=LitellmUserRoles.INTERNAL_USER.value,
+        ),
+    )
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma)
+    install_entitlements(monkeypatch, licensed_entitlements())
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
+        user_id=user_id,
+        api_key="hashed-viewer-key",
+    )
+    try:
+        response = client.get(
+            "/organization/spend/report",
+            params={
+                "start_date": "2026-07-01",
+                "end_date": "2026-07-31",
+                "organization_id": requested_org,
+            },
+            headers={"Authorization": "Bearer sk-test"},
+        )
+        assert response.status_code == expected_status
+        if expected_status == 200:
+            args, _ = mock_prisma.db.query_raw.await_args
+            assert args[3] == "org-acme"
+        else:
+            mock_prisma.db.query_raw.assert_not_awaited()
     finally:
         app.dependency_overrides.pop(ps.user_api_key_auth, None)
 

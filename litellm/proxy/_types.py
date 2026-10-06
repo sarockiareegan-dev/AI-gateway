@@ -969,7 +969,7 @@ class LiteLLMRoutes(enum.Enum):
     )
 
     # Reads a proxy_admin_viewer reaches; the handler limits them to the viewer's own organizations
-    org_member_viewer_routes = ["/organization/info"]
+    org_member_viewer_routes = ["/organization/info", "/organization/spend/report"]
 
 
 class LiteLLMPromptInjectionParams(LiteLLMPydanticObjectBase):

@@ -1750,8 +1750,7 @@ def _resolve_spend_report_scope(
     """Return the scope value the caller may query spend for.
 
     Non-admin callers are clamped to their own identity: a ``requested`` value
-    that differs from ``caller_value`` is a 403. Proxy admins (and admin
-    viewers) may request any scope.
+    that differs from ``caller_value`` is a 403. Proxy admins may request any scope.
     """
     if requested:
         if requested != caller_value and not _is_admin_view_safe(user_api_key_dict=user_api_key_dict):
@@ -1775,8 +1774,8 @@ async def _resolve_org_spend_report_scope(
 ) -> tuple[str, tuple[str, ...]]:
     """Return the organization to report on and the team_ids belonging to it.
 
-    Callable by proxy admins (any organization) and org admins of the target
-    organization; every other caller is a 403 from ``_verify_org_access``.
+    Callable by proxy admins (any organization), and by org admins and admin viewers
+    of the target organization; every other caller is a 403 from ``_verify_org_access``.
     """
     from litellm.proxy.management_endpoints.organization_endpoints import _verify_org_access
 
@@ -1790,6 +1789,7 @@ async def _resolve_org_spend_report_scope(
         organization_id=target_org,
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
+        access="read",
     )
     teams = await TeamRepository(prisma_client).find_by_organization_id(organization_id=target_org)
     return target_org, tuple(team.team_id for team in teams)
@@ -2689,7 +2689,9 @@ async def ui_view_spend_logs(
             else:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail={"error": "Viewing spend logs needs a key that belongs to a user, or a team_id you can view."},
+                    detail={
+                        "error": "Viewing spend logs needs a key that belongs to a user, or a team_id you can view."
+                    },
                 )
         # Calculate skip value for pagination
         skip: Final = (page - 1) * page_size
@@ -4687,13 +4689,7 @@ def _is_admin_view_safe(user_api_key_dict: UserAPIKeyAuth) -> bool:
     Defaults to False on any exception.
     """
     try:
-        user_role: Final = getattr(user_api_key_dict, "user_role", None)
-        if user_role is None:
-            return False
-        return user_role in (
-            LitellmUserRoles.PROXY_ADMIN,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-        )
+        return user_api_key_has_admin_view(user_api_key_dict)
     except Exception:
         return False
 

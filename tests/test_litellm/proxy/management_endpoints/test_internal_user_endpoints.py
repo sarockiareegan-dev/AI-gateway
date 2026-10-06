@@ -2293,8 +2293,7 @@ async def test_get_user_daily_activity_non_admin_cannot_view_other_users(monkeyp
         get_user_daily_activity,
     )
 
-    # Mock the prisma client so the DB-not-connected check passes
-    mock_prisma_client = MagicMock()
+    mock_prisma_client = _prisma_with_org_memberships([])
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
 
     # Non-admin caller
@@ -2345,6 +2344,85 @@ async def test_get_user_daily_activity_non_admin_cannot_view_other_users(monkeyp
         mock_get_daily.assert_called_once()
         call_kwargs = mock_get_daily.call_args
         assert call_kwargs.kwargs["entity_id"] == "regular-user-123"
+
+
+def _prisma_with_org_memberships(memberships):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    rows = [SimpleNamespace(user_id=u, organization_id=o, user_role=r) for u, o, r in memberships]
+
+    async def find_many(where):
+        return [row for row in rows if row.user_id == where["user_id"]]
+
+    async def find_first(where):
+        org_ids = where["organization_id"]["in"]
+        return next(
+            (row for row in rows if row.user_id == where["user_id"] and row.organization_id in org_ids),
+            None,
+        )
+
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_organizationmembership.find_many = AsyncMock(side_effect=find_many)
+    prisma_client.db.litellm_organizationmembership.find_first = AsyncMock(side_effect=find_first)
+    return prisma_client
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("caller_role", "caller_org_role", "target_org", "allowed"),
+    [
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, "org-a", True),
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, "org-b", False),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER, "org-a", True),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER, "org-b", False),
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.INTERNAL_USER, "org-a", False),
+    ],
+)
+async def test_get_user_daily_activity_reads_other_users_only_in_org_wide_readable_orgs(
+    monkeypatch, caller_role, caller_org_role, target_org, allowed
+):
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fastapi import HTTPException
+
+    from litellm.proxy.management_endpoints.internal_user_endpoints import (
+        get_user_daily_activity,
+    )
+
+    prisma_client = _prisma_with_org_memberships(
+        [("caller", "org-a", caller_org_role.value), ("target", target_org, LitellmUserRoles.INTERNAL_USER.value)]
+    )
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
+
+    with patch(
+        "litellm.proxy.management_endpoints.internal_user_endpoints.get_daily_activity",
+        new_callable=AsyncMock,
+        return_value=MagicMock(),
+    ) as mock_get_daily:
+
+        async def call():
+            return await get_user_daily_activity(
+                start_date="2025-01-01",
+                end_date="2025-01-31",
+                model=None,
+                api_key=None,
+                user_id="target",
+                page=1,
+                page_size=50,
+                timezone=None,
+                user_api_key_dict=UserAPIKeyAuth(user_id="caller", user_role=caller_role),
+            )
+
+        if allowed:
+            await call()
+            assert mock_get_daily.call_args.kwargs["entity_id"] == "target"
+            return
+
+        with pytest.raises(HTTPException) as exc_info:
+            await call()
+        assert exc_info.value.status_code == 403
+        mock_get_daily.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2529,7 +2607,7 @@ async def test_get_user_daily_activity_aggregated_non_admin_cannot_view_other_us
         get_user_daily_activity_aggregated,
     )
 
-    mock_prisma_client = MagicMock()
+    mock_prisma_client = _prisma_with_org_memberships([])
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
 
     non_admin_key_dict = UserAPIKeyAuth(

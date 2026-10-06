@@ -6440,6 +6440,7 @@ async def _resolve_team_daily_activity_scope(
     if exclude_team_ids:
         exclude_team_ids_list = exclude_team_ids.split(",") if exclude_team_ids else None
 
+    readable_org_ids: tuple[str, ...] = ()
     if not _user_has_admin_view(user_api_key_dict):
         user_info: Final = await get_user_object(
             user_id=user_api_key_dict.user_id,
@@ -6453,12 +6454,24 @@ async def _resolve_team_daily_activity_scope(
         if user_info is None:
             raise _daily_activity_error(status_code=404, message=f"User= {user_api_key_dict.user_id} not found")
 
+        readable_org_ids = org_wide_read_org_ids(user_api_key_dict.user_role, user_info.organization_memberships)
+        org_team_ids: Final = (
+            [
+                t.team_id
+                for t in await _team_db(prisma_client).find_many(
+                    where={"organization_id": {"in": list(readable_org_ids)}}
+                )
+            ]
+            if readable_org_ids
+            else []
+        )
+        visible_team_ids: Final = list(dict.fromkeys([*user_info.teams, *org_team_ids]))
+
         if team_ids_list is None:
-            team_ids_list = user_info.teams
+            team_ids_list = visible_team_ids
         else:
-            # check if all team_ids are in user_info.teams
             for team_id in team_ids_list:
-                if team_id not in user_info.teams:
+                if team_id not in visible_team_ids:
                     raise _daily_activity_error(
                         status_code=404,
                         message=f"User does not belong to Team= {team_id}. Call `/user/info` to see user's teams",
@@ -6492,7 +6505,8 @@ async def _resolve_team_daily_activity_scope(
                 team_obj=team_obj,
                 permission="/team/daily/activity",
             )
-            if not (is_admin or has_perm):
+            reads_org_wide = team_obj.organization_id in readable_org_ids
+            if not (is_admin or has_perm or reads_org_wide):
                 has_full_team_view = False
                 break
 

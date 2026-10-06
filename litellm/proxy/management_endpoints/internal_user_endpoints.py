@@ -2759,6 +2759,36 @@ async def _resolve_user_email_metadata(
     return {user.user_id: {"user_email": user.user_email, "user_alias": user.user_alias} for user in users}
 
 
+async def _resolve_user_daily_activity_entity(
+    user_api_key_dict: UserAPIKeyAuth,
+    user_id: str | None,
+    prisma_client: "PrismaClient",
+) -> str | None:
+    """Admins may read any user or the global view. Everyone else reads their own spend,
+    or the spend of a user in an organization they may read in full."""
+    if _user_has_admin_view(user_api_key_dict):
+        return user_id
+
+    caller_user_id: Final = require_caller_user_id_for_non_admin(user_api_key_dict)
+    if user_id is None or user_id == caller_user_id:
+        return caller_user_id
+
+    memberships: Final = _organization_membership_table(prisma_client)
+    readable_org_ids: Final = org_wide_read_org_ids(
+        user_api_key_dict.user_role, await memberships.find_many(where={"user_id": caller_user_id})
+    )
+    shares_readable_org: Final = bool(readable_org_ids) and (
+        await memberships.find_first(where={"user_id": user_id, "organization_id": {"in": list(readable_org_ids)}})
+        is not None
+    )
+    if not shares_readable_org:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "Non-admin users can only view their own spend data."},
+        )
+    return user_id
+
+
 @router.get(
     "/user/daily/activity",
     tags=["Budget & Spend Tracking", "Internal User management"],
@@ -2839,20 +2869,7 @@ async def get_user_daily_activity(
         )
 
     try:
-        is_admin: Final = _user_has_admin_view(user_api_key_dict)
-
-        if is_admin:
-            entity_id = user_id  # None means global view, otherwise filter by user
-        else:
-            caller_user_id: Final = require_caller_user_id_for_non_admin(user_api_key_dict)
-            if user_id is None:
-                user_id = caller_user_id
-            if user_id != caller_user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={"error": "Non-admin users can only view their own spend data."},
-                )
-            entity_id = user_id
+        entity_id: Final = await _resolve_user_daily_activity_entity(user_api_key_dict, user_id, prisma_client)
 
         return await get_daily_activity(
             prisma_client=prisma_client,
@@ -2947,20 +2964,7 @@ async def get_user_daily_activity_aggregated(
         )
 
     try:
-        is_admin: Final = _user_has_admin_view(user_api_key_dict)
-
-        if is_admin:
-            entity_id = user_id  # None means global view, otherwise filter by user
-        else:
-            caller_user_id: Final = require_caller_user_id_for_non_admin(user_api_key_dict)
-            if user_id is None:
-                user_id = caller_user_id
-            if user_id != caller_user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={"error": "Non-admin users can only view their own spend data."},
-                )
-            entity_id = user_id
+        entity_id: Final = await _resolve_user_daily_activity_entity(user_api_key_dict, user_id, prisma_client)
 
         return await get_daily_activity_aggregated(
             prisma_client=prisma_client,
