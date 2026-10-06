@@ -2467,14 +2467,7 @@ async def test_filter_models_by_team_id_allows_team_member():
 
 
 @pytest.mark.asyncio
-async def test_caller_byok_team_scope_treats_view_only_admin_as_unscoped():
-    """
-    Regression test: `PROXY_ADMIN_VIEW_ONLY` is an admin role
-    ("can login, view all own keys, view all spend"). Search results for
-    this role must show BYOK rows across all teams, not be silently scoped
-    to the user-id's `teams` field — that path narrows results to whatever
-    teams the admin happens to be a member of, regressing pre-PR behavior.
-    """
+async def test_caller_byok_team_scope_limits_view_only_admin_to_its_own_teams():
     from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
     from litellm.proxy.proxy_server import _get_caller_byok_team_scope
 
@@ -2483,11 +2476,13 @@ async def test_caller_byok_team_scope_treats_view_only_admin_as_unscoped():
         user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
         api_key="sk-test",
     )
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_usertable.find_unique = AsyncMock(return_value=MagicMock(teams=["team-mine"]))
     scope = await _get_caller_byok_team_scope(
         user_api_key_dict=caller,
-        prisma_client=MagicMock(),
+        prisma_client=prisma_client,
     )
-    assert scope is None, "PROXY_ADMIN_VIEW_ONLY must be unscoped, like PROXY_ADMIN"
+    assert scope == {"team-mine"}
 
 
 @pytest.mark.asyncio

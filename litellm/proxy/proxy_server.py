@@ -13830,10 +13830,7 @@ async def _get_caller_byok_team_scope(
     """
     if user_api_key_dict is None or prisma_client is None:
         return None
-    if user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return None
     key_team_scope: Final[set[str]] = {user_api_key_dict.team_id} if user_api_key_dict.team_id else set()
     user_id: Final = user_api_key_dict.user_id
@@ -14358,10 +14355,7 @@ async def _authorize_team_id_query(
     team's id could enumerate that team's BYOK model metadata. Allow only
     proxy admins or members of the requested team.
     """
-    if user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return
 
     user_id: Final = user_api_key_dict.user_id
@@ -15724,10 +15718,7 @@ async def model_group_info(
     from litellm.proxy.utils import get_available_models_for_user
 
     # Get available models for the user
-    is_proxy_admin: Final = user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    )
+    is_proxy_admin: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
     all_models_str: Final = (
         get_complete_model_list(
             key_models=(),
@@ -15761,9 +15752,7 @@ async def model_group_info(
         if model_group is not None and user_api_key_dict.org_id is not None
         else None
     )
-    requested_model_group: Final = (
-        own_org_model_group if own_org_model_group in visible_models_str else model_group
-    )
+    requested_model_group: Final = own_org_model_group if own_org_model_group in visible_models_str else model_group
     model_groups: list[ModelGroupInfoProxy] = [
         group.model_copy(update={"model_group": org_names[group.model_group].public_name})
         if group.model_group in org_names

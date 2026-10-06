@@ -4499,46 +4499,23 @@ class TestMCPApprovalWorkflow:
         assert result.pending_review == 1
 
     @pytest.mark.asyncio
-    async def test_get_submissions_sanitizes_for_view_only_admin(self):
-        """PROXY_ADMIN_VIEW_ONLY reviewing the submission queue must go through
-        the non-admin sanitizer that fetch/list endpoints use: url,
-        static_headers, env, env_vars, and credentials are all dropped. A
-        mutation swapping the gate back to the old partial-blank pattern (which
-        left url/static_headers/env and env-var names intact) would fail this."""
-        from litellm.proxy._types import MCPSubmissionsSummary
+    async def test_get_submissions_refuses_proxy_admin_viewer(self):
         from litellm.proxy.management_endpoints.mcp_management_endpoints import (
             get_mcp_server_submissions,
         )
 
-        item = _leaky_list_server()
-        item.approval_status = "pending_review"
-        summary = MCPSubmissionsSummary(total=1, pending_review=1, active=0, rejected=0, items=[item])
-
-        with (
-            patch(
-                "litellm.proxy.management_endpoints.mcp_management_endpoints.get_prisma_client_or_throw",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "litellm.proxy.management_endpoints.mcp_management_endpoints.get_mcp_submissions",
-                AsyncMock(return_value=summary),
-            ),
+        submissions_mock = AsyncMock()
+        with patch(
+            "litellm.proxy.management_endpoints.mcp_management_endpoints.get_mcp_submissions",
+            submissions_mock,
         ):
-            result = await get_mcp_server_submissions(
-                user_api_key_dict=generate_mock_user_api_key_auth(user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY),
-            )
+            with pytest.raises(HTTPException) as exc_info:
+                await get_mcp_server_submissions(
+                    user_api_key_dict=generate_mock_user_api_key_auth(user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY),
+                )
 
-        assert len(result.items) == 1
-        sanitized = result.items[0]
-        assert sanitized.url is None
-        assert sanitized.static_headers is None
-        assert sanitized.env == {}
-        assert sanitized.env_vars is None
-        assert sanitized.credentials is None
-
-        # The source record must not be mutated by sanitization.
-        assert item.url == "https://leaky.example.com/mcp?api_key=sk-embedded-in-url"
-        assert item.static_headers == {"Authorization": "Bearer sk-secret-header"}
+        assert exc_info.value.status_code == 403
+        submissions_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_get_submissions_full_admin_still_sees_secrets(self):
@@ -5337,8 +5314,7 @@ async def test_non_full_admin_cannot_revoke_another_users_oauth_credential(role)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
-async def test_admin_lists_every_users_credential_for_a_server(role):
+async def test_admin_lists_every_users_credential_for_a_server():
     if not mgmt_endpoints.MCP_AVAILABLE:
         pytest.skip("MCP module not installed")
 
@@ -5364,7 +5340,7 @@ async def test_admin_lists_every_users_credential_for_a_server(role):
     ):
         result = await list_mcp_server_user_credentials(
             server_id="srv-list-admin",
-            user_api_key_dict=_make_admin_auth(role),
+            user_api_key_dict=_make_admin_auth(LitellmUserRoles.PROXY_ADMIN),
         )
 
     assert list_mock.await_args.args[1:] == ("srv-list-admin",)
@@ -5372,7 +5348,12 @@ async def test_admin_lists_every_users_credential_for_a_server(role):
 
 
 @pytest.mark.asyncio
-async def test_non_admin_cannot_list_a_servers_user_credentials():
+@pytest.mark.parametrize(
+    "caller",
+    [lambda: _make_user_auth("user-plain"), lambda: _make_admin_auth(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY)],
+    ids=["internal-user", "proxy-admin-viewer"],
+)
+async def test_non_admin_cannot_list_a_servers_user_credentials(caller):
     if not mgmt_endpoints.MCP_AVAILABLE:
         pytest.skip("MCP module not installed")
 
@@ -5394,7 +5375,7 @@ async def test_non_admin_cannot_list_a_servers_user_credentials():
         with pytest.raises(HTTPException) as exc_info:
             await list_mcp_server_user_credentials(
                 server_id="srv-list-forbidden",
-                user_api_key_dict=_make_user_auth("user-plain"),
+                user_api_key_dict=caller(),
             )
 
     assert exc_info.value.status_code == 403
@@ -7543,19 +7524,19 @@ class TestImportMCPServers:
 
 class TestGetMCPGatewaySessions:
     @pytest.mark.asyncio
-    async def test_non_admin_forbidden(self):
+    @pytest.mark.parametrize("role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
+    async def test_non_admin_forbidden(self, role):
         from litellm.proxy.management_endpoints.mcp_management_endpoints import (
             get_mcp_gateway_sessions,
         )
 
-        non_admin = generate_mock_user_api_key_auth(user_role=LitellmUserRoles.INTERNAL_USER)
+        non_admin = generate_mock_user_api_key_auth(user_role=role)
         with pytest.raises(HTTPException) as exc_info:
             await get_mcp_gateway_sessions(user_api_key_dict=non_admin)
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("role", [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
-    async def test_admin_roles_receive_live_session_report(self, role):
+    async def test_admin_receives_live_session_report(self):
         from mcp.types import Implementation
 
         from litellm.proxy._experimental.mcp_server import server as mcp_server
@@ -7582,7 +7563,7 @@ class TestGetMCPGatewaySessions:
             ),
         ):
             result = await get_mcp_gateway_sessions(
-                user_api_key_dict=generate_mock_user_api_key_auth(user_role=role),
+                user_api_key_dict=generate_mock_user_api_key_auth(user_role=LitellmUserRoles.PROXY_ADMIN),
             )
 
         assert isinstance(result, MCPGatewaySessionsResponse)

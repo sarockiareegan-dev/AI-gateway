@@ -901,31 +901,8 @@ async def _save_background_health_checks_to_db(
         return False
 
 
-_PROXY_ADMIN_ROLES: Final = frozenset(
-    {
-        LitellmUserRoles.PROXY_ADMIN.value,
-        # View-only admins are operators (oncall, support); they need the
-        # routing fields (api_base, api_version) to diagnose health and tell
-        # which provider region a check is hitting. They cannot mutate config
-        # so granting them the read-only view is safe.
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
-    }
-)
-
-
 def _is_proxy_admin(user_api_key_dict: UserAPIKeyAuth) -> bool:
-    """
-    Return True if the caller has a proxy-admin role (full or view-only).
-
-    user_role on UserAPIKeyAuth can be either a LitellmUserRoles enum or its
-    string value depending on how the auth path constructed the object, so we
-    compare against the raw value rather than the enum identity.
-    """
-    role: Final = user_api_key_dict.user_role
-    if role is None:
-        return False
-    role_value: Final = role.value if hasattr(role, "value") else role
-    return role_value in _PROXY_ADMIN_ROLES
+    return user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
 
 
 def _strip_admin_only_fields_from_health_result(result: dict) -> dict:

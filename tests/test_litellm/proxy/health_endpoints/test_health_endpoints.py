@@ -1101,12 +1101,13 @@ async def test_health_services_endpoint_rejects_unknown_service():
         LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
         LitellmUserRoles.TEAM,
         LitellmUserRoles.CUSTOMER,
+        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
     ],
 )
 async def test_health_services_endpoint_newrelic_blocks_non_admin(role):
     """
     /health/services?service=newrelic emits a real LiteLLMConnectionTest event
-    to the configured New Relic account. Only proxy admins (full or view-only)
+    to the configured New Relic account. Only proxy admins
     should be able to trigger it; every other caller must be rejected before
     the external event is recorded.
     """
@@ -1137,11 +1138,11 @@ async def test_health_services_endpoint_newrelic_blocks_non_admin(role):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "admin_role",
-    [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY],
+    [LitellmUserRoles.PROXY_ADMIN],
 )
 async def test_health_services_endpoint_newrelic_allows_proxy_admin(admin_role):
     """
-    Proxy admins (full and view-only) can trigger the New Relic test event.
+    Proxy admins can trigger the New Relic test event.
     """
     user_api_key_dict = UserAPIKeyAuth(
         token="admin-token",
@@ -1172,6 +1173,7 @@ async def test_health_services_endpoint_newrelic_allows_proxy_admin(admin_role):
         LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
         LitellmUserRoles.TEAM,
         LitellmUserRoles.CUSTOMER,
+        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
     ],
 )
 async def test_health_services_endpoint_webhook_blocks_non_admin(role):
@@ -1199,7 +1201,7 @@ async def test_health_services_endpoint_webhook_blocks_non_admin(role):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "admin_role",
-    [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY],
+    [LitellmUserRoles.PROXY_ADMIN],
 )
 async def test_health_services_endpoint_webhook_allows_proxy_admin(admin_role):
     mock_proxy_logging = MagicMock()
@@ -4125,6 +4127,7 @@ async def test_health_services_endpoint_pointfive_without_a_key_is_unhealthy_not
         LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
         LitellmUserRoles.TEAM,
         LitellmUserRoles.CUSTOMER,
+        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
     ],
 )
 async def test_health_services_endpoint_pointfive_blocks_non_admin(monkeypatch, role):

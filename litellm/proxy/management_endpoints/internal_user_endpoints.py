@@ -751,9 +751,6 @@ def _enforce_user_info_access(user_id: str | None, user_api_key_dict: UserAPIKey
     """
     if user_id is None:
         return
-    # Admin-view roles (PROXY_ADMIN and PROXY_ADMIN_VIEW_ONLY) bypass
-    # ownership, mirroring the `/user/info` carve-out that
-    # `RouteChecks.non_proxy_admin_allowed_routes_check` applies upstream.
     if _user_has_admin_view(user_api_key_dict):
         return
     if user_id == user_api_key_dict.user_id:

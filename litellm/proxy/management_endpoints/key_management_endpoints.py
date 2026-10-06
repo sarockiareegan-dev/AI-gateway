@@ -6489,10 +6489,7 @@ async def list_keys(
         else:
             admin_team_ids = None
 
-        is_proxy_admin: Final = user_api_key_dict.user_role in [
-            LitellmUserRoles.PROXY_ADMIN.value,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
-        ]
+        is_proxy_admin: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
 
         # Substring matching is opt-in. /key/list matched user_id and key_alias
         # exactly before substring search was added; auto-applying a substring
@@ -6641,10 +6638,7 @@ async def key_aliases(
 
         # Scope results for non-admin users: only show aliases for keys the
         # user owns or keys belonging to teams they are a member of.
-        is_proxy_admin: Final = user_api_key_dict.user_role in [
-            LitellmUserRoles.PROXY_ADMIN.value,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
-        ]
+        is_proxy_admin: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
         if not is_proxy_admin:
             await _apply_non_admin_alias_scope(user_api_key_dict, prisma_client, query_params, where_parts)
 
@@ -7487,10 +7481,7 @@ async def _can_user_query_key_info(
     Helper to check if the user has access to the key's info
     """
     if (
-        (
-            user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
-            or user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value
-        )
+        user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
         or user_api_key_dict.api_key == key
         or key_info.user_id == user_api_key_dict.user_id
         or await TeamMemberPermissionChecks.user_belongs_to_keys_team(

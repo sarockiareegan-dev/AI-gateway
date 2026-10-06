@@ -806,10 +806,7 @@ async def list_end_user(
     try:
         from litellm.proxy.proxy_server import prisma_client
 
-        if (
-            user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN
-            and user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-        ):
+        if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
             raise HTTPException(
                 status_code=401,
                 detail={"error": f"Admin-only endpoint. Your user role={user_api_key_dict.user_role}"},
@@ -860,10 +857,7 @@ async def get_customer_daily_activity(
     """
     Get daily activity for specific organizations or all accessible organizations.
     """
-    if (
-        user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN
-        and user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-    ):
+    if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
         raise HTTPException(
             status_code=401,
             detail={"error": f"Admin-only endpoint. Your user role={user_api_key_dict.user_role}"},

@@ -142,7 +142,7 @@ class LitellmUserRoles(str, enum.Enum):
     """
     Admin Roles:
     PROXY_ADMIN: admin over the platform
-    PROXY_ADMIN_VIEW_ONLY: can login, view all own keys, view all spend
+    PROXY_ADMIN_VIEW_ONLY: can login, read-only view of the organizations they belong to
     ORG_ADMIN: admin over a specific organization, can create teams, users only within their organization
 
     Internal User Roles:
@@ -189,7 +189,7 @@ class LitellmUserRoles(str, enum.Enum):
         """
         descriptions: Final = {
             "proxy_admin": "admin over litellm proxy, has all permissions",
-            "proxy_admin_viewer": "view all keys, view all spend",
+            "proxy_admin_viewer": "view the teams, users and spend of the organizations they belong to",
             "internal_user": "view/create/delete their own keys, view their own spend",
             "internal_user_viewer": "view their own keys, view their own spend",
             "team": "team scope used for JWT auth",
@@ -204,7 +204,7 @@ class LitellmUserRoles(str, enum.Enum):
         """
         ui_labels: Final = {
             "proxy_admin": "Admin (All Permissions)",
-            "proxy_admin_viewer": "Admin (View Only)",
+            "proxy_admin_viewer": "Organization Viewer (View Only)",
             "internal_user": "Internal User (Create/Delete/View)",
             "internal_user_viewer": "Internal User (View Only)",
             "team": "Team",

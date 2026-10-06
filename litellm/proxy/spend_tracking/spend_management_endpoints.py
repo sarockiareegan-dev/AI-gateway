@@ -396,9 +396,8 @@ async def spend_key_fn(
     """
     View keys created, ordered by spend.
 
-    - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every key in
-      the database.
-    - All other callers (INTERNAL_USER / INTERNAL_USER_VIEW_ONLY, etc.) are
+    - PROXY_ADMIN sees every key in the database.
+    - All other callers (PROXY_ADMIN_VIEW_ONLY, INTERNAL_USER, etc.) are
       scoped to keys they own (``user_id == caller``). A caller with no
       ``user_id`` has no scope and receives an empty list rather than the
       full table.
@@ -462,8 +461,8 @@ async def spend_user_fn(
     """
     View users created, ordered by spend.
 
-    - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every user, or
-      a specific user when ``user_id`` is supplied.
+    - PROXY_ADMIN sees every user, or a specific user when ``user_id`` is
+      supplied.
     - All other callers may only read their own row. If they supply a
       ``user_id`` query parameter that does not match their authenticated
       ``user_id`` the request is rejected with HTTP 403; supplying their

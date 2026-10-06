@@ -4109,7 +4109,6 @@ if MCP_AVAILABLE:
             )
 
         # Access control: non-admin keys must have this toolset in their grant list.
-        # Use _user_has_admin_view so that PROXY_ADMIN_VIEW_ONLY is also treated as admin.
         is_admin: Final = _user_has_admin_view(user_api_key_auth)
         if not is_admin:
             op: Final = user_api_key_auth.object_permission

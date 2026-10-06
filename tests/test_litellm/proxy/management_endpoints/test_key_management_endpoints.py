@@ -20143,3 +20143,24 @@ async def test_generate_service_account_key_generates_uuid_when_no_alias(monkeyp
 
     assert data.metadata is not None
     assert data.metadata["service_account_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("role", "allowed"),
+    [
+        (LitellmUserRoles.PROXY_ADMIN, True),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, False),
+        (LitellmUserRoles.INTERNAL_USER, False),
+    ],
+)
+async def test_can_user_query_key_info_only_proxy_admin_reads_another_users_key(role, allowed):
+    from litellm.proxy.management_endpoints.key_management_endpoints import _can_user_query_key_info
+
+    caller: Final = UserAPIKeyAuth(user_id="caller", user_role=role, api_key="hashed-caller-key")
+    someone_elses_key: Final = LiteLLM_VerificationToken(token="hashed-other-key", user_id="other", team_id=None)
+
+    assert (
+        await _can_user_query_key_info(user_api_key_dict=caller, key="hashed-other-key", key_info=someone_elses_key)
+        is allowed
+    )
