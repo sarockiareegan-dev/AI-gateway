@@ -101,7 +101,16 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 ## Open decisions
 
 - Decided Oct 4: `proxy_admin_viewer` is per-organization (leak 6 plan above). This matches how `agami/adapters/litellm_compat.py` already maps it to an org-scoped `VIEWER`
-- Names and grouping for the Checkpoint C features, for example one `jwt_auth` feature or separate `jwt_auth` and `oauth2_auth`
+- Decided Oct 6: leak 8 adds a nullable `organization_id` column to `LiteLLM_GuardrailsTable` (schema-only migration, no row rewrites) so organizations can own guardrails. Team-less, org-less guardrails stay proxy-admin only
+- Decided Oct 6: leak 9, plain team members see only their own keys. Team admins see every key in the team
+- Decided Oct 6: A4, proxy-wide config reads are proxy-admin only
+- Decided Oct 6: Checkpoint C uses one `jwt_auth` feature for JWT, OAuth2 and the MCP token flows, and grouped features for the rest: `request_limits`, `enforced_params`, `team_admin_roles`, `advanced_keys`, `team_models`, `auto_router`, `model_audit`
+
+## Needed from the owner for Checkpoint E
+
+- Two or three `AGAMI_LICENSE` tokens signed with the Agami private key, each holding only some features, so the live proof can show a 403 without a feature and a 200 with it
+- At least one real provider API key in `.env`
+- A local Postgres `DATABASE_URL`, which the live proxy and the `tests/proxy_behavior` suite need
 
 ## Local test setup (Windows)
 
