@@ -7,6 +7,7 @@ import inspect
 import json
 import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import MappingProxyType, UnionType
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, TypeVar, Union, cast, get_args, get_origin
@@ -19,7 +20,7 @@ from litellm._logging import verbose_proxy_logger
 from litellm.constants import DEFAULT_MAX_RECURSE_DEPTH
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.litellm_core_utils.safe_json_dumps import safe_dumps
-from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+from litellm.proxy._types import LiteLLM_UserTable, LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.path_utils import safe_join
 from litellm.proxy.guardrails.guardrail_hooks.custom_code.sandbox import (
@@ -127,10 +128,11 @@ def _get_guardrails_list_response(
 @router.get(
     "/guardrails/list",
     tags=["Guardrails"],
-    dependencies=[Depends(user_api_key_auth)],
     response_model=ListGuardrailsResponse,
 )
-async def list_guardrails():
+async def list_guardrails(
+    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
+):
     """
     List the guardrails that are available on the proxy server
 
@@ -169,12 +171,15 @@ async def list_guardrails():
 
     config: Final = proxy_config.config
 
-    _guardrails_config: Final = cast(list[dict] | None, config.get("guardrails"))
+    _guardrails_config: Final = cast(list[dict[str, object]] | None, config.get("guardrails"))
 
     if _guardrails_config is None:
         return _get_guardrails_list_response([])
+    if _user_has_admin_view(user_api_key_dict):
+        return _get_guardrails_list_response(_guardrails_config)
 
-    return _get_guardrails_list_response(_guardrails_config)
+    reader_scope: Final = await _get_guardrail_reader_scope(user_api_key_dict)
+    return _get_guardrails_list_response([g for g in _guardrails_config if _guardrail_visible_to(g, reader_scope)])
 
 
 @router.get(
@@ -231,12 +236,11 @@ async def list_guardrails_v2(
         )
 
         excluded_guardrail_ids: Final[set] = set()
-        if not is_admin:
-            caller_team_ids: Final = await _get_user_team_ids(user_api_key_dict)
+        reader_scope: Final = None if is_admin else await _get_guardrail_reader_scope(user_api_key_dict)
+        if reader_scope is not None:
             allowed: Final[list[Guardrail]] = []
             for g in guardrails:
-                g_team_id = g.get("team_id")
-                if g_team_id is None or g_team_id in caller_team_ids:
+                if _guardrail_visible_to(g, reader_scope):
                     allowed.append(g)
                 else:
                     gid = g.get("guardrail_id")
@@ -284,10 +288,8 @@ async def list_guardrails_v2(
             # another pod) and reconciliation hasn't fired yet on this pod.
             if gid is not None and IN_MEMORY_GUARDRAIL_HANDLER.get_source(gid) == "db":
                 continue
-            if not is_admin:
-                g_team_id = guardrail.get("team_id")
-                if g_team_id is not None and g_team_id not in caller_team_ids:
-                    continue
+            if reader_scope is not None and not _guardrail_visible_to(guardrail, reader_scope):
+                continue
             in_memory_litellm_params_raw = guardrail.get("litellm_params")
             in_memory_litellm_params_dict = (
                 in_memory_litellm_params_raw.model_dump(exclude_none=True)
@@ -321,6 +323,7 @@ async def list_guardrails_v2(
 
 class CreateGuardrailRequest(BaseModel):
     guardrail: Guardrail
+    organization_id: str | None = None
 
 
 @router.post(
@@ -391,7 +394,9 @@ async def create_guardrail(
         raise HTTPException(status_code=500, detail="Prisma client not initialized")
 
     try:
-        result = await GUARDRAIL_REGISTRY.add_guardrail_to_db(guardrail=request.guardrail, prisma_client=prisma_client)
+        result = await GUARDRAIL_REGISTRY.add_guardrail_to_db(
+            guardrail=request.guardrail, prisma_client=prisma_client, organization_id=request.organization_id
+        )
 
         guardrail_name: Final = result.get("guardrail_name", "Unknown")
         guardrail_id: Final = result.get("guardrail_id", "Unknown")
@@ -428,6 +433,12 @@ async def create_guardrail(
 
 class UpdateGuardrailRequest(BaseModel):
     guardrail: Guardrail
+    organization_id: str | None = None
+
+    def owner_change(self) -> Mapping[str, str | None]:
+        if "organization_id" not in self.model_fields_set:
+            return MappingProxyType({})
+        return MappingProxyType({"organization_id": self.organization_id})
 
 
 @router.put(
@@ -512,6 +523,7 @@ async def update_guardrail(
                 guardrail_id=guardrail_id,
                 guardrail=request.guardrail,
                 prisma_client=prisma_client,
+                owner_change=request.owner_change(),
             )
         )
 
@@ -533,6 +545,9 @@ async def update_guardrail(
                 guardrail_id=guardrail_id,
                 guardrail=existing_guardrail,
                 prisma_client=prisma_client,
+                owner_change=MappingProxyType(
+                    {"organization_id": _guardrail_ownership(existing_guardrail).organization_id}
+                ),
             )
             raise HTTPException(
                 status_code=422,
@@ -810,8 +825,7 @@ def _parse_json_field(value: object) -> dict[str, Any] | None:
     return None
 
 
-async def _get_user_team_ids(user_api_key_dict: UserAPIKeyAuth) -> list[str]:
-    """Return the list of team_ids the caller belongs to (empty list if none)."""
+async def _get_caller_user_row(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTable | None:
     from litellm.proxy.auth.auth_checks import get_user_object
     from litellm.proxy.proxy_server import (
         prisma_client,
@@ -820,8 +834,8 @@ async def _get_user_team_ids(user_api_key_dict: UserAPIKeyAuth) -> list[str]:
     )
 
     if not user_api_key_dict.user_id or prisma_client is None:
-        return []
-    user_obj: Final = await get_user_object(
+        return None
+    return await get_user_object(
         user_id=user_api_key_dict.user_id,
         prisma_client=prisma_client,
         user_api_key_cache=user_api_key_cache,
@@ -829,9 +843,52 @@ async def _get_user_team_ids(user_api_key_dict: UserAPIKeyAuth) -> list[str]:
         parent_otel_span=user_api_key_dict.parent_otel_span,
         proxy_logging_obj=proxy_logging_obj,
     )
+
+
+async def _get_user_team_ids(user_api_key_dict: UserAPIKeyAuth) -> list[str]:
+    """Return the list of team_ids the caller belongs to (empty list if none)."""
+    user_obj: Final = await _get_caller_user_row(user_api_key_dict)
     if user_obj is None or not user_obj.teams:
         return []
     return [t for t in user_obj.teams if t]
+
+
+@dataclass(frozen=True, slots=True)
+class _GuardrailReaderScope:
+    team_ids: frozenset[str]
+    organization_ids: frozenset[str]
+
+
+async def _get_guardrail_reader_scope(user_api_key_dict: UserAPIKeyAuth) -> _GuardrailReaderScope:
+    user_obj: Final = await _get_caller_user_row(user_api_key_dict)
+    member_team_ids: Final = tuple(user_obj.teams or ()) if user_obj is not None else ()
+    key_team_ids: Final = (user_api_key_dict.team_id,) if user_api_key_dict.team_id else ()
+    return _GuardrailReaderScope(
+        team_ids=frozenset(t for t in (*member_team_ids, *key_team_ids) if t),
+        organization_ids=frozenset(
+            m.organization_id
+            for m in (user_obj.organization_memberships or () if user_obj is not None else ())
+            if m.organization_id
+        ),
+    )
+
+
+class _GuardrailOwnership(BaseModel):
+    team_id: str | None = None
+    organization_id: str | None = None
+
+
+def _guardrail_ownership(guardrail: Mapping[str, object]) -> _GuardrailOwnership:
+    return _GuardrailOwnership.model_validate(dict(guardrail))
+
+
+def _guardrail_visible_to(guardrail: Mapping[str, object], scope: _GuardrailReaderScope) -> bool:
+    """A team guardrail belongs to its team, an org guardrail to the org's members, and one with neither is
+    proxy-wide and only proxy admins see it."""
+    ownership: Final = _guardrail_ownership(guardrail)
+    if ownership.team_id is not None:
+        return ownership.team_id in scope.team_ids
+    return ownership.organization_id is not None and ownership.organization_id in scope.organization_ids
 
 
 def _row_to_submission_item(row: "LiteLLM_GuardrailsTable") -> GuardrailSubmissionItem:
