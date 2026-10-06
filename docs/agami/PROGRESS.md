@@ -106,11 +106,9 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 - Decided Oct 6: A4, proxy-wide config reads are proxy-admin only
 - Decided Oct 6: Checkpoint C uses one `jwt_auth` feature for JWT, OAuth2 and the MCP token flows, and grouped features for the rest: `request_limits`, `enforced_params`, `team_admin_roles`, `advanced_keys`, `team_models`, `auto_router`, `model_audit`
 
-## Needed from the owner for Checkpoint E
+## Inputs for Checkpoint E
 
-- Two or three `AGAMI_LICENSE` tokens signed with the Agami private key, each holding only some features, so the live proof can show a 403 without a feature and a 200 with it
-- At least one real provider API key in `.env`
-- A local Postgres `DATABASE_URL`, which the live proxy and the `tests/proxy_behavior` suite need
+All ready as of Oct 6. Test licences are issued locally with `scripts/agami_license.py issue --private-key ~/.agami/license_signing_key.pem ...`, and that key matches the bundled public key. The provider key in `.env` is a Groq key (`groq/` models, read from `GROQ_API_KEY`). `DATABASE_URL` in `.env` points at a local PostgreSQL 18 database that the proxy migrates on first boot. Never commit or print any of these
 
 ## Local test setup (Windows)
 
