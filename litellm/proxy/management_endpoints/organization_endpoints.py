@@ -18,6 +18,7 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Final,
+    Literal,
     Protocol,
     cast,  # noqa: TID251  # prisma types Json columns as fields.Json but reads back plain python values
     overload,
@@ -50,6 +51,7 @@ from litellm.proxy.management_endpoints.common_daily_activity import get_daily_a
 from litellm.proxy.management_endpoints.common_utils import (
     _set_object_metadata_field,
     _user_has_admin_view,
+    org_wide_read_org_ids,
     validate_budget_duration,
 )
 from litellm.proxy.management_helpers.object_permission_utils import (
@@ -259,9 +261,11 @@ async def _verify_org_access(
     organization_id: str,
     user_api_key_dict: UserAPIKeyAuth,
     prisma_client: PrismaClient,
+    access: Literal["read", "write"] = "write",
 ) -> None:
     """
-    Verify the caller is either a proxy admin or an org admin of the given organization.
+    Verify the caller is a proxy admin or an org admin of the given organization.
+    For reads, a proxy_admin_viewer that belongs to the organization is also allowed.
 
     Raises HTTPException(403) if the caller does not have access.
     """
@@ -289,9 +293,9 @@ async def _verify_org_access(
             detail="You do not have access to this organization",
         )
 
-    for m in caller_user.organization_memberships or []:
-        if m.organization_id == organization_id and m.user_role == LitellmUserRoles.ORG_ADMIN.value:
-            return
+    caller_role: Final = user_api_key_dict.user_role if access == "read" else None
+    if organization_id in org_wide_read_org_ids(caller_role, caller_user.organization_memberships):
+        return
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -585,17 +589,14 @@ async def get_organization_daily_activity(
     if exclude_organization_ids:
         exclude_org_ids_list = exclude_organization_ids.split(",") if exclude_organization_ids else None
 
-    # Restrict non-proxy-admins to only organizations where they are org_admin
     if not _user_has_admin_view(user_api_key_dict):
         memberships: Final = await _table(OrganizationMembershipRepository(prisma_client)).find_many(
             where={"user_id": user_api_key_dict.user_id}
         )
-        admin_org_ids = [m.organization_id for m in memberships if m.user_role == LitellmUserRoles.ORG_ADMIN.value]
+        admin_org_ids: Final = list(org_wide_read_org_ids(user_api_key_dict.user_role, memberships))
         if org_ids_list is None:
-            # Default to orgs where user is org_admin
             org_ids_list = admin_org_ids
         else:
-            # Ensure user is org_admin for all requested orgs
             for org_id in org_ids_list:
                 if org_id not in admin_org_ids:
                     raise HTTPException(
@@ -1166,11 +1167,11 @@ async def info_organization(
     if prisma_client is None:
         raise HTTPException(status_code=500, detail={"error": "No db connected"})
 
-    # Verify caller has access to this organization
     await _verify_org_access(
         organization_id=organization_id,
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
+        access="read",
     )
 
     response: Final = await _table(OrganizationRepository(prisma_client)).find_unique(
@@ -1224,6 +1225,7 @@ async def deprecated_info_organization(
             organization_id=org_id,
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
+            access="read",
         )
 
     response: Final = await _table(OrganizationRepository(prisma_client)).find_many(

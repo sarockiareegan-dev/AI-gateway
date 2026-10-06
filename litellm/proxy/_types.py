@@ -968,6 +968,9 @@ class LiteLLMRoutes(enum.Enum):
         org_admin_only_routes + management_routes + self_managed_routes + org_scoped_viewer_routes
     )
 
+    # Reads a proxy_admin_viewer reaches; the handler limits them to the viewer's own organizations
+    org_member_viewer_routes = ["/organization/info"]
+
 
 class LiteLLMPromptInjectionParams(LiteLLMPydanticObjectBase):
     heuristics_check: bool = False

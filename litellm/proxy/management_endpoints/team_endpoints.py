@@ -124,6 +124,7 @@ from litellm.proxy.management_endpoints.common_daily_activity import (
     get_daily_activity_aggregated,
 )
 from litellm.proxy.management_endpoints.common_utils import (
+    _can_read_team_org_wide,
     _check_passthrough_routes_caller_permission,
     _is_user_org_admin_for_team,
     _is_user_team_admin,
@@ -133,6 +134,7 @@ from litellm.proxy.management_endpoints.common_utils import (
     _upsert_budget_and_membership,
     _user_has_admin_view,
     member_budget_patch,
+    org_wide_read_org_ids,
     validate_budget_duration,
     validate_team_model_max_budget,
 )
@@ -4615,10 +4617,7 @@ async def _persist_deleted_team_records(
 
 
 async def validate_membership(user_api_key_dict: UserAPIKeyAuth, team_table: LiteLLM_TeamTable):
-    if (
-        user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
-        or user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value
-    ):
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value:
         return
 
     if user_api_key_dict.team_id == team_table.team_id:  # allow team keys to check their info
@@ -4645,8 +4644,7 @@ async def validate_membership(user_api_key_dict: UserAPIKeyAuth, team_table: Lit
     if user_api_key_dict.user_id in [m.user_id for m in team_table.members_with_roles]:
         return
 
-    # Check if user is an org admin for the team's organization
-    if await _is_user_org_admin_for_team(user_api_key_dict=user_api_key_dict, team_obj=team_table):
+    if await _can_read_team_org_wide(user_api_key_dict=user_api_key_dict, team_obj=team_table):
         return
 
     raise HTTPException(
@@ -5183,16 +5181,16 @@ async def list_available_teams(
     ]
 
 
-async def _get_org_admin_org_ids(
+async def _get_org_wide_read_org_ids(
     user_id: str,
+    user_role: str | None,
     prisma_client: PrismaClient,
     user_api_key_cache: UserApiKeyCache,
     proxy_logging_obj: ProxyLogging,
 ) -> list[str] | None:
     """
-    Return the list of organization IDs where the user is an org admin.
-    Returns None if the user is not an org admin of any organization or if
-    the user cannot be found.
+    Return the organization IDs the user may read in full (see `org_wide_read_org_ids`).
+    Returns None if there are none or if the user cannot be found.
     """
     try:
         caller_user: Final = await get_user_object(
@@ -5209,11 +5207,7 @@ async def _get_org_admin_org_ids(
     if caller_user is None:
         return None
 
-    org_ids: Final = [
-        m.organization_id
-        for m in (caller_user.organization_memberships or [])
-        if m.user_role == LitellmUserRoles.ORG_ADMIN.value and m.organization_id is not None
-    ]
+    org_ids: Final = list(org_wide_read_org_ids(user_role, caller_user.organization_memberships))
     return org_ids if org_ids else None
 
 
@@ -5435,8 +5429,9 @@ async def _enforce_list_team_v2_access(
     # Always check org admin status so that even own-queries see
     # the full set of organisation teams, not just direct memberships.
     org_admin_org_ids: Final = (
-        await _get_org_admin_org_ids(
+        await _get_org_wide_read_org_ids(
             user_id=caller_user_id,
+            user_role=user_api_key_dict.user_role,
             prisma_client=prisma_client,
             user_api_key_cache=user_api_key_cache,
             proxy_logging_obj=proxy_logging_obj,
@@ -5707,13 +5702,10 @@ async def _authorize_and_filter_teams(
                 proxy_logging_obj=proxy_logging_obj,
             )
             if caller_user is not None:
-                allowed_org_ids = [
-                    m.organization_id
-                    for m in (caller_user.organization_memberships or [])
-                    if m.user_role == LitellmUserRoles.ORG_ADMIN.value and m.organization_id is not None
-                ]
-                if not allowed_org_ids:
-                    allowed_org_ids = None
+                allowed_org_ids = (
+                    list(org_wide_read_org_ids(user_api_key_dict.user_role, caller_user.organization_memberships))
+                    or None
+                )
 
         if allowed_org_ids is None and not is_own_query:
             raise HTTPException(

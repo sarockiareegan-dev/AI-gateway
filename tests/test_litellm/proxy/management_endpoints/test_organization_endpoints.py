@@ -206,6 +206,46 @@ async def test_get_organization_daily_activity_non_admin_defaults_to_admin_orgs(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("role", "expected_org_ids"),
+    [("PROXY_ADMIN_VIEW_ONLY", ["orgA"]), ("INTERNAL_USER", [])],
+)
+async def test_get_organization_daily_activity_admin_viewer_defaults_to_its_member_orgs(
+    monkeypatch, role, expected_org_ids
+):
+    from types import SimpleNamespace
+
+    from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+    from litellm.proxy.management_endpoints import organization_endpoints
+    from litellm.proxy.management_endpoints.organization_endpoints import (
+        get_organization_daily_activity,
+    )
+
+    mock_prisma_client = AsyncMock()
+    mock_prisma_client.db.litellm_organizationtable.find_many = AsyncMock(return_value=[])
+    mock_prisma_client.db.litellm_organizationmembership.find_many = AsyncMock(
+        return_value=[SimpleNamespace(organization_id="orgA", user_role=LitellmUserRoles.INTERNAL_USER.value)]
+    )
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    get_daily_activity_mock = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(organization_endpoints, "get_daily_activity", get_daily_activity_mock)
+
+    await get_organization_daily_activity(
+        organization_ids=None,
+        start_date="2024-02-01",
+        end_date="2024-02-28",
+        model=None,
+        api_key=None,
+        page=1,
+        page_size=10,
+        exclude_organization_ids=None,
+        user_api_key_dict=UserAPIKeyAuth(user_role=LitellmUserRoles[role], user_id="caller"),
+    )
+
+    assert get_daily_activity_mock.call_args.kwargs["entity_id"] == expected_org_ids
+
+
+@pytest.mark.asyncio
 async def test_get_organization_daily_activity_non_admin_unauthorized_org_raises(
     monkeypatch,
 ):
@@ -533,6 +573,50 @@ async def test_organization_info_includes_user_email(monkeypatch):
 # fix routes ``update_organization``, ``organization_member_add``,
 # ``organization_member_update``, and ``organization_member_delete``
 # through the existing ``_verify_org_access`` helper.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("organization_id", "access", "allowed"),
+    [
+        ("org-member-of", "read", True),
+        ("org-member-of", "write", False),
+        ("org-other", "read", False),
+    ],
+)
+async def test_verify_org_access_lets_an_admin_viewer_only_read_its_own_orgs(organization_id, access, allowed):
+    from litellm.proxy._types import LiteLLM_UserTable, LitellmUserRoles, UserAPIKeyAuth
+    from litellm.proxy.management_endpoints.organization_endpoints import _verify_org_access
+
+    caller_user = LiteLLM_UserTable(
+        user_id="viewer",
+        organization_memberships=[
+            {
+                "user_id": "viewer",
+                "organization_id": "org-member-of",
+                "user_role": LitellmUserRoles.INTERNAL_USER.value,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+        ],
+    )
+    viewer = UserAPIKeyAuth(user_id="viewer", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY)
+
+    with (
+        patch(
+            "litellm.proxy.management_endpoints.organization_endpoints.get_user_object",
+            new_callable=AsyncMock,
+            return_value=caller_user,
+        ),
+        patch("litellm.proxy.proxy_server.user_api_key_cache"),
+        patch("litellm.proxy.proxy_server.proxy_logging_obj"),
+    ):
+        if allowed:
+            await _verify_org_access(organization_id, viewer, MagicMock(), access=access)
+            return
+        with pytest.raises(HTTPException) as exc_info:
+            await _verify_org_access(organization_id, viewer, MagicMock(), access=access)
+        assert exc_info.value.status_code == 403
 
 
 @pytest.fixture

@@ -52,6 +52,7 @@ from litellm.proxy.management_endpoints.common_daily_activity import (
 from litellm.proxy.management_endpoints.common_utils import (
     _is_user_team_admin,
     _user_has_admin_view,
+    org_wide_read_org_ids,
     require_caller_user_id_for_non_admin,
     validate_budget_duration,
     validate_finite_spend,
@@ -2098,11 +2099,7 @@ async def _authorize_user_list_request(
             detail={"error": "Only proxy admins and organization admins can list users."},
         )
 
-    allowed_org_ids = [
-        m.organization_id
-        for m in (caller_user.organization_memberships or [])
-        if m.user_role == LitellmUserRoles.ORG_ADMIN.value
-    ]
+    allowed_org_ids = list(org_wide_read_org_ids(user_api_key_dict.user_role, caller_user.organization_memberships))
     if not allowed_org_ids:
         raise HTTPException(
             status_code=403,
@@ -2616,9 +2613,7 @@ async def _resolve_org_filter_for_user_search(
 
     raise HTTPException(
         status_code=403,
-        detail={
-            "error": "Only proxy admins, organization members, or team admins can search users."
-        },
+        detail={"error": "Only proxy admins, organization members, or team admins can search users."},
     )
 
 
@@ -2656,9 +2651,7 @@ async def _resolve_team_org_filter(
 
     raise HTTPException(
         status_code=403,
-        detail={
-            "error": "This team is not part of an organization, so its admins cannot search users."
-        },
+        detail={"error": "This team is not part of an organization, so its admins cannot search users."},
     )
 
 

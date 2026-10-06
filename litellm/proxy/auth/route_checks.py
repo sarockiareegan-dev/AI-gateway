@@ -834,4 +834,4 @@ class RouteChecks:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"user not allowed to access this route, role= {_user_role}. Trying to access: {route}",
             )
-        return False
+        return route in LiteLLMRoutes.org_member_viewer_routes.value

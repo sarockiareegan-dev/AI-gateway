@@ -160,6 +160,46 @@ async def test_ui_view_users_org_admin_filtered_by_org(mocker):
 
 
 @pytest.mark.asyncio
+async def test_user_list_scopes_an_admin_viewer_to_the_orgs_it_belongs_to(mocker):
+    from litellm.proxy._types import LiteLLM_OrganizationMembershipTable, LiteLLM_UserTable
+    from litellm.proxy.management_endpoints.internal_user_endpoints import _authorize_user_list_request
+
+    caller_user = LiteLLM_UserTable(
+        user_id="caller",
+        organization_memberships=[
+            LiteLLM_OrganizationMembershipTable(
+                user_id="caller",
+                organization_id="org-member-of",
+                user_role=LitellmUserRoles.INTERNAL_USER.value,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+        ],
+    )
+    mocker.patch(
+        "litellm.proxy.management_endpoints.internal_user_endpoints.get_user_object",
+        mocker.AsyncMock(return_value=caller_user),
+    )
+
+    async def authorize(role, organization_ids=None):
+        return await _authorize_user_list_request(
+            user_api_key_dict=UserAPIKeyAuth(user_id="caller", user_role=role),
+            organization_ids=organization_ids,
+            prisma_client=mocker.MagicMock(),
+            user_api_key_cache=mocker.MagicMock(),
+            proxy_logging_obj=mocker.MagicMock(),
+        )
+
+    assert await authorize(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY) == "org-member-of"
+    with pytest.raises(HTTPException) as other_org:
+        await authorize(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, organization_ids="org-other")
+    assert other_org.value.status_code == 403
+    with pytest.raises(HTTPException) as plain_member:
+        await authorize(LitellmUserRoles.INTERNAL_USER)
+    assert plain_member.value.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_ui_view_users_non_org_admin_returns_403(mocker):
     """
     caller is not proxy admin and not org admin, no team_id: endpoint returns 403.

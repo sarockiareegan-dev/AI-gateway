@@ -4462,6 +4462,50 @@ async def test_list_team_v1_org_admin_own_query_keeps_memberships_in_other_orgs(
 
 
 @pytest.mark.asyncio
+async def test_list_team_v1_admin_viewer_reads_only_the_orgs_it_belongs_to():
+    from litellm.proxy.common_utils.user_api_key_cache import UserApiKeyCache
+    from litellm.proxy.management_endpoints.team_endpoints import _authorize_and_filter_teams
+
+    cache = UserApiKeyCache()
+    await cache.async_set_cache(
+        key="org_a_member",
+        value=LiteLLM_UserTable(
+            user_id="org_a_member",
+            teams=[],
+            organization_memberships=[_org_membership("org_a_member", "org_A", "user")],
+        ),
+        model_type=LiteLLM_UserTable,
+    )
+    all_teams = [
+        SimpleNamespace(team_id="team_in_org_A", organization_id="org_A", members_with_roles=[]),
+        SimpleNamespace(team_id="team_in_org_B", organization_id="org_B", members_with_roles=[]),
+    ]
+
+    async def find_many(where=None, **kwargs):
+        if where is None:
+            return all_teams
+        return [t for t in all_teams if t.organization_id in where["organization_id"]["in"]]
+
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_teamtable.find_many = AsyncMock(side_effect=find_many)
+
+    async def list_teams_as(role):
+        teams = await _authorize_and_filter_teams(
+            user_api_key_dict=UserAPIKeyAuth(user_role=role, user_id="org_a_member"),
+            user_id=None,
+            prisma_client=prisma_client,
+            user_api_key_cache=cache,
+            proxy_logging_obj=MagicMock(),
+        )
+        return [t.team_id for t in teams]
+
+    assert await list_teams_as(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY) == ["team_in_org_A"]
+    with pytest.raises(HTTPException) as exc_info:
+        await list_teams_as(LitellmUserRoles.INTERNAL_USER)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_list_team_v2_org_admin_cannot_view_other_orgs():
     """
     Test that an org admin is rejected with 403 when filtering by an
@@ -4809,7 +4853,7 @@ async def test_list_team_v2_search_composes_with_user_id_filter():
             new=AsyncMock(return_value=mock_user),
         ),
         patch(
-            "litellm.proxy.management_endpoints.team_endpoints._get_org_admin_org_ids",
+            "litellm.proxy.management_endpoints.team_endpoints._get_org_wide_read_org_ids",
             new=AsyncMock(return_value=None),
         ),
     ):
@@ -16376,6 +16420,9 @@ async def test_team_info_reports_what_the_caller_may_edit(caller, org_admin, ena
         patch.object(team_endpoints, "get_all_team_memberships", AsyncMock(return_value=[])),  # test-quality-ok: no seam on team_info
         patch.object(  # test-quality-ok: the org-admin lookup needs a real prisma client this file's MagicMock cannot provide
             team_endpoints, "_is_user_org_admin_for_team", AsyncMock(return_value=org_admin)
+        ),
+        patch.object(  # test-quality-ok: the org membership lookup needs a real prisma client this file's MagicMock cannot provide
+            team_endpoints, "_can_read_team_org_wide", AsyncMock(return_value=True)
         ),
         _team_admin_may_edit(*enabled_fields),
     ):

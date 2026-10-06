@@ -1813,6 +1813,25 @@ def _proxy_admin_viewer_route_check(route: str, method: str = "GET", query_param
     )
 
 
+def test_proxy_admin_viewer_may_get_organization_info():
+    _proxy_admin_viewer_route_check("/organization/info")
+
+
+@pytest.mark.parametrize(
+    ("route", "method"),
+    [
+        ("/organization/info", "POST"),
+        ("/organization/member_add", "POST"),
+        ("/organization/update", "PATCH"),
+        ("/organization/delete", "DELETE"),
+    ],
+)
+def test_proxy_admin_viewer_cannot_write_organizations(route, method):
+    with pytest.raises(HTTPException) as exc_info:
+        _proxy_admin_viewer_route_check(route, method=method)
+    assert exc_info.value.status_code == 403
+
+
 # Routes returning proxy-wide spend across every team / customer / api_key.
 # Sourced from `LiteLLMRoutes.global_spend_tracking_routes` so any future
 # additions to that list are exercised by these tests automatically.
