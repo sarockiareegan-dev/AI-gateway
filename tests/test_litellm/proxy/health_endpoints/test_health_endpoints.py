@@ -39,6 +39,8 @@ from litellm.proxy.health_endpoints._health_endpoints import (
 from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 from tests.test_litellm.proxy.conftest import create_proxy_test_client
 
+TEAM_MODELS_LICENCE = licensed_entitlements(features=("team_models",))
+
 
 @pytest.mark.asyncio
 async def test_db_health_cache_hit_returns_cached():
@@ -732,7 +734,7 @@ async def test_test_model_connection_uses_loaded_deployment_team_id():
     with (
         patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client),
         patch("litellm.proxy.proxy_server.llm_router", mock_router),
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: TEAM_MODELS_LICENCE),
         patch.object(
             ModelManagementAuthChecks,
             "can_user_make_model_call",
@@ -830,7 +832,7 @@ async def test_test_model_connection_uses_loaded_deployment_team_id_via_model_na
     with (
         patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client),
         patch("litellm.proxy.proxy_server.llm_router", mock_router),
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: TEAM_MODELS_LICENCE),
         patch.object(
             ModelManagementAuthChecks,
             "can_user_make_model_call",
@@ -972,7 +974,7 @@ async def test_test_model_connection_authorized_team_admin_passes_real_auth():
     with (
         patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client),
         patch("litellm.proxy.proxy_server.llm_router", mock_router),
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: TEAM_MODELS_LICENCE),
         patch.object(
             ModelManagementAuthChecks,
             "can_user_make_model_call",

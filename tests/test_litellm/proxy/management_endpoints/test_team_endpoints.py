@@ -12516,7 +12516,10 @@ def _configured_team_metadata_validator(validator):
     TEAM_METADATA_VALIDATOR_REGISTRY.set(validator)
     try:
         with (
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(
+                "litellm.proxy.auth.entitlements.get_entitlement_service",
+                lambda: licensed_entitlements(features=("team_models",)),
+            ),
             patch("litellm.proxy.proxy_server.general_settings", {}),
         ):
             yield

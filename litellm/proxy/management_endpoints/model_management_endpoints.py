@@ -59,7 +59,7 @@ from litellm.proxy._types import (
     UserAPIKeyAuth,
 )
 from litellm.proxy.auth.agami_access import load_request_actor
-from litellm.proxy.auth.entitlements import AUTO_ROUTER_LICENSE_REMEDY
+from litellm.proxy.auth.entitlements import AUTO_ROUTER_LICENSE_REMEDY, EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.team_grants import team_model_aliases
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.config_sync_pubsub import (
@@ -472,7 +472,6 @@ async def _auto_router_capability_slot(
         _license_check,  # pyright: ignore[reportPrivateUsage]  # existing capability slot reads the proxy license singleton
         heuristic_v1_tuning_baselines,
         llm_router,
-        premium_user,
     )
 
     limit: Final = _license_check.auto_router_capability_limit()
@@ -508,9 +507,7 @@ async def _auto_router_capability_slot(
             if team_row is None or llm_router is None:
                 raise HTTPException(status_code=403, detail="The auto router's team or model catalog is unavailable.")
             team: Final = LiteLLM_TeamTable.model_validate(team_row.model_dump())
-            authorize_member_auto_router_team(
-                user_api_key_dict=member_write.actor, team=team, premium_user=premium_user
-            )
+            authorize_member_auto_router_team(user_api_key_dict=member_write.actor, team=team)
             if member_write.model_id is not None:
                 model_where: Final[prisma_types.LiteLLM_ProxyModelTableWhereInput] = {"model_id": member_write.model_id}
                 current_row: Final = await tables.litellm_proxymodeltable.find_unique(where=model_where)
@@ -1007,7 +1004,6 @@ async def patch_model(
     from litellm.proxy.proxy_server import (
         litellm_proxy_admin_name,
         llm_router,
-        premium_user,
         prisma_client,
         store_model_in_db,
         user_api_key_cache,
@@ -1052,7 +1048,6 @@ async def patch_model(
             model_params=db_model,
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
-            premium_user=premium_user,
             member_operation="update",
             incoming_model_params=patch_data,
         )
@@ -1516,17 +1511,13 @@ async def _update_team_model_in_db(
     The row is written through ``write_row`` before the team's model list is touched, so a
     refused or failed write leaves the team as it was (the create path orders itself the same way).
     """
-    # Validate team_id if present in patch_data
-    from litellm.proxy.proxy_server import premium_user
-
     await ModelManagementAuthChecks.allow_team_model_action(
         model_params=patch_data,
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
-        premium_user=premium_user,
     )
 
-    # Validated before the row write, beside the premium check the create path already runs here.
+    # Validated before the row write, beside the team_models licence check the create path already runs here.
     #
     # The merged view is what gets stored, so that is what has to satisfy the invariants.
     # Validating the patch alone rejected a partial edit of an already valid deployment:
@@ -1903,6 +1894,18 @@ def _canonical_session_tags(tags: Sequence[AwsSessionTag]) -> tuple[tuple[str, s
     return tuple(sorted((tag["Key"], tag["Value"]) for tag in tags))
 
 
+def _require_team_models_licence(entitlements: EntitlementService | None) -> None:
+    if is_licensed(LicenseFeature.TEAM_MODELS, entitlements):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "Team-scoped models need the 'team_models' feature on the Agami license. "
+            f"{CommonProxyErrors.not_premium_user.value}"
+        },
+    )
+
+
 class ModelManagementAuthChecks:
     """
     Common auth checks for model management endpoints
@@ -1913,13 +1916,9 @@ class ModelManagementAuthChecks:
         team_id: str,
         user_api_key_dict: UserAPIKeyAuth,
         team_obj: LiteLLM_TeamTable | None = None,
-        premium_user: bool = False,
+        entitlements: EntitlementService | None = None,
     ) -> Literal[True]:
-        if premium_user is False:
-            raise HTTPException(
-                status_code=403,
-                detail={"error": CommonProxyErrors.not_premium_user.value},
-            )
+        _require_team_models_licence(entitlements)
         if user_api_key_dict.user_role and user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
             return True
         elif team_obj is None or not _is_user_team_admin(user_api_key_dict=user_api_key_dict, team_obj=team_obj):
@@ -1984,15 +1983,11 @@ class ModelManagementAuthChecks:
         model_params: Deployment | updateDeployment,
         user_api_key_dict: UserAPIKeyAuth,
         prisma_client: PrismaClient,
-        premium_user: bool,
+        entitlements: EntitlementService | None = None,
     ) -> Literal[True]:
         if model_params.model_info is None or model_params.model_info.team_id is None:
             return True
-        if model_params.model_info.team_id is not None and premium_user is not True:
-            raise HTTPException(
-                status_code=403,
-                detail={"error": CommonProxyErrors.not_premium_user.value},
-            )
+        _require_team_models_licence(entitlements)
 
         _existing_team_row: Final = await _repo_team_table(prisma_client).find_unique(
             where={"team_id": model_params.model_info.team_id}
@@ -2009,7 +2004,7 @@ class ModelManagementAuthChecks:
             team_id=model_params.model_info.team_id,
             user_api_key_dict=user_api_key_dict,
             team_obj=existing_team_row,
-            premium_user=premium_user,
+            entitlements=entitlements,
         )
         return True
 
@@ -2018,7 +2013,6 @@ class ModelManagementAuthChecks:
         model_params: Deployment,
         user_api_key_dict: UserAPIKeyAuth,
         prisma_client: PrismaClient,
-        premium_user: bool,
         allow_missing_team: bool = False,
         member_operation: Literal["create", "update"] | None = None,
         incoming_model_params: updateDeployment | None = None,
@@ -2086,7 +2080,6 @@ class ModelManagementAuthChecks:
                     existing=model_params if member_operation == "update" else None,
                     user_api_key_dict=user_api_key_dict,
                     team=team_obj,
-                    premium_user=premium_user,
                     prisma_client=prisma_client,
                     llm_router=llm_router,
                 )
@@ -2095,7 +2088,6 @@ class ModelManagementAuthChecks:
                 team_id=model_params.model_info.team_id,
                 user_api_key_dict=user_api_key_dict,
                 team_obj=team_obj,
-                premium_user=premium_user,
             )
         ## Check non-team model auth
         elif user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
@@ -2135,7 +2127,6 @@ async def delete_model(
         from litellm.proxy.proxy_server import (
             MODEL_RECONCILE_LOCK,
             llm_router,
-            premium_user,
             prisma_client,
             proxy_logging_obj,
             store_model_in_db,
@@ -2162,7 +2153,6 @@ async def delete_model(
             model_params=model_params,
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
-            premium_user=premium_user,
             allow_missing_team=True,
             model_action=Action.DELETE,
         )
@@ -2332,7 +2322,6 @@ async def add_new_model(
     """
     from litellm.proxy.proxy_server import (
         general_settings,
-        premium_user,
         prisma_client,
         proxy_config,
         proxy_logging_obj,
@@ -2353,7 +2342,6 @@ async def add_new_model(
             model_params=model_params,
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
-            premium_user=premium_user,
             member_operation="create",
             model_action=Action.CREATE,
         )
@@ -2519,7 +2507,6 @@ async def update_model(
     from litellm.proxy.proxy_server import (
         LITELLM_PROXY_ADMIN_NAME,
         llm_router,
-        premium_user,
         prisma_client,
         store_model_in_db,
         user_api_key_cache,
@@ -2559,7 +2546,6 @@ async def update_model(
             model_params=deployment,
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
-            premium_user=premium_user,
             member_operation="update",
             incoming_model_params=model_params,
         )

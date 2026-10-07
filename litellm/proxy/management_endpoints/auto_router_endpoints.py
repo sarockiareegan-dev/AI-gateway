@@ -213,7 +213,7 @@ async def _authorize_router_dry_run(user_api_key_dict: UserAPIKeyAuth, team_id: 
     from litellm.proxy.management_endpoints.model_management_endpoints import (
         ModelManagementAuthChecks,
     )
-    from litellm.proxy.proxy_server import premium_user, prisma_client
+    from litellm.proxy.proxy_server import prisma_client
 
     if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return None
@@ -251,14 +251,9 @@ async def _authorize_router_dry_run(user_api_key_dict: UserAPIKeyAuth, team_id: 
             team_id=team_id,
             user_api_key_dict=user_api_key_dict,
             team_obj=team,
-            premium_user=premium_user,
         )
         return None
-    authorize_member_auto_router_team(
-        user_api_key_dict=user_api_key_dict,
-        team=team,
-        premium_user=premium_user,
-    )
+    authorize_member_auto_router_team(user_api_key_dict=user_api_key_dict, team=team)
     return team
 
 

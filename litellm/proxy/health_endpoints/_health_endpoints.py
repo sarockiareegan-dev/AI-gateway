@@ -2053,7 +2053,6 @@ async def test_model_connection(
     from litellm.proxy.proxy_server import (
         general_settings,
         llm_router,
-        premium_user,
         prisma_client,
     )
     from litellm.types.router import Deployment, LiteLLM_Params
@@ -2150,7 +2149,6 @@ async def test_model_connection(
             ),
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
-            premium_user=premium_user,
         )
         mode = mode or litellm_params.pop("mode", None)
 

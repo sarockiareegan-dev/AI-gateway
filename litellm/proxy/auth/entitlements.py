@@ -54,6 +54,8 @@ class LicenseFeature(str, Enum):
     ENFORCED_PARAMS = "enforced_params"
     TEAM_ADMIN_ROLES = "team_admin_roles"
     ADVANCED_KEYS = "advanced_keys"
+    TEAM_MODELS = "team_models"
+    AUTO_ROUTER = "auto_router"
 
 
 class _LicenseClaims(BaseModel):

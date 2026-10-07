@@ -39,6 +39,17 @@ from litellm.proxy.management_endpoints.model_management_endpoints import (
 from litellm.proxy.utils import PrismaClient
 from litellm.router import Router
 from litellm.types.router import Deployment, LiteLLM_Params, ModelInfo, updateDeployment, updateLiteLLMParams
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements, unlicensed_entitlements
+
+_LICENCE_SEAM: Final = "litellm.proxy.auth.entitlements.get_entitlement_service"
+TEAM_MODELS_LICENCE: Final = licensed_entitlements(features=("team_models", "auto_router"))
+_TEAM_MODELS_DENIED: Final = pytest.mark.parametrize(
+    "entitlements", [licensed_entitlements(features=("auto_router",)), unlicensed_entitlements()]
+)
+
+
+def _model_licence():
+    return TEAM_MODELS_LICENCE
 
 
 async def _passthrough_row(update_data):
@@ -150,20 +161,20 @@ class TestModelManagementAuthChecks:
     async def test_can_user_make_team_model_call_admin_success(self):
         """Test that admin users can make team model calls"""
         result = ModelManagementAuthChecks.can_user_make_team_model_call(
-            team_id="test_team", user_api_key_dict=self.admin_user, premium_user=True
+            team_id="test_team", user_api_key_dict=self.admin_user, entitlements=TEAM_MODELS_LICENCE
         )
         assert result is True
 
-    @pytest.mark.asyncio
-    async def test_can_user_make_team_model_call_non_premium_fails(self):
-        """Test that non-premium users cannot make team model calls"""
-        with pytest.raises(Exception, match='This is a premium feature\\.') as exc_info:
+    @_TEAM_MODELS_DENIED
+    def test_team_model_calls_need_the_team_models_licence_feature(self, entitlements):
+        with pytest.raises(HTTPException) as exc_info:
             ModelManagementAuthChecks.can_user_make_team_model_call(
                 team_id="test_team",
                 user_api_key_dict=self.admin_user,
-                premium_user=False,
+                entitlements=entitlements,
             )
-        assert "403" in str(exc_info.value)
+        assert exc_info.value.status_code == 403
+        assert "'team_models' feature" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     async def test_can_user_make_team_model_call_team_admin_success(self):
@@ -180,7 +191,7 @@ class TestModelManagementAuthChecks:
             team_id="test_team",
             user_api_key_dict=self.team_admin_user,
             team_obj=team_obj,
-            premium_user=True,
+            entitlements=TEAM_MODELS_LICENCE,
         )
         assert result is True
 
@@ -198,28 +209,28 @@ class TestModelManagementAuthChecks:
             model_params=model_params,
             user_api_key_dict=self.admin_user,
             prisma_client=prisma_client,
-            premium_user=True,
+            entitlements=TEAM_MODELS_LICENCE,
         )
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_allow_team_model_action_non_premium_fails(self):
-        """Test team model action fails for non-premium users"""
+    @_TEAM_MODELS_DENIED
+    async def test_team_model_actions_need_the_team_models_licence_feature(self, entitlements):
         model_params = Deployment(
             model_name="test_model",
             litellm_params=LiteLLM_Params(model="test_model", team_id="test_team"),
             model_info={"team_id": "test_team"},
         )
-        prisma_client = MockPrismaClient(team_exists=True)
 
-        with pytest.raises(Exception, match='This is a premium feature\\.') as exc_info:
+        with pytest.raises(HTTPException) as exc_info:
             await ModelManagementAuthChecks.allow_team_model_action(
                 model_params=model_params,
                 user_api_key_dict=self.admin_user,
-                prisma_client=prisma_client,
-                premium_user=False,
+                prisma_client=MockPrismaClient(team_exists=True),
+                entitlements=entitlements,
             )
-        assert "403" in str(exc_info.value)
+        assert exc_info.value.status_code == 403
+        assert "'team_models' feature" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     async def test_allow_team_model_action_nonexistent_team_fails(self):
@@ -238,7 +249,7 @@ class TestModelManagementAuthChecks:
                 model_params=model_params,
                 user_api_key_dict=self.admin_user,
                 prisma_client=prisma_client,
-                premium_user=True,
+                entitlements=TEAM_MODELS_LICENCE,
             )
         assert "400" in str(exc_info.value)
 
@@ -254,12 +265,12 @@ class TestModelManagementAuthChecks:
         )
         prisma_client = MockPrismaClient(team_exists=True)
 
-        result = await ModelManagementAuthChecks.can_user_make_model_call(
-            model_params=model_params,
-            user_api_key_dict=self.admin_user,
-            prisma_client=prisma_client,
-            premium_user=True,
-        )
+        with patch(_LICENCE_SEAM, _model_licence):
+            result = await ModelManagementAuthChecks.can_user_make_model_call(
+                model_params=model_params,
+                user_api_key_dict=self.admin_user,
+                prisma_client=prisma_client,
+            )
         assert result is True
 
     @pytest.mark.asyncio
@@ -274,12 +285,14 @@ class TestModelManagementAuthChecks:
         )
         prisma_client = MockPrismaClient(team_exists=True, user_admin=False)
 
-        with pytest.raises(Exception, match="Team ID=test_team does not match the API key's team") as exc_info:
+        with (
+            patch(_LICENCE_SEAM, _model_licence),
+            pytest.raises(Exception, match="Team ID=test_team does not match the API key's team") as exc_info,
+        ):
             await ModelManagementAuthChecks.can_user_make_model_call(
                 model_params=model_params,
                 user_api_key_dict=self.normal_user,
                 prisma_client=prisma_client,
-                premium_user=True,
             )
         assert "403" in str(exc_info.value)
 
@@ -335,7 +348,7 @@ class TestModelManagementAuthChecks:
         with (
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: prior auth check needs a live DB; only the credential check is under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -373,7 +386,7 @@ class TestModelManagementAuthChecks:
             patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", MagicMock()),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: stubs the DB row fetch; only the credential check is under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.get_db_model",
                 new=AsyncMock(return_value=db_model),
@@ -465,7 +478,7 @@ class TestModelManagementAuthChecks:
         with (
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: prior auth check needs a live DB; only the session tag check is under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -509,7 +522,7 @@ class TestModelManagementAuthChecks:
             patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", MagicMock()),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: stubs the DB row fetch; only the session tag check is under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.get_db_model",
                 new=AsyncMock(return_value=db_model),
@@ -561,7 +574,7 @@ class TestModelManagementAuthChecks:
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: prior auth check needs a live DB; only the session tag check is under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -631,7 +644,6 @@ class TestOrganizationModelWrites:
             model_params=model_params,
             user_api_key_dict=self.org_user,
             prisma_client=MockPrismaClient(),
-            premium_user=False,
             incoming_model_params=incoming_model_params,
             model_action=model_action,
             actor_loader=self._loader(actor),
@@ -1258,7 +1270,7 @@ class TestDeleteModelClearsRouterRegistry:
             patch(f"{_PS}.proxy_config", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.general_settings", {}),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", real_router),
         ):
             await delete_model_endpoint(
@@ -1321,7 +1333,7 @@ class TestDeleteModelClearsRouterRegistry:
             patch(f"{_PS}.proxy_config", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.general_settings", {}),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", mock_router),
         ):
             await delete_model_endpoint(
@@ -1390,7 +1402,7 @@ class TestUpdateModel:
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),
             patch("litellm.proxy.proxy_server.llm_router", mock_router),
             patch("litellm.proxy.proxy_server.store_model_in_db", True),
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -1760,10 +1772,7 @@ class TestTeamModelUpdate:
         prisma_client = MockPrismaClient(team_exists=True)
 
         with (
-            patch(
-                "litellm.proxy.proxy_server.premium_user",
-                True,
-            ),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.team_model_add"
             ) as mock_team_model_add,
@@ -1932,7 +1941,7 @@ class TestTeamModelUpdate:
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.allow_team_model_action",
                 AsyncMock(return_value=True),
             ),
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: team models are premium-gated through a proxy global with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: the team list write is the collaborator whose ordering is asserted
                 "litellm.proxy.management_endpoints.model_management_endpoints.team_model_add",
                 side_effect=team_add,
@@ -2039,10 +2048,7 @@ class TestTeamModelUpdate:
         )
         prisma_client = MockPrismaClient(team_exists=True, user_admin=False)
 
-        with patch(
-            "litellm.proxy.proxy_server.premium_user",
-            True,
-        ):
+        with patch(_LICENCE_SEAM, _model_licence):
             with pytest.raises(Exception, match="does not match the API key's team ID=None, OR you are") as exc_info:
                 await _update_team_model_in_db(
                     db_model=db_model,
@@ -2320,10 +2326,7 @@ class TestTeamModelUpdate:
         prisma_client = MockPrismaClient(team_exists=True)
 
         with (
-            patch(
-                "litellm.proxy.proxy_server.premium_user",
-                True,
-            ),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.team_model_add"
             ) as mock_team_model_add,
@@ -2542,7 +2545,7 @@ class TestAddAndDeleteModelLifecycle:
             patch(f"{_PS}.proxy_config", mock_proxy_config),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.general_settings", {}),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", mock_router),
             patch(_ENCRYPT, side_effect=lambda value, **kwargs: value),
         ):
@@ -2656,7 +2659,7 @@ class TestDeleteTeamBYOKModelGhost:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -2736,7 +2739,7 @@ class TestDeleteTeamBYOKModelGhost:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -2817,7 +2820,7 @@ class TestDeleteTeamBYOKModelGhost:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -2904,7 +2907,7 @@ class TestDeleteTeamBYOKModelGhost:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", mock_router),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -2984,7 +2987,7 @@ class TestDeleteTeamBYOKModelGhost:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", mock_router),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -3063,7 +3066,7 @@ class TestDeleteModelTeamAuth:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -3101,7 +3104,7 @@ class TestDeleteModelTeamAuth:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -3170,7 +3173,7 @@ class TestDeleteModelTeamAuth:
         with (
             patch(f"{_PS}.prisma_client", mock_prisma),
             patch(f"{_PS}.store_model_in_db", True),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", MagicMock()),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.user_api_key_cache", MagicMock()),
@@ -4140,7 +4143,7 @@ class TestModelInfoServerDerivedPricingFilter:
             patch(f"{_PS}.proxy_config", mock_proxy_config),
             patch(f"{_PS}.proxy_logging_obj", MagicMock()),
             patch(f"{_PS}.general_settings", {}),
-            patch(f"{_PS}.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(f"{_PS}.llm_router", mock_router),
             patch(_ENCRYPT, side_effect=lambda value, **kwargs: value),
         ):
@@ -4269,7 +4272,7 @@ class TestPatchModelBlockedAuthGate:
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),
             patch("litellm.proxy.proxy_server.llm_router", MagicMock(**{"get_model_ids.return_value": ["m1"]})),
             patch("litellm.proxy.proxy_server.store_model_in_db", True),
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -4315,7 +4318,7 @@ class TestPatchModelBlockedAuthGate:
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),
             patch("litellm.proxy.proxy_server.llm_router", MagicMock(**{"get_model_ids.return_value": ["m1"]})),
             patch("litellm.proxy.proxy_server.store_model_in_db", True),
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -4368,7 +4371,7 @@ class TestPatchModelRowDeletedBeforeWrite:
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
             patch("litellm.proxy.proxy_server.llm_router", MagicMock(**{"get_model_ids.return_value": ["m1"]})),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: stubs the auth gate so the test exercises the not-found branch under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -4748,7 +4751,7 @@ class TestDeleteEvictionsHoldTheReconcileLock:
         monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma)
         monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", router)
         monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
-        monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+        monkeypatch.setattr(_LICENCE_SEAM, _model_licence)
         monkeypatch.setattr(
             "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
             AsyncMock(return_value=True),
@@ -5140,7 +5143,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
             patch("litellm.proxy.proxy_server.llm_router", MagicMock()),
             patch("litellm.proxy.proxy_server.store_model_in_db", True),
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.get_db_model",
                 new=AsyncMock(return_value=self._db_complexity_router(model_id)),
@@ -5178,7 +5181,7 @@ class TestStrategyRouterWriteValidation:
         with (
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),
             patch("litellm.proxy.proxy_server.store_model_in_db", True),
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -5622,7 +5625,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", fake),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch("litellm.proxy.proxy_server._license_check.auto_router_capability_limit", lambda: 1),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.heuristic_v1_tuning_baselines", baselines),  # test-quality-ok: baselines are a startup-loaded proxy global with no injection seam
             patch(  # test-quality-ok: prior auth check needs a live DB; only the tuning quota is under test
@@ -5729,7 +5732,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", fake),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch("litellm.proxy.proxy_server._license_check.auto_router_capability_limit", lambda: 1),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch(  # test-quality-ok: prior auth check needs a live DB; only the license limit is under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
@@ -5772,7 +5775,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", fake),  # test-quality-ok: endpoint reads proxy globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: config-based lookup must be absent to drive the stored-row branch
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reaches its DB-write branch only with this process setting
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: authorization branch reads the proxy-wide premium flag
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: inject stored regular row without a database
                 "litellm.proxy.management_endpoints.model_management_endpoints.get_db_model",
                 new=AsyncMock(return_value=regular),
@@ -5819,7 +5822,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", fake),  # test-quality-ok: endpoint reads proxy globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: config-based lookup must be absent to drive the stored-row branch
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reaches its DB-write branch only with this process setting
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: authorization branch reads the proxy-wide premium flag
+            patch(_LICENCE_SEAM, _model_licence),
             patch(  # test-quality-ok: endpoint must reject before database authorization needs a live store
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -5859,7 +5862,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", fake),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch("litellm.proxy.proxy_server._license_check.auto_router_capability_limit", lambda: 1),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch(  # test-quality-ok: the write must be refused before this DB step runs
                 "litellm.proxy.management_endpoints.model_management_endpoints.get_db_model",
@@ -5912,7 +5915,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", fake),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
+            patch(_LICENCE_SEAM, _model_licence),
             patch("litellm.proxy.proxy_server._license_check.auto_router_capability_limit", lambda: 1),  # test-quality-ok: endpoint reads proxy server globals with no injection seam
             patch(  # test-quality-ok: prior auth check needs a live DB; only the license limit is under test
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
@@ -5960,7 +5963,7 @@ class TestStrategyRouterWriteValidation:
             patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),
             patch("litellm.proxy.proxy_server.llm_router", MagicMock()),
             patch("litellm.proxy.proxy_server.store_model_in_db", True),
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(_LICENCE_SEAM, _model_licence),
             patch(
                 "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
                 new=AsyncMock(return_value=None),
@@ -6475,7 +6478,7 @@ class TestAccessGroupModelSync:
                 patch(f"{self._PS}.prisma_client", mock_prisma),
                 patch(f"{self._PS}.llm_router", router),
                 patch(f"{self._PS}.store_model_in_db", True),
-                patch(f"{self._PS}.premium_user", True),
+                patch(_LICENCE_SEAM, _model_licence),
                 patch(f"{self._PS}.proxy_logging_obj", MagicMock()),
                 patch(f"{self._PS}.user_api_key_cache", MagicMock()),
                 patch(self._EVICT, new=evict or AsyncMock()),
@@ -6707,7 +6710,7 @@ class TestTeamMemberAutoRouterWrites:
             patch("litellm.proxy.proxy_server.prisma_client", database),  # test-quality-ok: [TQ008] endpoint storage singleton injection
             patch("litellm.proxy.proxy_server.llm_router", self._catalog()),  # test-quality-ok: [TQ008] inject real destination model catalog
             patch("litellm.proxy.proxy_server.store_model_in_db", True),  # test-quality-ok: [TQ008] endpoint storage mode singleton
-            patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: [TQ008] inject licensed process state
+            patch(_LICENCE_SEAM, _model_licence),
             patch("litellm.proxy.proxy_server._license_check.auto_router_capability_limit", return_value=None),  # test-quality-ok: [TQ008] inject unlimited license result
             patch("litellm.proxy.management_endpoints.model_management_endpoints.publish_config_change", new=AsyncMock()),  # test-quality-ok: [TQ008] pubsub I/O boundary
             patch("litellm.proxy.management_endpoints.model_management_endpoints.create_object_audit_log", new=AsyncMock()),  # test-quality-ok: [TQ008] audit database I/O boundary
