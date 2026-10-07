@@ -70,6 +70,7 @@ from litellm.proxy.auth.auth_checks import (
 )
 from litellm.proxy.auth.auth_exception_handler import UserAPIKeyAuthExceptionHandler
 from litellm.proxy.auth.auth_method import AuthMethod
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.auth_object_prefetch import AuthObjectRefs, prefetch_auth_objects
 from litellm.proxy.auth.auth_utils import (
     abbreviate_api_key,
@@ -1575,11 +1576,9 @@ async def _user_api_key_auth_builder(
             RouteChecks.is_llm_api_route(route=route) or RouteChecks.is_info_route(route=route)
         )
         if (should_apply_global_oauth2 and not is_jwt) or should_apply_override_oauth2:
-            from litellm.proxy.proxy_server import premium_user
-
-            if premium_user is not True:
+            if not is_licensed(LicenseFeature.JWT_AUTH):
                 raise ProxyException(
-                    message="Oauth2 token validation is only available for premium users. "
+                    message="OAuth2 token validation needs the 'jwt_auth' feature on the Agami license. "
                     + CommonProxyErrors.not_premium_user.value,
                     type=ProxyErrorTypes.auth_error,
                     param="premium_user",
@@ -1595,11 +1594,10 @@ async def _user_api_key_auth_builder(
             is_jwt = jwt_handler.is_jwt(token=api_key)
             verbose_proxy_logger.debug("is_jwt: %s", is_jwt)
             if is_jwt:
-                from litellm.proxy.proxy_server import premium_user
-
-                if premium_user is not True:
+                if not is_licensed(LicenseFeature.JWT_AUTH):
                     raise ProxyException(
-                        message=f"JWT Auth is an enterprise only feature. {CommonProxyErrors.not_premium_user.value}",
+                        message="JWT auth needs the 'jwt_auth' feature on the Agami license. "
+                        f"{CommonProxyErrors.not_premium_user.value}",
                         type=ProxyErrorTypes.auth_error,
                         param="premium_user",
                         code=status.HTTP_403_FORBIDDEN,

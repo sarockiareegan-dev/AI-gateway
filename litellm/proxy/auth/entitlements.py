@@ -49,6 +49,7 @@ class LicenseFeature(str, Enum):
     AUDIT_LOGS = "audit_logs"
     EMAIL_BRANDING = "email_branding"
     FINE_TUNING = "fine_tuning"
+    JWT_AUTH = "jwt_auth"
 
 
 class _LicenseClaims(BaseModel):

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Final
 
@@ -47,6 +48,11 @@ def licensed_entitlements(
     service: Final = unlicensed_entitlements()
     service.load(issue_test_license(features=features, max_users=max_users, max_teams=max_teams))
     return service
+
+
+def jwt_licence(licensed: bool) -> Callable[[], EntitlementService]:
+    service: Final = licensed_entitlements(features=("jwt_auth",)) if licensed else unlicensed_entitlements()
+    return lambda: service
 
 
 def install_entitlements(monkeypatch: pytest.MonkeyPatch, service: EntitlementService) -> EntitlementService:

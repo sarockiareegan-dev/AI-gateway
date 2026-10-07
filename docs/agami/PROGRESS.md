@@ -79,7 +79,7 @@ One commit per feature. Each needs a test that a licence holding only some other
 
 Each needs a `LicenseFeature` member added and a name agreed (see Open decisions)
 
-- [ ] JWT and OAuth2 auth: `user_api_key_auth.py` (two checks), `auth/oauth2_check.py`, MCP `bridge_token_flow.py` and `idp_token_exchange.py`
+- [x] JWT and OAuth2 auth. Done Oct 7. `LicenseFeature.JWT_AUTH` (`jwt_auth`) gates both checks in `user_api_key_auth.py` (403 naming the feature), `Oauth2Handler.check_oauth2_token`, the MCP bridge token flow and `read_token_exchange_prerequisites`. Tests install a `jwt_auth` licence through `jwt_licence(...)` in `license_test_helpers.py`, and the JWT and OAuth2 rejection tests also cover a licence that holds only another feature. The `premium_user` patches next to them stay until Checkpoint D
 - [ ] Request, response and upload size limits: `auth_utils.py` `max_request_size_mb` and `max_response_size_mb`, `RequestSizeLimitMiddleware` in `proxy_server.py`, `max_file_size_mb` in `common_utils/http_parsing_utils.py`
 - [ ] Enforced params: `proxy_server.py` config load and `litellm_pre_call_utils.py`
 - [ ] Team admin roles: `team_endpoints.py` "Assigning team admins is a premium feature" (two checks)
@@ -133,7 +133,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-Checkpoint C, starting with the `jwt_auth` feature (JWT, OAuth2 and the MCP token flows)
+Checkpoint C, the `request_limits` feature (request, response and upload size limits)
 
 ## Session log
 

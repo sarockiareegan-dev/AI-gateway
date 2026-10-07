@@ -74,17 +74,17 @@ class TokenExchangePrerequisites:
 
 
 def read_token_exchange_prerequisites() -> TokenExchangePrerequisites:
+    from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed  # noqa: PLC0415  # mirrors the proxy reads
     from litellm.proxy.proxy_server import (  # noqa: PLC0415  # rebound after startup, so read them per call
         general_settings,
         jwt_handler,
-        premium_user,
         prisma_client,
     )
 
     return TokenExchangePrerequisites(
         jwt_auth_enabled=general_settings.get("enable_jwt_auth", False) is True,
         has_database=prisma_client is not None,
-        licensed=premium_user is True,
+        licensed=is_licensed(LicenseFeature.JWT_AUTH),
         maps_jwts_to_virtual_keys=_maps_jwts_to_virtual_keys(jwt_handler),
     )
 
