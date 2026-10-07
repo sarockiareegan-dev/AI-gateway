@@ -6376,13 +6376,17 @@ class ProxyConfig:
             ### SSRF URL VALIDATION SETTINGS ###
             _apply_ssrf_general_settings(general_settings)
 
-            ## check if user has set a premium feature in general_settings
-            if general_settings.get("enforced_params") is not None and premium_user is not True:
-                raise ValueError("Trying to use `enforced_params`" + CommonProxyErrors.not_premium_user.value)
-
             if LICENSE_CONFIG_KEY in general_settings:
                 _license_check.load(general_settings[LICENSE_CONFIG_KEY])
                 premium_user = _license_check.is_premium()
+
+            if general_settings.get("enforced_params") is not None and not is_licensed(
+                LicenseFeature.ENFORCED_PARAMS
+            ):
+                raise ValueError(
+                    "`enforced_params` needs the 'enforced_params' feature on the Agami license. "
+                    + CommonProxyErrors.not_premium_user.value
+                )
 
         router_params: Final[dict] = {
             "cache_responses": litellm.cache is not None,  # cache if user passed in cache values

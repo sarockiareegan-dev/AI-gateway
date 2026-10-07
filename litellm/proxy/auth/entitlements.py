@@ -51,6 +51,7 @@ class LicenseFeature(str, Enum):
     FINE_TUNING = "fine_tuning"
     JWT_AUTH = "jwt_auth"
     REQUEST_LIMITS = "request_limits"
+    ENFORCED_PARAMS = "enforced_params"
 
 
 class _LicenseClaims(BaseModel):

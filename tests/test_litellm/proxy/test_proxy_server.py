@@ -14876,3 +14876,34 @@ def test_request_size_limit_middleware_follows_the_request_limits_licence_featur
     middleware: Final = next(m for m in proxy_server_module.app.user_middleware if m.cls is RequestSizeLimitMiddleware)
 
     assert middleware.kwargs["is_request_size_limit_enabled"]() is enabled
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("features", "accepted"), [(("enforced_params",), True), (("sso",), False)])
+async def test_enforced_params_in_config_follow_the_licence_in_the_same_config(
+    tmp_path, monkeypatch, features, accepted
+):
+    from litellm.proxy.proxy_server import ProxyConfig
+    from tests.test_litellm.proxy.auth.license_test_helpers import issue_test_license
+
+    service: Final = install_entitlements(monkeypatch, unlicensed_entitlements())
+    monkeypatch.setattr(proxy_server_module, "_license_check", service)
+    monkeypatch.setattr(proxy_server_module, "premium_user", False)
+    config_path: Final = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "model_list": [],
+                "general_settings": {
+                    "agami_license": issue_test_license(features=features),
+                    "enforced_params": ["user"],
+                },
+            }
+        )
+    )
+
+    if accepted:
+        await ProxyConfig().load_config(router=MagicMock(), config_file_path=str(config_path))
+        return
+    with pytest.raises(ValueError, match="'enforced_params' feature"):
+        await ProxyConfig().load_config(router=MagicMock(), config_file_path=str(config_path))

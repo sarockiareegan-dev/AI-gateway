@@ -20,6 +20,7 @@ from litellm.proxy.litellm_pre_call_utils import (
     KeyAndTeamLoggingSettings,
     LiteLLMProxyRequestSetup,
     _apply_credential_overrides_from_model_config,
+    _enforced_params_check,
     _extract_credential_from_entry,
     _get_dynamic_logging_metadata,
     _get_enforced_params,
@@ -52,6 +53,7 @@ from litellm.constants import (
 from litellm.llms.bedrock.base_aws_llm import BaseAWSLLM
 from litellm.llms.fireworks_ai.common_utils import get_fireworks_session_id
 from litellm.types.utils import CredentialItem
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements, unlicensed_entitlements
 
 
 def test_check_if_token_is_service_account():
@@ -180,6 +182,24 @@ def test_get_enforced_params(general_settings, user_api_key_dict, expected_enfor
 
     enforced_params = _get_enforced_params(general_settings, user_api_key_dict)
     assert enforced_params == expected_enforced_params
+
+
+@pytest.mark.parametrize(
+    ("service", "error"),
+    [
+        (licensed_entitlements(features=("enforced_params",)), "please pass param=user"),
+        (licensed_entitlements(features=("sso",)), "'enforced_params' feature"),
+        (unlicensed_entitlements(), "'enforced_params' feature"),
+    ],
+)
+def test_enforced_params_need_the_enforced_params_licence_feature(service, error):
+    with pytest.raises(ValueError, match=error):
+        _enforced_params_check(
+            request_body={"model": "gpt-4o"},
+            general_settings={"enforced_params": ["user"]},
+            user_api_key_dict=UserAPIKeyAuth(api_key="sk-test"),
+            entitlements=service,
+        )
 
 
 @pytest.mark.asyncio

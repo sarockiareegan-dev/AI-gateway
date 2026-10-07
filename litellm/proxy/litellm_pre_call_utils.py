@@ -58,6 +58,7 @@ from litellm.proxy._types import (
     UserAPIKeyAuth,
 )
 from litellm.proxy.auth.auth_utils import get_request_route
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.route_checks import RouteChecks
 from litellm.proxy.common_utils.callback_utils import (
     decrypt_callback_vars,
@@ -1970,7 +1971,7 @@ async def add_litellm_data_to_request(
 
     """
 
-    from litellm.proxy.proxy_server import llm_router, premium_user
+    from litellm.proxy.proxy_server import llm_router
     from litellm.types.proxy.litellm_pre_call_utils import RedactedDict, SecretFields
 
     # Strip internal-only keys from user input before the proxy sets its own.
@@ -2510,7 +2511,6 @@ async def add_litellm_data_to_request(
         request_body=data,
         general_settings=general_settings,
         user_api_key_dict=user_api_key_dict,
-        premium_user=premium_user,
     )
 
     end_time: Final = time.time()
@@ -2891,7 +2891,7 @@ def _enforced_params_check(
     request_body: dict,
     general_settings: dict | None,
     user_api_key_dict: UserAPIKeyAuth,
-    premium_user: bool,
+    entitlements: EntitlementService | None = None,
 ) -> bool:
     """
     If enforced params are set, check if the request body contains the enforced params.
@@ -2901,9 +2901,10 @@ def _enforced_params_check(
     )
     if enforced_params is None:
         return True
-    if enforced_params and premium_user is not True:
+    if enforced_params and not is_licensed(LicenseFeature.ENFORCED_PARAMS, entitlements):
         raise ValueError(
-            f"Enforced Params is an Enterprise feature. Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
+            "Enforced params need the 'enforced_params' feature on the Agami license. "
+            f"Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
         )
 
     for enforced_param in enforced_params:
