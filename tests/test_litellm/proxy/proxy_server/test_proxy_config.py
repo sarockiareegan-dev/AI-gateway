@@ -36,6 +36,16 @@ from litellm.proxy.proxy_server import (
     validate_deployment_max_agentic_loops,
     validate_auto_router_capability_limits,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
+
+MODEL_AUDIT_LICENCE: Final = licensed_entitlements(features=("model_audit",))
+_MODEL_AUDIT_DENIED: Final = pytest.mark.parametrize(
+    "service", [licensed_entitlements(features=("sso",)), unlicensed_entitlements()]
+)
 
 from .conftest import normalize
 from pydantic import JsonValue, TypeAdapter, ValidationError
@@ -2334,8 +2344,8 @@ async def test_ProxyConfig__init_non_llm_configs_empty_config():
 
 
 @pytest.mark.asyncio
-async def test_ProxyConfig__init_non_llm_configs_premium_invalid_worker_registry_raises(monkeypatch):
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+async def test_ProxyConfig__init_non_llm_configs_licensed_invalid_worker_registry_raises(monkeypatch):
+    install_entitlements(monkeypatch, MODEL_AUDIT_LICENCE)
     pc = ProxyConfig()
     with pytest.raises(ValidationError):
         await pc._init_non_llm_configs(
@@ -2345,23 +2355,24 @@ async def test_ProxyConfig__init_non_llm_configs_premium_invalid_worker_registry
 
 
 @pytest.mark.asyncio
-async def test_ProxyConfig__init_non_llm_configs_worker_registry_requires_premium(monkeypatch):
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
+@_MODEL_AUDIT_DENIED
+async def test_ProxyConfig__init_non_llm_configs_worker_registry_needs_the_model_audit_licence_feature(
+    monkeypatch, service
+):
+    install_entitlements(monkeypatch, service)
     pc = ProxyConfig()
-    with pytest.raises(ValueError, match="Trying to use `worker_registry`This is a premium feature") as exc_info:
+    with pytest.raises(ValueError, match="worker_registry needs the 'model_audit' feature") as exc_info:
         await pc._init_non_llm_configs(
             config={"worker_registry": [{"worker_id": "worker-a", "name": "Worker A", "url": "http://localhost:4001"}]},
             config_file_path=None,
         )
-    message = str(exc_info.value)
-    assert "worker_registry" in message
-    assert CommonProxyErrors.not_premium_user.value in message
+    assert CommonProxyErrors.not_premium_user.value in str(exc_info.value)
     assert pc.worker_registry == []
 
 
 @pytest.mark.asyncio
-async def test_ProxyConfig__init_non_llm_configs_worker_registry_loads_for_premium(monkeypatch):
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+async def test_ProxyConfig__init_non_llm_configs_worker_registry_loads_with_the_model_audit_licence(monkeypatch):
+    install_entitlements(monkeypatch, MODEL_AUDIT_LICENCE)
     pc = ProxyConfig()
     await pc._init_non_llm_configs(
         config={
@@ -2378,10 +2389,10 @@ async def test_ProxyConfig__init_non_llm_configs_worker_registry_loads_for_premi
     ]
 
 
-@pytest.mark.parametrize("premium", [True, False])
+@pytest.mark.parametrize("service", [MODEL_AUDIT_LICENCE, unlicensed_entitlements()])
 @pytest.mark.asyncio
-async def test_ProxyConfig__init_non_llm_configs_no_worker_registry_is_never_gated(monkeypatch, premium):
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", premium)
+async def test_ProxyConfig__init_non_llm_configs_no_worker_registry_is_never_gated(monkeypatch, service):
+    install_entitlements(monkeypatch, service)
     pc = ProxyConfig()
     await pc._init_non_llm_configs(config={}, config_file_path=None)
     assert pc.worker_registry == []
@@ -2633,6 +2644,36 @@ def test_ProxyConfig_get_model_info_with_id_returns_router_model_info():
     assert snapshot == {"id": "m-1", "db_model": True, "blocked": False}
 
 
+@pytest.mark.parametrize(
+    ("service", "shows_audit_fields"),
+    [
+        (MODEL_AUDIT_LICENCE, True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+def test_ProxyConfig_get_model_info_with_id_audit_fields_follow_the_model_audit_licence(
+    monkeypatch, service, shows_audit_fields
+):
+    install_entitlements(monkeypatch, service)
+    created: Final = datetime(2026, 1, 2, 3, 4, 5)
+    updated: Final = datetime(2026, 2, 3, 4, 5, 6)
+    model: Final = SimpleNamespace(
+        model_id="m-1",
+        model_info={"id": "m-1"},
+        blocked=False,
+        created_at=created,
+        updated_at=updated,
+        created_by="alice",
+        updated_by="bob",
+    )
+
+    dumped: Final = ProxyConfig().get_model_info_with_id(model=model, db_model=True).model_dump()
+
+    audit: Final = tuple(dumped.get(field) for field in ("created_at", "updated_at", "created_by", "updated_by"))
+    assert audit == ((created, updated, "alice", "bob") if shows_audit_fields else (None, None, None, None))
+
+
 PINNED_MODEL_INFO: Final = MappingProxyType(
     {
         "id": "pinned-row",
@@ -2741,7 +2782,7 @@ def test_ProxyConfig__add_deployment_ptu_row_with_a_cost_map_copy_still_bills_ze
 
 
 def test_ProxyConfig_get_model_info_with_id_missing_model_id_raises(monkeypatch):
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
+    install_entitlements(monkeypatch, unlicensed_entitlements())
     pc = ProxyConfig()
     # model with no model_id, no model_info — accessing .model_id will fail.
     bad = SimpleNamespace(model_info=None)

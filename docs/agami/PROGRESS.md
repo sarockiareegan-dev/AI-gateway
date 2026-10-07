@@ -87,10 +87,11 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 - [x] Advanced key features. Done Oct 7. `LicenseFeature.ADVANCED_KEYS` (`advanced_keys`) gates wildcard model access groups on keys (403 from `_check_model_access_group`), the `get_spend_routes` key permission (now a 403 instead of a ValueError that `generate_key_helper_fn` turned into a bare "Internal Server Error"), and regenerating virtual keys (the master key can still be regenerated). The old key-tags gate in `_common_key_generation_helper` was dead code, because the premium metadata loop moves `tags` into `metadata` before `data_json` is built, so it was removed. Tags are really gated by `utils._premium_user_check` through `_set_object_metadata_field`, together with guardrails, policies, logging and the other premium metadata fields; Checkpoint D maps each of those fields to a licence feature
 - [x] Team-scoped models and team metadata. Done Oct 7. `LicenseFeature.TEAM_MODELS` (`team_models`) gates creating, editing, deleting and health-testing models that belong to a team (`ModelManagementAuthChecks.can_user_make_team_model_call` and `allow_team_model_action`, both 403), and running `custom_team_metadata_validate` (400). The proxy admin still manages untenanted and organization models without a licence. `premium_user` is gone from the whole model-management call chain, including `can_user_make_model_call` and the `/health/test_connection` caller
 - [x] Auto-router permissions. Done Oct 7, in the same commit because both gates shared the `premium_user` parameter. `LicenseFeature.AUTO_ROUTER` (`auto_router`, the same string the capability limit already reads) gates team members creating and editing their own auto routers (`authorize_member_auto_router_team`, 403), including the dry-run and preview routes
-- [ ] Worker registry and model audit fields (`created_at` / `created_by` on model info): `proxy_server.py`
+- [x] Worker registry and model audit fields. Done Oct 7, which closes Checkpoint C. `LicenseFeature.MODEL_AUDIT` (`model_audit`) gates loading `worker_registry` from config (`ValueError` naming the feature) and adding `created_at`, `updated_at`, `created_by` and `updated_by` to model info in `ProxyConfig.get_model_info_with_id`. The audit fields had no test before; `test_ProxyConfig_get_model_info_with_id_audit_fields_follow_the_model_audit_licence` now covers them
 
 ### Checkpoint D: remove `premium_user`
 
+- [ ] Map each premium metadata field (`LiteLLM_ManagementEndpoint_MetadataFields_Premium`: tags, guardrails, policies, logging, secret manager settings and the rest) to a licence feature, replacing `_premium_user_check` in `_set_object_metadata_field`, `prepare_metadata_fields` and `common_utils.py`
 - [ ] When no gate reads it, delete the `premium_user` global in `proxy_server.py`, `_premium_user_check` in `proxy/utils.py`, and the `premium_user` monkeypatches in tests. Check `rg "premium_user" litellm` returns only `CommonProxyErrors.not_premium_user` (the user-facing message) before closing
 
 ### Checkpoint E: ship
@@ -134,7 +135,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-Checkpoint C, the last step: the `model_audit` feature (worker registry and the `created_at` / `created_by` model info fields in `proxy_server.py`)
+Checkpoint D: list every remaining `premium_user` reader with `rg "premium_user" litellm`, then start with the premium metadata fields
 
 ## Session log
 

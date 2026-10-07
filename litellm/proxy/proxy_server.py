@@ -6598,8 +6598,11 @@ class ProxyConfig:
         ## WORKER REGISTRY (Global Control Plane)
         worker_registry_config: Final = config.get("worker_registry", None)
         if worker_registry_config:
-            if premium_user is not True:
-                raise ValueError("Trying to use `worker_registry`" + CommonProxyErrors.not_premium_user.value)
+            if not is_licensed(LicenseFeature.MODEL_AUDIT):
+                raise ValueError(
+                    "worker_registry needs the 'model_audit' feature on the Agami license. "
+                    + CommonProxyErrors.not_premium_user.value
+                )
             self.worker_registry = [WorkerRegistryEntry(**e) for e in worker_registry_config]
         else:
             self.worker_registry = []
@@ -6754,8 +6757,7 @@ class ProxyConfig:
             model.model_info["db_model"] = True
             model.model_info["blocked"] = bool(getattr(model, "blocked", False))
 
-        if premium_user is True:
-            # seeing "created_at", "updated_at", "created_by", "updated_by" is a LiteLLM Enterprise Feature
+        if is_licensed(LicenseFeature.MODEL_AUDIT):
             model.model_info["created_at"] = getattr(model, "created_at", None)
             model.model_info["updated_at"] = getattr(model, "updated_at", None)
             model.model_info["created_by"] = getattr(model, "created_by", None)
