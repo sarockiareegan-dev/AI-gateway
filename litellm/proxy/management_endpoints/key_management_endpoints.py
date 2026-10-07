@@ -813,8 +813,8 @@ def common_key_access_checks(
     user_api_key_dict: UserAPIKeyAuth,
     data: GenerateKeyRequest | UpdateKeyRequest,
     llm_router: Router | None,
-    premium_user: bool,
     user_id: str | None = None,
+    entitlements: EntitlementService | None = None,
 ) -> Literal[True]:
     """
     Check if user is allowed to make a key request, for this key
@@ -836,11 +836,7 @@ def common_key_access_checks(
             detail=str(e),
         )
 
-    _check_model_access_group(
-        models=data.models,
-        llm_router=llm_router,
-        premium_user=premium_user,
-    )
+    _check_model_access_group(models=data.models, llm_router=llm_router, entitlements=entitlements)
     return True
 
 
@@ -1177,16 +1173,10 @@ async def _common_key_generation_helper(
     from litellm.proxy.proxy_server import (
         litellm_proxy_admin_name,
         llm_router,
-        premium_user,
         prisma_client,
     )
 
-    common_key_access_checks(
-        user_api_key_dict=user_api_key_dict,
-        data=data,
-        llm_router=llm_router,
-        premium_user=premium_user,
-    )
+    common_key_access_checks(user_api_key_dict=user_api_key_dict, data=data, llm_router=llm_router)
 
     validate_budget_duration(data.budget_duration)
     raise_on_invalid_key_logging_config(data.metadata)
@@ -1397,21 +1387,6 @@ async def _common_key_generation_helper(
     if user_api_key_dict.user_id is not None:
         data_json["created_by"] = user_api_key_dict.user_id
         data_json["updated_by"] = user_api_key_dict.user_id
-
-    # Set tags on the new key
-    if "tags" in data_json:
-        from litellm.proxy.proxy_server import premium_user
-
-        if premium_user is not True and data_json["tags"] is not None:
-            raise ValueError(f"Only premium users can add tags to keys. {CommonProxyErrors.not_premium_user.value}")
-
-        _metadata: Final = data_json.get("metadata")
-        if not _metadata:
-            data_json["metadata"] = {"tags": data_json["tags"]}
-        else:
-            data_json["metadata"]["tags"] = data_json["tags"]
-
-        data_json.pop("tags")
 
     # Validate MCP servers in object_permission are within team scope
     _is_proxy_admin_caller: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
@@ -2985,9 +2960,9 @@ async def _validate_update_key_data(
     existing_key_row: LiteLLM_VerificationToken,
     user_api_key_dict: UserAPIKeyAuth,
     llm_router: Router | None,
-    premium_user: bool,
     prisma_client: PrismaClient | None,
     user_api_key_cache: UserApiKeyCache,
+    entitlements: EntitlementService | None = None,
 ) -> None:
     """Validate permissions and constraints for key update."""
     checked_prisma_client: Final = _require_prisma_client(prisma_client)
@@ -3029,7 +3004,7 @@ async def _validate_update_key_data(
         data=data,
         user_id=existing_key_row.user_id,
         llm_router=llm_router,
-        premium_user=premium_user,
+        entitlements=entitlements,
     )
 
     await TeamMemberPermissionChecks.can_team_member_execute_key_management_endpoint(
@@ -3353,7 +3328,6 @@ async def update_key_fn(
     from litellm.proxy.proxy_server import (
         litellm_proxy_admin_name,
         llm_router,
-        premium_user,
         prisma_client,
         proxy_logging_obj,
         user_api_key_cache,
@@ -3383,7 +3357,6 @@ async def update_key_fn(
             existing_key_row=existing_key_row,
             user_api_key_dict=user_api_key_dict,
             llm_router=llm_router,
-            premium_user=premium_user,
             prisma_client=prisma_client,
             user_api_key_cache=user_api_key_cache,
         )
@@ -4394,25 +4367,21 @@ async def _find_deleted_key_info(
     return LiteLLM_DeletedVerificationToken.model_validate(archived_row.model_dump())
 
 
-def _check_model_access_group(models: list[str] | None, llm_router: Router | None, premium_user: bool) -> Literal[True]:
-    """
-    if is_model_access_group is True + is_wildcard_route is True, check if user is a premium user
-
-    Return True if user is a premium user, False otherwise
-    """
+def _check_model_access_group(
+    models: list[str] | None, llm_router: Router | None, entitlements: EntitlementService | None = None
+) -> Literal[True]:
     if models is None or llm_router is None:
         return True
-
-    for model in models:
-        if llm_router._is_model_access_group_for_wildcard_route(model_access_group=model):
-            if not premium_user:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={
-                        "error": f"Setting a model access group on a wildcard model is a premium feature. {CommonProxyErrors.not_premium_user.value}"
-                    },
-                )
-
+    if any(llm_router._is_model_access_group_for_wildcard_route(model_access_group=model) for model in models) and (
+        not is_licensed(LicenseFeature.ADVANCED_KEYS, entitlements)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "Setting a model access group on a wildcard model needs the 'advanced_keys' feature on the "
+                f"Agami license. {CommonProxyErrors.not_premium_user.value}"
+            },
+        )
     return True
 
 
@@ -4512,7 +4481,7 @@ async def generate_key_helper_fn(
     *,
     llm_router: Router | None = None,
 ):
-    from litellm.proxy.proxy_server import premium_user, prisma_client
+    from litellm.proxy.proxy_server import prisma_client
 
     if prisma_client is None:
         raise Exception("Connect Proxy to database to generate keys - https://docs.litellm.ai/docs/proxy/virtual_keys ")
@@ -4667,8 +4636,13 @@ async def generate_key_helper_fn(
         if isinstance(saved_token["metadata"], str):
             saved_token["metadata"] = json.loads(saved_token["metadata"])
         if isinstance(saved_token["permissions"], str):
-            if "get_spend_routes" in saved_token["permissions"] and premium_user is not True:
-                raise ValueError("get_spend_routes permission is a premium feature")
+            if "get_spend_routes" in saved_token["permissions"] and not is_licensed(LicenseFeature.ADVANCED_KEYS):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "error": "get_spend_routes permission needs the 'advanced_keys' feature on the Agami license"
+                    },
+                )
 
             saved_token["permissions"] = json.loads(saved_token["permissions"])
         if isinstance(saved_token["model_max_budget"], str):
@@ -5670,7 +5644,6 @@ async def regenerate_key_fn(
             hash_token,
             llm_router,
             master_key,
-            premium_user,
             prisma_client,
             proxy_logging_obj,
             user_api_key_cache,
@@ -5717,11 +5690,10 @@ async def regenerate_key_fn(
             and _is_master_key(api_key=regenerate_target_key, _master_key=master_key)
         )
 
-        if (
-            premium_user is not True and not is_master_key_regeneration
-        ):  # allow master key regeneration for non-premium users
+        if not is_master_key_regeneration and not is_licensed(LicenseFeature.ADVANCED_KEYS):
             raise ValueError(
-                f"Regenerating Virtual Keys is an Enterprise feature, {CommonProxyErrors.not_premium_user.value}"
+                "Regenerating virtual keys needs the 'advanced_keys' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}"
             )
 
         # Check if key exists, raise exception if key is not in the DB

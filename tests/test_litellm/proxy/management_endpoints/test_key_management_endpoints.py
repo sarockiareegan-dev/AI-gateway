@@ -1,6 +1,10 @@
 from collections.abc import Mapping, Sequence
 
-from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 from contextlib import ExitStack
 from typing import Final
 from types import SimpleNamespace
@@ -772,7 +776,7 @@ async def test_update_key_personal_non_admin_denied_vector_stores(monkeypatch):
                 user_id="alice",
             ),
             llm_router=None,
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("advanced_keys",)),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -883,7 +887,7 @@ async def test_update_key_personal_non_admin_denied_access_groups(
                 user_id="alice",
             ),
             llm_router=None,
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("advanced_keys",)),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -1322,7 +1326,7 @@ async def test_key_update_object_permission_does_not_add_null_fields():
         existing_key_row=existing_key_row,
         user_api_key_dict=user_api_key_dict,
         llm_router=None,
-        premium_user=False,
+        entitlements=unlicensed_entitlements(),
         prisma_client=AsyncMock(),
         user_api_key_cache=MagicMock(),
     )
@@ -1994,7 +1998,7 @@ async def test_update_key_clears_end_user_budget_id_with_empty_string():
         existing_key_row=existing_key,
         user_api_key_dict=UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN, api_key="sk-1"),
         llm_router=None,
-        premium_user=False,
+        entitlements=unlicensed_entitlements(),
         prisma_client=mock_prisma_client,
         user_api_key_cache=MagicMock(),
     )
@@ -2022,7 +2026,7 @@ async def test_update_key_metadata_body_without_end_user_budget_id_is_a_clear_fo
             existing_key_row=existing_key,
             user_api_key_dict=non_admin,
             llm_router=None,
-            premium_user=False,
+            entitlements=unlicensed_entitlements(),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -11824,7 +11828,7 @@ class TestLIT1884KeyUpdateValidation:
                 existing_key_row=existing_key_row,
                 user_api_key_dict=user_api_key_dict,
                 llm_router=None,
-                premium_user=False,
+                entitlements=unlicensed_entitlements(),
                 prisma_client=AsyncMock(),
                 user_api_key_cache=MagicMock(),
             )
@@ -11865,7 +11869,7 @@ class TestLIT1884KeyUpdateValidation:
                     existing_key_row=existing_key_row,
                     user_api_key_dict=user_api_key_dict,
                     llm_router=None,
-                    premium_user=False,
+                    entitlements=unlicensed_entitlements(),
                     prisma_client=AsyncMock(),
                     user_api_key_cache=MagicMock(),
                 )
@@ -11898,7 +11902,7 @@ class TestLIT1884KeyUpdateValidation:
             existing_key_row=existing_key_row,
             user_api_key_dict=user_api_key_dict,
             llm_router=None,
-            premium_user=False,
+            entitlements=unlicensed_entitlements(),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -11931,7 +11935,7 @@ class TestLIT4891SafePresetKeyTypeTransition:
                 existing_key_row=existing_key_row,
                 user_api_key_dict=self._make_auth(),
                 llm_router=None,
-                premium_user=False,
+                entitlements=unlicensed_entitlements(),
                 prisma_client=AsyncMock(),
                 user_api_key_cache=MagicMock(),
             )
@@ -12074,7 +12078,7 @@ class TestKeyOwnerPrivilegeEscalation:
                     existing_key_row=existing,
                     user_api_key_dict=auth,
                     llm_router=None,
-                    premium_user=False,
+                    entitlements=unlicensed_entitlements(),
                     prisma_client=AsyncMock(),
                     user_api_key_cache=MagicMock(),
                 )
@@ -12108,7 +12112,7 @@ class TestKeyOwnerPrivilegeEscalation:
                     existing_key_row=existing,
                     user_api_key_dict=auth,
                     llm_router=None,
-                    premium_user=False,
+                    entitlements=unlicensed_entitlements(),
                     prisma_client=AsyncMock(),
                     user_api_key_cache=MagicMock(),
                 )
@@ -12135,7 +12139,7 @@ class TestKeyOwnerPrivilegeEscalation:
                     existing_key_row=existing,
                     user_api_key_dict=auth,
                     llm_router=None,
-                    premium_user=False,
+                    entitlements=unlicensed_entitlements(),
                     prisma_client=AsyncMock(),
                     user_api_key_cache=MagicMock(),
                 )
@@ -12160,7 +12164,7 @@ class TestKeyOwnerPrivilegeEscalation:
                 existing_key_row=existing,
                 user_api_key_dict=auth,
                 llm_router=None,
-                premium_user=False,
+                entitlements=unlicensed_entitlements(),
                 prisma_client=AsyncMock(),
                 user_api_key_cache=MagicMock(),
             )
@@ -12187,7 +12191,7 @@ class TestKeyOwnerPrivilegeEscalation:
                     existing_key_row=existing,
                     user_api_key_dict=auth,
                     llm_router=None,
-                    premium_user=False,
+                    entitlements=unlicensed_entitlements(),
                     prisma_client=AsyncMock(),
                     user_api_key_cache=MagicMock(),
                 )
@@ -12214,7 +12218,7 @@ class TestKeyOwnerPrivilegeEscalation:
                     existing_key_row=existing,
                     user_api_key_dict=auth,
                     llm_router=None,
-                    premium_user=False,
+                    entitlements=unlicensed_entitlements(),
                     prisma_client=AsyncMock(),
                     user_api_key_cache=MagicMock(),
                 )
@@ -12239,7 +12243,7 @@ class TestKeyOwnerPrivilegeEscalation:
                 existing_key_row=existing,
                 user_api_key_dict=auth,
                 llm_router=None,
-                premium_user=False,
+                entitlements=unlicensed_entitlements(),
                 prisma_client=AsyncMock(),
                 user_api_key_cache=MagicMock(),
             )
@@ -12265,7 +12269,7 @@ class TestKeyOwnerPrivilegeEscalation:
                 existing_key_row=existing,
                 user_api_key_dict=auth,
                 llm_router=None,
-                premium_user=False,
+                entitlements=unlicensed_entitlements(),
                 prisma_client=AsyncMock(),
                 user_api_key_cache=MagicMock(),
             )
@@ -15438,6 +15442,10 @@ async def test_regenerate_applies_normalized_mcp_object_permission():
 
     with (
         patch("litellm.proxy.proxy_server.premium_user", True),
+        patch(
+            "litellm.proxy.auth.entitlements.get_entitlement_service",
+            lambda: licensed_entitlements(features=("advanced_keys",)),
+        ),
         patch("litellm.proxy.proxy_server.master_key", None),
         patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client),
         patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),
@@ -17497,7 +17505,7 @@ async def test_update_key_non_admin_permissions_non_empty_rejected(monkeypatch):
             existing_key_row=_make_personal_key_row_for_alice(),
             user_api_key_dict=_make_alice_internal_user(),
             llm_router=None,
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("advanced_keys",)),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -17526,7 +17534,7 @@ async def test_update_key_non_admin_permissions_explicit_empty_rejected(monkeypa
             existing_key_row=_make_personal_key_row_for_alice(),
             user_api_key_dict=_make_alice_internal_user(),
             llm_router=None,
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("advanced_keys",)),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -17554,7 +17562,7 @@ async def test_update_key_non_admin_permissions_explicit_null_rejected(monkeypat
             existing_key_row=_make_personal_key_row_for_alice(),
             user_api_key_dict=_make_alice_internal_user(),
             llm_router=None,
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("advanced_keys",)),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -17579,7 +17587,7 @@ async def test_update_key_non_admin_omits_permissions_succeeds(monkeypatch):
         existing_key_row=_make_personal_key_row_for_alice(),
         user_api_key_dict=_make_alice_internal_user(),
         llm_router=None,
-        premium_user=True,
+        entitlements=licensed_entitlements(features=("advanced_keys",)),
         prisma_client=mock_prisma_client,
         user_api_key_cache=MagicMock(),
     )
@@ -17608,7 +17616,7 @@ async def test_update_key_admin_can_set_permissions(monkeypatch):
             existing_key_row=_make_personal_key_row_for_alice(),
             user_api_key_dict=admin,
             llm_router=None,
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("advanced_keys",)),
             prisma_client=mock_prisma_client,
             user_api_key_cache=MagicMock(),
         )
@@ -19955,13 +19963,13 @@ async def test_project_detachment_uses_effective_project_for_validation(project_
     if project_id is None:
         await _validate_update_key_data(
             data, existing, UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN),
-            None, False, MagicMock(), cache,
+            None, MagicMock(), cache,
         )
     else:
         with pytest.raises(HTTPException) as exc:
             await _validate_update_key_data(
                 data, existing, UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN),
-                None, False, MagicMock(), cache,
+                None, MagicMock(), cache,
             )
         assert exc.value.status_code == 400
         expected: Final = "not in project's allowed models" if project_id == "project-orbit" else "reassignment"
@@ -19979,7 +19987,7 @@ async def test_key_creator_cannot_detach_project_without_admin_access():
         await _validate_update_key_data(
             UpdateKeyRequest(key=existing.token, project_id=None), existing,
             UserAPIKeyAuth(user_id="user-orbit", user_role=LitellmUserRoles.INTERNAL_USER),
-            None, False, database, UserApiKeyCache(),
+            None, database, UserApiKeyCache(),
         )
     assert exc.value.status_code == 403
     assert "Only proxy admins, team admins, or org admins" in str(exc.value.detail)
@@ -20437,3 +20445,82 @@ def test_key_model_max_budget_needs_the_budgets_licence_feature(features, allowe
         return
     with pytest.raises(ValueError, match="'budgets' feature"):
         validate_model_max_budget(budget, entitlements)
+
+
+_ADVANCED_KEYS_LICENCES: Final = pytest.mark.parametrize(
+    ("service", "allowed"),
+    [
+        (licensed_entitlements(features=("advanced_keys",)), True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+
+
+@_ADVANCED_KEYS_LICENCES
+def test_wildcard_model_access_group_on_a_key_needs_the_advanced_keys_licence_feature(service, allowed):
+    from litellm.proxy.management_endpoints.key_management_endpoints import _check_model_access_group
+
+    router: Final = MagicMock()
+    router._is_model_access_group_for_wildcard_route.side_effect = lambda model_access_group: (
+        model_access_group == "wildcard-group"
+    )
+
+    assert _check_model_access_group(["gpt-4o"], router, service) is True
+    if allowed:
+        assert _check_model_access_group(["gpt-4o", "wildcard-group"], router, service) is True
+        return
+    with pytest.raises(HTTPException) as exc_info:
+        _check_model_access_group(["gpt-4o", "wildcard-group"], router, service)
+    assert exc_info.value.status_code == 403
+    assert "'advanced_keys' feature" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+@_ADVANCED_KEYS_LICENCES
+async def test_get_spend_routes_permission_needs_the_advanced_keys_licence_feature(monkeypatch, service, allowed):
+    install_entitlements(monkeypatch, service)
+    prisma: Final = AsyncMock()
+    prisma.jsonify_object = lambda data: data
+    prisma.db = MagicMock()
+    prisma.db.litellm_objectpermissiontable.create = AsyncMock(return_value=MagicMock(object_permission_id=None))
+    prisma.db.query_raw = AsyncMock(return_value=[])
+    prisma.insert_data = AsyncMock(
+        return_value=MagicMock(
+            token="hashed", litellm_budget_table=None, object_permission=None, created_at=None, updated_at=None
+        )
+    )
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma)
+    generate: Final = generate_key_helper_fn(
+        request_type="key", table_name="key", user_id="admin-1", permissions={"get_spend_routes": True}
+    )
+
+    if allowed:
+        await generate
+        assert any(call.kwargs.get("table_name") == "key" for call in prisma.insert_data.await_args_list)
+        return
+    with pytest.raises(HTTPException) as exc_info:
+        await generate
+    assert exc_info.value.status_code == 403
+    assert "'advanced_keys' feature" in str(exc_info.value.detail)
+    assert not any(call.kwargs.get("table_name") == "key" for call in prisma.insert_data.await_args_list)
+
+
+@pytest.mark.asyncio
+@_ADVANCED_KEYS_LICENCES
+async def test_virtual_key_regeneration_needs_the_advanced_keys_licence_feature(monkeypatch, service, allowed):
+    from litellm.proxy.management_endpoints.key_management_endpoints import regenerate_key_fn
+
+    install_entitlements(monkeypatch, service)
+
+    with pytest.raises(Exception) as exc_info:
+        await regenerate_key_fn(
+            key=None,
+            data=None,
+            user_api_key_dict=UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN, user_id="admin-1"),
+            litellm_changed_by=None,
+        )
+
+    assert ("'advanced_keys' feature" in str(exc_info.value)) is not allowed
+    if allowed:
+        assert "No key passed in" in str(exc_info.value)
