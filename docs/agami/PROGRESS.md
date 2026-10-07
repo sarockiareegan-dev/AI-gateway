@@ -80,7 +80,7 @@ One commit per feature. Each needs a test that a licence holding only some other
 Each needs a `LicenseFeature` member added and a name agreed (see Open decisions)
 
 - [x] JWT and OAuth2 auth. Done Oct 7. `LicenseFeature.JWT_AUTH` (`jwt_auth`) gates both checks in `user_api_key_auth.py` (403 naming the feature), `Oauth2Handler.check_oauth2_token`, the MCP bridge token flow and `read_token_exchange_prerequisites`. Tests install a `jwt_auth` licence through `jwt_licence(...)` in `license_test_helpers.py`, and the JWT and OAuth2 rejection tests also cover a licence that holds only another feature. The `premium_user` patches next to them stay until Checkpoint D
-- [ ] Request, response and upload size limits: `auth_utils.py` `max_request_size_mb` and `max_response_size_mb`, `RequestSizeLimitMiddleware` in `proxy_server.py`, `max_file_size_mb` in `common_utils/http_parsing_utils.py`
+- [x] Request, response and upload size limits. Done Oct 7. `LicenseFeature.REQUEST_LIMITS` (`request_limits`) now decides whether `max_request_size_mb` and `max_response_size_mb` are enforced in `auth_utils.py`, whether `RequestSizeLimitMiddleware` is on, and whether a deployment's `max_file_size_mb` is accepted in `http_parsing_utils.py` (refused with a 400 naming the feature otherwise, as before). Tests cover a `request_limits` licence, a licence holding only another feature and no licence for each of the four. Open: `allowed_ips` in `proxy_server.py` is still a `premium_user` check and is not on this list
 - [ ] Enforced params: `proxy_server.py` config load and `litellm_pre_call_utils.py`
 - [ ] Team admin roles: `team_endpoints.py` "Assigning team admins is a premium feature" (two checks)
 - [ ] Key features: key tags, wildcard model access groups, `get_spend_routes` permission, key regeneration (all in `key_management_endpoints.py`)
@@ -133,7 +133,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-Checkpoint C, the `request_limits` feature (request, response and upload size limits)
+Checkpoint C, the `enforced_params` feature
 
 ## Session log
 

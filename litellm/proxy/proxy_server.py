@@ -336,7 +336,9 @@ from litellm.proxy.auth.entitlements import (
     AUTO_ROUTER_LICENSE_REMEDY,
     LICENSE_CONFIG_KEY,
     LICENSE_ENV_VAR,
+    LicenseFeature,
     get_entitlement_service,
+    is_licensed,
 )
 from litellm.proxy.auth.fallback_budget import router_fallback_budget_check
 from litellm.proxy.auth.fallback_model_access import router_fallback_access_check
@@ -19128,7 +19130,7 @@ app.router.routes = hot_routes_first(app.router.routes)
 app.add_middleware(
     RequestSizeLimitMiddleware,
     get_max_request_size_mb=lambda: general_settings.get("max_request_size_mb"),
-    is_request_size_limit_enabled=lambda: premium_user is True,
+    is_request_size_limit_enabled=lambda: is_licensed(LicenseFeature.REQUEST_LIMITS),
 )
 app.add_middleware(
     AdmissionControlMiddleware,

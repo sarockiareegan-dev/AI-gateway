@@ -30,6 +30,7 @@ from litellm.litellm_core_utils.url_utils import (
 from litellm.llms.azure.passthrough.transformation import azure_router_model_in_endpoint
 from litellm.llms.nvidia_nim.passthrough.transformation import nvidia_nim_model_group_in_path
 from litellm.proxy._types import *
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.common_utils.http_parsing_utils import extract_nested_form_metadata
 from litellm.types.passthrough_endpoints.pass_through_endpoints import (
     LITELLM_PASS_THROUGH_ENDPOINT_MARKER,
@@ -628,7 +629,6 @@ def route_in_additonal_public_routes(current_route: str):
         public_routes: ["LiteLLMRoutes.public_routes", "/spend/calculate", "/api/*"]
     ```
     """
-    from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
     from litellm.proxy.auth.route_checks import RouteChecks
     from litellm.proxy.proxy_server import general_settings
 
@@ -842,15 +842,14 @@ async def check_if_request_size_is_safe(request: Request) -> bool:
         ProxyException: If the request size is too large
 
     """
-    from litellm.proxy.proxy_server import general_settings, premium_user
+    from litellm.proxy.proxy_server import general_settings
 
     max_request_size_mb: Final = general_settings.get("max_request_size_mb", None)
 
     if max_request_size_mb is not None:
-        # Check if premium user
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             verbose_proxy_logger.warning(
-                "using max_request_size_mb - not checking -  this is an enterprise only feature. %s",
+                "max_request_size_mb is not enforced: it needs the 'request_limits' feature on the Agami license. %s",
                 CommonProxyErrors.not_premium_user.value,
             )
             return True
@@ -904,14 +903,13 @@ async def check_response_size_is_safe(response: Any) -> bool:
 
     """
 
-    from litellm.proxy.proxy_server import general_settings, premium_user
+    from litellm.proxy.proxy_server import general_settings
 
     max_response_size_mb: Final = general_settings.get("max_response_size_mb", None)
     if max_response_size_mb is not None:
-        # Check if premium user
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             verbose_proxy_logger.warning(
-                "using max_response_size_mb - not checking -  this is an enterprise only feature. %s",
+                "max_response_size_mb is not enforced: it needs the 'request_limits' feature on the Agami license. %s",
                 CommonProxyErrors.not_premium_user.value,
             )
             return True

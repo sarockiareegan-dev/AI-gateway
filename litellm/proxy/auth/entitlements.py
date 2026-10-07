@@ -50,6 +50,7 @@ class LicenseFeature(str, Enum):
     EMAIL_BRANDING = "email_branding"
     FINE_TUNING = "fine_tuning"
     JWT_AUTH = "jwt_auth"
+    REQUEST_LIMITS = "request_limits"
 
 
 class _LicenseClaims(BaseModel):

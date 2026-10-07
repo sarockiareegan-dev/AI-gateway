@@ -42,7 +42,11 @@ from litellm.proxy._types import (
 )
 from litellm.proxy.auth.login_throttle import LoginThrottle
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
-from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 from litellm.proxy.hooks.parallel_request_limiter_v3 import RequestRateLimiterStash
 from litellm.proxy.proxy_server import app, initialize, openai_exception_handler
 from litellm.utils import _invalidate_model_cost_lowercase_map
@@ -14855,3 +14859,20 @@ async def test_initialize_jwt_auth_leaves_the_declared_jwtauth_mapping_unresolve
 
     assert declared["team_id_jwt_field"] == "os.environ/JWT_TEAM_FIELD"
     assert proxy_server_module.jwt_handler.litellm_jwtauth.team_id_jwt_field == "resolved-team-field"
+
+
+@pytest.mark.parametrize(
+    ("service", "enabled"),
+    [
+        (licensed_entitlements(features=("request_limits",)), True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+def test_request_size_limit_middleware_follows_the_request_limits_licence_feature(monkeypatch, service, enabled):
+    from litellm.proxy.middleware.request_size_limit_middleware import RequestSizeLimitMiddleware
+
+    install_entitlements(monkeypatch, service)
+    middleware: Final = next(m for m in proxy_server_module.app.user_middleware if m.cls is RequestSizeLimitMiddleware)
+
+    assert middleware.kwargs["is_request_size_limit_enabled"]() is enabled

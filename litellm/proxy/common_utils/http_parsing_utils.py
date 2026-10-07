@@ -15,6 +15,7 @@ from litellm.constants import (
     MAX_REQUEST_BODY_SIZE_TO_REPAIR_MB,
 )
 from litellm.proxy._types import ProxyException
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.common_utils.callback_utils import (
     get_metadata_variable_name_from_kwargs,
 )
@@ -334,13 +335,12 @@ def check_file_size_under_limit(
     Check if any files passed in request are under max_file_size_mb
 
     Returns True -> when file size is under max_file_size_mb limit
-    Raises ProxyException -> when file size is over max_file_size_mb limit or not a premium_user
+    Raises ProxyException -> when file size is over max_file_size_mb limit or the licence lacks 'request_limits'
     """
     from litellm.proxy.proxy_server import (
         CommonProxyErrors,
         ProxyException,
         llm_router,
-        premium_user,
     )
 
     file_contents_size: Final = file.size or 0
@@ -370,9 +370,10 @@ def check_file_size_under_limit(
             file_content_size_in_mb,
             max_file_size_mb,
         )
-        if not premium_user:
+        if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             raise ProxyException(
-                message=f"Tried setting max_file_size_mb for /audio/transcriptions. {CommonProxyErrors.not_premium_user.value}",
+                message="max_file_size_mb needs the 'request_limits' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}",
                 code=status.HTTP_400_BAD_REQUEST,
                 type="bad_request",
                 param="file",
