@@ -570,7 +570,7 @@ async def pre_db_read_auth_checks(
     Raises:
     - HTTPException if request fails initial auth checks
     """
-    from litellm.proxy.proxy_server import general_settings, llm_router, premium_user
+    from litellm.proxy.proxy_server import general_settings, llm_router
 
     # Check 1. request size
     await check_if_request_size_is_safe(request=request)
@@ -599,11 +599,6 @@ async def pre_db_read_auth_checks(
     # Check 4. Check if request route is an allowed route on the proxy
     if "allowed_routes" in general_settings:
         _allowed_routes: Final = general_settings["allowed_routes"]
-        if premium_user is not True:
-            verbose_proxy_logger.error(
-                "Trying to set allowed_routes. This is an Enterprise feature. %s",
-                CommonProxyErrors.not_premium_user.value,
-            )
         if route not in _allowed_routes:
             verbose_proxy_logger.error("Route %s not in allowed_routes=%s", route, _allowed_routes)
             raise HTTPException(
@@ -633,11 +628,12 @@ def route_in_additonal_public_routes(current_route: str):
         public_routes: ["LiteLLMRoutes.public_routes", "/spend/calculate", "/api/*"]
     ```
     """
+    from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
     from litellm.proxy.auth.route_checks import RouteChecks
-    from litellm.proxy.proxy_server import general_settings, premium_user
+    from litellm.proxy.proxy_server import general_settings
 
     try:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.ACCESS_CONTROL):
             return False
         if general_settings is None:
             return False

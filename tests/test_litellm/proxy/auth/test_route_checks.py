@@ -16,6 +16,11 @@ from litellm.proxy._types import (
 )
 from litellm.proxy.auth.auth_checks_organization import _user_is_org_admin
 from litellm.proxy.auth.route_checks import RouteChecks
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 
 
 def test_non_admin_config_update_route_rejected():
@@ -2282,18 +2287,14 @@ def test_proxy_admin_viewer_post_blocked_for_management_route_writes(route):
     assert exc_info.value.status_code == 403
 
 
-def test_route_in_additional_public_routes_wildcard_match():
+def test_route_in_additional_public_routes_wildcard_match(monkeypatch):
     """
     Test that route_in_additonal_public_routes supports wildcard patterns.
     """
     from litellm.proxy.auth.auth_utils import route_in_additonal_public_routes
 
-    with (
-        patch(
-            "litellm.proxy.proxy_server.general_settings", {"public_routes": ["/api/*"]}
-        ),
-        patch("litellm.proxy.proxy_server.premium_user", True),
-    ):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("access_control",)))
+    with patch("litellm.proxy.proxy_server.general_settings", {"public_routes": ["/api/*"]}):
         # Wildcard should match subpaths
         assert route_in_additonal_public_routes("/api/users") is True
         assert route_in_additonal_public_routes("/api/users/123") is True
@@ -2301,24 +2302,48 @@ def test_route_in_additional_public_routes_wildcard_match():
         assert route_in_additonal_public_routes("/other/path") is False
 
 
-def test_route_in_additional_public_routes_exact_match():
+def test_route_in_additional_public_routes_exact_match(monkeypatch):
     """
     Test that route_in_additonal_public_routes supports exact matches.
     """
     from litellm.proxy.auth.auth_utils import route_in_additonal_public_routes
 
-    with (
-        patch(
-            "litellm.proxy.proxy_server.general_settings",
-            {"public_routes": ["/health", "/status"]},
-        ),
-        patch("litellm.proxy.proxy_server.premium_user", True),
-    ):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("access_control",)))
+    with patch("litellm.proxy.proxy_server.general_settings", {"public_routes": ["/health", "/status"]}):
         # Exact matches should work
         assert route_in_additonal_public_routes("/health") is True
         assert route_in_additonal_public_routes("/status") is True
         # Non-matching routes should fail
         assert route_in_additonal_public_routes("/other") is False
+
+
+def test_public_routes_need_the_access_control_licence_feature(monkeypatch):
+    from litellm.proxy.auth.auth_utils import route_in_additonal_public_routes
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
+    with patch("litellm.proxy.proxy_server.general_settings", {"public_routes": ["/health", "/api/*"]}):
+        assert route_in_additonal_public_routes("/health") is False
+        assert route_in_additonal_public_routes("/api/users") is False
+
+
+@pytest.mark.asyncio
+async def test_route_restrictions_hold_without_any_licence(monkeypatch):
+    from litellm.proxy.auth.auth_utils import pre_db_read_auth_checks
+
+    install_entitlements(monkeypatch, unlicensed_entitlements())
+    settings: Final = {"allowed_routes": ["/chat/completions"], "admin_only_routes": ["/key/generate"]}
+    request: Final = MagicMock(spec=Request)
+    request.headers = {}
+    request.client = None
+
+    with patch("litellm.proxy.proxy_server.general_settings", settings):
+        with pytest.raises(HTTPException) as allowed_exc:
+            await pre_db_read_auth_checks(request=request, request_data={}, route="/key/list")
+        with pytest.raises(HTTPException) as admin_exc:
+            RouteChecks.custom_admin_only_route_check(route="/key/generate")
+
+    assert allowed_exc.value.status_code == 403
+    assert admin_exc.value.status_code == 403
 
 
 def test_internal_user_can_access_key_reset_spend_route():

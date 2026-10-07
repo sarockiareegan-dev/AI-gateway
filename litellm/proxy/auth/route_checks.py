@@ -6,7 +6,6 @@ from fastapi import HTTPException, Request, status
 
 from litellm._logging import verbose_proxy_logger
 from litellm.proxy._types import (
-    CommonProxyErrors,
     KeyManagementRoutes,
     LiteLLM_UserTable,
     LiteLLMRoutes,
@@ -347,15 +346,9 @@ class RouteChecks:
 
     @staticmethod
     def custom_admin_only_route_check(route: str):
-        from litellm.proxy.proxy_server import general_settings, premium_user
+        from litellm.proxy.proxy_server import general_settings
 
         if "admin_only_routes" in general_settings:
-            if premium_user is not True:
-                verbose_proxy_logger.error(
-                    "Trying to use 'admin_only_routes' this is an Enterprise only feature. %s",
-                    CommonProxyErrors.not_premium_user.value,
-                )
-                return
             if route in general_settings["admin_only_routes"]:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
