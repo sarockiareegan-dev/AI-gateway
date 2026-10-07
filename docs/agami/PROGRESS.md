@@ -92,6 +92,7 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 ### Checkpoint D: remove `premium_user`
 
 - [x] Premium metadata fields. Done Oct 7. `PREMIUM_METADATA_FIELD_LICENCES` in `common_utils.py` maps each field to a feature (decided Oct 7): `guardrails`, `policies` and `disable_global_guardrails` to `guardrails`, `logging` to `logging_integrations`, `secret_manager_settings` to `secret_managers`, `allowed_passthrough_routes` to `access_control`, and `tags`, `team_member_key_duration` and `prompts` to `advanced_keys`. `require_metadata_field_licence` replaces `_premium_user_check` on key, team and organization create and update, and returns a 403 naming the field and feature. Empty values still need no licence and still clear the field. Bug fixed on the way: `/key/update` ran the old check inside a `try` that only logged, so an unlicensed premium field was silently dropped and the update went through; it is now refused. The mock-based tests that only asserted `_premium_user_check` was called were replaced with behaviour tests over every field
+- [x] Request-time guardrails, policies and callback disabling in `litellm_pre_call_utils.py`. Done Oct 7. Guardrails and policies read from key, team or project metadata need the `guardrails` feature (403 "guardrails is a premium feature" or "policies is a premium feature"). Turning callbacks off per request, through the `x-litellm-disable-callbacks` header or the key's `litellm_disabled_callbacks`, needs `logging_integrations`; without it the list is ignored. The dispatch-side `EnterpriseCallbackControls` this gate mirrored no longer exists in the fork, so the function's docstring was updated. Tests cover each metadata source with no licence, a licence holding another feature, and the right licence, and all 14 mutants of the gates were killed
 - Full-suite note: with `-n 8`, `test_validate_auto_router_capability_limits_refuses_to_start_over_the_limit` and `test_auth_as_cleans_up_on_exit` can fail depending on how xdist splits the tests (shared router state and the `TestPriceDataReload*` dependency override). With `--dist loadfile`, or run on their own, they pass. With `--dist loadfile`, four `test_routes_model_info.py` tests and `test_ProxyConfig_reload_search_tools_from_db_serializes_overlapping_refreshes` fail instead, and pass when their files run alone
 - [ ] When no gate reads it, delete the `premium_user` global in `proxy_server.py`, `_premium_user_check` in `proxy/utils.py`, and the `premium_user` monkeypatches in tests. Check `rg "premium_user" litellm` returns only `CommonProxyErrors.not_premium_user` (the user-facing message) before closing
 
@@ -136,7 +137,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-Checkpoint D: the remaining `premium_user` readers from `rg "premium_user" litellm`, starting with `litellm_pre_call_utils.py` (dynamic callback disabling and the remaining `_premium_user_check` calls)
+Checkpoint D: the remaining `premium_user` readers from `rg "premium_user" litellm`, next `proxy/utils.py` (`ProxyLogging` and `_premium_user_check` callers) and the auth helpers
 
 ## Session log
 

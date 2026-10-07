@@ -5,11 +5,12 @@ import os
 import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Final
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from botocore.credentials import Credentials
-from fastapi import Request
+from fastapi import HTTPException, Request
 from opentelemetry.trace import INVALID_SPAN, NonRecordingSpan, SpanContext
 from pydantic import ValidationError as PydanticValidationError
 from starlette.datastructures import Headers
@@ -19,6 +20,8 @@ from litellm.proxy._types import AddTeamCallback, ProxyException, TeamCallbackMe
 from litellm.proxy.litellm_pre_call_utils import (
     KeyAndTeamLoggingSettings,
     LiteLLMProxyRequestSetup,
+    _add_guardrails_from_key_or_team_metadata,
+    _add_guardrails_from_policies_in_metadata,
     _apply_credential_overrides_from_model_config,
     _enforced_params_check,
     _extract_credential_from_entry,
@@ -54,6 +57,13 @@ from litellm.llms.bedrock.base_aws_llm import BaseAWSLLM
 from litellm.llms.fireworks_ai.common_utils import get_fireworks_session_id
 from litellm.types.utils import CredentialItem
 from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements, unlicensed_entitlements
+
+_LICENCE_SEAM: Final = "litellm.proxy.auth.entitlements.get_entitlement_service"
+GUARDRAILS_LICENCE: Final = licensed_entitlements(features=("guardrails",))
+
+
+def _guardrails_licence():
+    return patch(_LICENCE_SEAM, lambda: GUARDRAILS_LICENCE)
 
 
 def test_check_if_token_is_service_account():
@@ -200,6 +210,66 @@ def test_enforced_params_need_the_enforced_params_licence_feature(service, error
             user_api_key_dict=UserAPIKeyAuth(api_key="sk-test"),
             entitlements=service,
         )
+
+
+_METADATA_SOURCES: Final = ("key_metadata", "team_metadata", "project_metadata")
+
+
+@pytest.mark.parametrize("source", _METADATA_SOURCES)
+@pytest.mark.parametrize("service", [unlicensed_entitlements(), licensed_entitlements(features=("sso",))])
+def test_metadata_guardrails_need_the_guardrails_licence_feature(source, service):
+    data: Final = {"metadata": {}}
+    sources: Final = {name: None for name in _METADATA_SOURCES} | {source: {"guardrails": ["pii-mask"]}}
+
+    with patch(_LICENCE_SEAM, lambda: service), pytest.raises(HTTPException) as exc:
+        _add_guardrails_from_key_or_team_metadata(data=data, metadata_variable_name="metadata", **sources)
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail["error"].startswith("guardrails is a premium feature")
+    assert data == {"metadata": {}}
+
+
+@pytest.mark.parametrize("source", _METADATA_SOURCES)
+def test_licensed_metadata_guardrails_reach_the_request(source):
+    data: Final = {"metadata": {}}
+    sources: Final = {name: None for name in _METADATA_SOURCES} | {source: {"guardrails": ["pii-mask"]}}
+
+    with _guardrails_licence():
+        _add_guardrails_from_key_or_team_metadata(data=data, metadata_variable_name="metadata", **sources)
+
+    assert data == {"metadata": {"guardrails": ["pii-mask"]}}
+
+
+@pytest.mark.parametrize("source", _METADATA_SOURCES)
+@pytest.mark.parametrize("service", [unlicensed_entitlements(), licensed_entitlements(features=("sso",))])
+def test_metadata_policies_need_the_guardrails_licence_feature(source, service):
+    sources: Final = {name: None for name in _METADATA_SOURCES} | {source: {"policies": ["strict"]}}
+
+    with patch(_LICENCE_SEAM, lambda: service), pytest.raises(HTTPException) as exc:
+        _add_guardrails_from_policies_in_metadata(data={"metadata": {}}, metadata_variable_name="metadata", **sources)
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail["error"].startswith("policies is a premium feature")
+
+
+@pytest.mark.parametrize("source", _METADATA_SOURCES)
+def test_licensed_metadata_policies_resolve_their_guardrails(source):
+    from litellm.proxy.policy_engine.policy_registry import get_policy_registry
+    from litellm.types.proxy.policy_engine import Policy, PolicyGuardrails
+
+    data: Final = {"metadata": {}}
+    sources: Final = {name: None for name in _METADATA_SOURCES} | {source: {"policies": ["strict"]}}
+    policy_registry: Final = get_policy_registry()
+    policy_registry._policies = {"strict": Policy(guardrails=PolicyGuardrails(add=["pii-mask"]))}
+    policy_registry._initialized = True
+    try:
+        with _guardrails_licence():
+            _add_guardrails_from_policies_in_metadata(data=data, metadata_variable_name="metadata", **sources)
+    finally:
+        policy_registry._policies = {}
+        policy_registry._initialized = False
+
+    assert data["metadata"]["guardrails"] == ["pii-mask"]
 
 
 @pytest.mark.asyncio
@@ -3926,7 +3996,7 @@ async def test_team_guardrails_append_to_key_guardrails():
         team_metadata={"guardrails": ["team-guardrail-1", "key-guardrail-1"]},
     )
 
-    with patch("litellm.proxy.utils._premium_user_check"):
+    with _guardrails_licence():
         updated_data = await add_litellm_data_to_request(
             data=data,
             request=request_mock,
@@ -3975,7 +4045,7 @@ async def test_request_guardrails_do_not_override_key_guardrails():
         "guardrails": [],
     }
 
-    with patch("litellm.proxy.utils._premium_user_check"):
+    with _guardrails_licence():
         updated_data_empty = await add_litellm_data_to_request(
             data=data_with_empty,
             request=request_mock,
@@ -4021,7 +4091,7 @@ async def test_project_guardrails_merge_with_key_and_team():
         project_metadata={"guardrails": ["project-guardrail-1", "team-guardrail-1"]},
     )
 
-    with patch("litellm.proxy.utils._premium_user_check"):
+    with _guardrails_licence():
         updated_data = await add_litellm_data_to_request(
             data=data,
             request=request_mock,
@@ -4070,7 +4140,7 @@ async def test_project_guardrails_only():
         project_metadata={"guardrails": ["project-guardrail-1", "project-guardrail-2"]},
     )
 
-    with patch("litellm.proxy.utils._premium_user_check"):
+    with _guardrails_licence():
         updated_data = await add_litellm_data_to_request(
             data=data,
             request=request_mock,
@@ -4654,7 +4724,7 @@ async def test_bearer_token_not_in_debug_logs():
     try:
         with (
             patch("litellm.proxy.proxy_server.llm_router", None),
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch(_LICENCE_SEAM, licensed_entitlements),
         ):
             await add_litellm_data_to_request(
                 data=data,
@@ -5257,7 +5327,7 @@ async def test_team_guardrail_merges_with_global_policy():
     attachment_registry._initialized = True
 
     try:
-        with patch("litellm.proxy.utils._premium_user_check"):
+        with _guardrails_licence():
             await move_guardrails_to_metadata(
                 data=data,
                 _metadata_variable_name="metadata",
