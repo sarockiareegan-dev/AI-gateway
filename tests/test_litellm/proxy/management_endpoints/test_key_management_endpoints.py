@@ -2435,7 +2435,7 @@ async def test_prepare_key_update_data_disable_global_guardrails_true_premium_pe
     monkeypatch,
 ):
     """A premium user enabling the feature (True) succeeds and the value persists."""
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
     data = UpdateKeyRequest(key="sk-1", disable_global_guardrails=True)
     existing_key = LiteLLM_VerificationToken(token="hashed")
 
@@ -7167,6 +7167,7 @@ def _written_key_row(prisma: AsyncMock) -> Mapping[str, object]:
 async def test_bulk_update_keys_item_without_a_field_leaves_that_column_alone(monkeypatch):
     """A tags-only item used to reach the DB with max_budget, team_id, and budget_id as explicit
     nulls, so tagging a key wiped its budget and detached it from its team."""
+    install_entitlements(monkeypatch, licensed_entitlements(features=("advanced_keys",)))
     written = _written_key_row(await _bulk_update_one_key(monkeypatch, {"tags": ["team-a"]}))
 
     assert written["metadata"]["tags"] == ["team-a"]
@@ -13433,7 +13434,12 @@ def _generate_policy_mocks(mock_prisma: MagicMock, generate_key_helper: AsyncMoc
     stack = ExitStack()
     stack.enter_context(patch("litellm.proxy.proxy_server.prisma_client", mock_prisma))  # test-quality-ok: fake DB
     stack.enter_context(patch("litellm.proxy.proxy_server.llm_router", None))  # test-quality-ok: no router in test
-    stack.enter_context(patch("litellm.proxy.proxy_server.premium_user", True))  # test-quality-ok: premium fields
+    stack.enter_context(
+        patch(
+            "litellm.proxy.auth.entitlements.get_entitlement_service",
+            lambda: licensed_entitlements(features=("guardrails", "advanced_keys")),
+        )
+    )
     stack.enter_context(patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"))  # test-quality-ok: admin
     stack.enter_context(patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()))  # test-quality-ok: cache
     stack.enter_context(
@@ -20524,3 +20530,28 @@ async def test_virtual_key_regeneration_needs_the_advanced_keys_licence_feature(
     assert ("'advanced_keys' feature" in str(exc_info.value)) is not allowed
     if allowed:
         assert "No key passed in" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("service", "allowed"),
+    [
+        (licensed_entitlements(features=("guardrails",)), True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+def test_key_update_refuses_unlicensed_premium_metadata_instead_of_dropping_it(monkeypatch, service, allowed):
+    from litellm.proxy.management_endpoints.key_management_endpoints import prepare_metadata_fields
+
+    install_entitlements(monkeypatch, service)
+    data: Final = UpdateKeyRequest(key="sk-1", guardrails=["pii-mask"], tags=[])
+
+    if not allowed:
+        with pytest.raises(HTTPException) as exc_info:
+            prepare_metadata_fields(data=data, non_default_values={}, existing_metadata={})
+        assert exc_info.value.status_code == 403
+        assert "guardrails needs the 'guardrails' feature" in str(exc_info.value.detail)
+        return
+    prepared: Final = prepare_metadata_fields(data=data, non_default_values={}, existing_metadata={})
+    assert prepared["metadata"]["guardrails"] == ["pii-mask"]
+    assert prepared["metadata"]["tags"] == []

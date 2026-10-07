@@ -63,13 +63,42 @@ from litellm.proxy._types import (  # noqa: F401  re-exported
 )
 from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.common_utils.timezone_utils import get_budget_reset_time
-from litellm.proxy.utils import _premium_user_check
 from litellm.repositories.team_repository import TeamRepository
 from litellm.types.utils import BudgetConfig
 
 if TYPE_CHECKING:
     from litellm.proxy._types import NewProjectRequest, UpdateProjectRequest
     from litellm.proxy.utils import PrismaClient, ProxyLogging
+
+
+PREMIUM_METADATA_FIELD_LICENCES: Final = MappingProxyType(
+    {
+        "disable_global_guardrails": LicenseFeature.GUARDRAILS,
+        "guardrails": LicenseFeature.GUARDRAILS,
+        "policies": LicenseFeature.GUARDRAILS,
+        "tags": LicenseFeature.ADVANCED_KEYS,
+        "team_member_key_duration": LicenseFeature.ADVANCED_KEYS,
+        "prompts": LicenseFeature.ADVANCED_KEYS,
+        "logging": LicenseFeature.LOGGING_INTEGRATIONS,
+        "secret_manager_settings": LicenseFeature.SECRET_MANAGERS,
+        "allowed_passthrough_routes": LicenseFeature.ACCESS_CONTROL,
+    }
+)
+
+
+def require_metadata_field_licence(
+    field_name: str, value: object, entitlements: EntitlementService | None = None
+) -> None:
+    feature: Final = PREMIUM_METADATA_FIELD_LICENCES.get(field_name)
+    if feature is None or not value or is_licensed(feature, entitlements):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "error": f"{field_name} needs the '{feature.value}' feature on the Agami license. "
+            f"{CommonProxyErrors.not_premium_user.value}"
+        },
+    )
 
 
 def validate_team_model_max_budget(
@@ -521,8 +550,7 @@ def _set_object_metadata_field(
         field_name: Name of the metadata field to set
         value: Value to set for the field
     """
-    if field_name in LiteLLM_ManagementEndpoint_MetadataFields_Premium and value:
-        _premium_user_check(field_name)
+    require_metadata_field_licence(field_name, value)
 
     object_data.metadata = object_data.metadata or {}
     object_data.metadata[field_name] = value
@@ -716,13 +744,11 @@ def _update_metadata_field(updated_kv: dict, field_name: str) -> None:
         updated_kv: The key-value dict being used for the update
         field_name: Name of the metadata field being updated
     """
-    if field_name in LiteLLM_ManagementEndpoint_MetadataFields_Premium:
-        # The UI sends falsy defaults (False, [], {}) even when the user has not
-        # enabled any enterprise feature (see #20304, #30285); require a license
-        # only for a truthy value. The falsy value is still persisted below so a
-        # previously-set field can be cleared.
-        if updated_kv.get(field_name):
-            _premium_user_check()
+    # The UI sends falsy defaults (False, [], {}) even when the user has not
+    # enabled any enterprise feature (see #20304, #30285); require a license
+    # only for a truthy value. The falsy value is still persisted below so a
+    # previously-set field can be cleared.
+    require_metadata_field_licence(field_name, updated_kv.get(field_name))
 
     if field_name in updated_kv and updated_kv[field_name] is not None:
         # remove field from updated_kv

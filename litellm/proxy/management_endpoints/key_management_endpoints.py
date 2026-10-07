@@ -96,6 +96,7 @@ from litellm.proxy.management_endpoints.common_utils import (
     caller_org_wide_read_org_ids,
     can_see_every_team_key,
     org_wide_read_org_ids,
+    require_metadata_field_licence,
     validate_budget_duration,
     validate_finite_spend,
 )
@@ -2304,6 +2305,8 @@ def prepare_metadata_fields(data: BaseModel, non_default_values: dict, existing_
         casted_metadata[reserved_field] = existing_value
 
     data_json: Final = _as_object_dict(data.model_dump(exclude_unset=True, exclude_none=True))
+    for k, v in data_json.items():
+        require_metadata_field_licence(k, v)
 
     try:
         for k, v in data_json.items():
@@ -2313,10 +2316,6 @@ def prepare_metadata_fields(data: BaseModel, non_default_values: dict, existing_
                 else:
                     casted_metadata[k] = v
             if k in LiteLLM_ManagementEndpoint_MetadataFields_Premium:
-                from litellm.proxy.utils import _premium_user_check
-
-                if v:
-                    _premium_user_check(k)
                 casted_metadata[k] = v
 
     except Exception as e:

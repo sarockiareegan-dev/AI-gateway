@@ -8428,8 +8428,8 @@ async def test_update_team_guardrails_with_org_id(
             "litellm.proxy.proxy_server.create_audit_log_for_update", new=AsyncMock()
         ),
         patch(
-            "litellm.proxy.proxy_server.premium_user",
-            True,  # Required for guardrails feature
+            "litellm.proxy.auth.entitlements.get_entitlement_service",
+            lambda: licensed_entitlements(features=("guardrails",)),
         ),
         patch("litellm.proxy.proxy_server.llm_router", MagicMock()),
     ):
@@ -12298,7 +12298,10 @@ async def _written_metadata_with_budget(kind, body):
     from litellm.proxy._types import LiteLLM_BudgetTable
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
+        patch(
+            "litellm.proxy.auth.entitlements.get_entitlement_service",
+            lambda: licensed_entitlements(features=("advanced_keys",)),
+        ),
         patch(  # test-quality-ok: update_team imports update_budget at call time; the module attribute is its only seam
             "litellm.proxy.management_endpoints.budget_management_endpoints.update_budget",
             AsyncMock(return_value=LiteLLM_BudgetTable(budget_id="budget-existing-123")),
