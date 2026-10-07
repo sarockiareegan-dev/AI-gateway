@@ -71,7 +71,7 @@ One commit per feature. Each needs a test that a licence holding only some other
 
 - [x] `sso`, done Oct 7: `_raise_if_sso_exceeds_free_user_limit` (used by `/sso/key/generate` and the SAML callback) lets more than 5 billable SSO users in only with the `sso` feature, and takes an optional `EntitlementService` for tests. `/sso/debug/login` checks the same feature. The UI token's `premium_user` flag stays until Checkpoint D
 - [x] `guardrails`, done Oct 7: per-request guardrail `extra_body` (`get_guardrail_dynamic_request_body_params` in `custom_guardrail.py`) is honoured only with the `guardrails` feature, otherwise it is dropped with a warning. `_validate_premium_user` is deleted. The unused `premium_user` parameter of `initialize_guardrails` and `initialize_callbacks_on_proxy` goes in Checkpoint D
-- [ ] `budgets`: tag budgets in `router_strategy/budget_limiter.py` `_init_tag_budgets`, team `model_max_budget` in `management_endpoints/common_utils.py` `validate_team_model_max_budget` (takes a `premium_user` parameter), key `model_max_budget` in `key_management_endpoints.py`
+- [x] `budgets`, done Oct 7: tag budgets (`_init_tag_budgets` in `budget_limiter.py`), team `model_max_budget` (`validate_team_model_max_budget`, which drops its `premium_user` parameter for an optional `EntitlementService`), and key, user and `/budget` `model_max_budget` (`validate_model_max_budget`, same optional parameter) all need the `budgets` feature
 - [ ] `access_control`: `allowed_routes` and `public_routes` in `auth/auth_utils.py`, `admin_only_routes` in `auth/route_checks.py` `custom_admin_only_route_check`
 - [ ] Cleanup: delete the commented-out `_check_if_using_premium_email_feature` call in `litellm/integrations/email_alerting.py`
 

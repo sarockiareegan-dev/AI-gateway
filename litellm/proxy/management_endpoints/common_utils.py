@@ -61,6 +61,7 @@ from litellm.proxy._types import (
 from litellm.proxy._types import (  # noqa: F401  re-exported
     user_api_key_has_admin_view as _user_has_admin_view,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.common_utils.timezone_utils import get_budget_reset_time
 from litellm.proxy.utils import _premium_user_check
 from litellm.repositories.team_repository import TeamRepository
@@ -73,16 +74,17 @@ if TYPE_CHECKING:
 
 def validate_team_model_max_budget(
     model_max_budget: Mapping[str, BudgetConfig] | None,
-    premium_user: bool,
+    entitlements: EntitlementService | None = None,
 ) -> None:
     """Reject a team `model_max_budget` the limiter could not enforce (no duration, bad cap, tpm/rpm limits)."""
     if not model_max_budget:
         return
-    if premium_user is not True:
+    if not is_licensed(LicenseFeature.BUDGETS, entitlements):
         raise HTTPException(
             status_code=403,
             detail={
-                "error": f"Setting model_max_budget on a team is an enterprise feature. {CommonProxyErrors.not_premium_user.value}"
+                "error": "Setting model_max_budget on a team needs the 'budgets' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}"
             },
         )
     for model_name, budget_config in model_max_budget.items():

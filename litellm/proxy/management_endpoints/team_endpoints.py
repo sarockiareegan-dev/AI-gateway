@@ -1497,7 +1497,6 @@ async def new_team(
             general_settings,
             litellm_proxy_admin_name,
             llm_router,
-            premium_user,
             prisma_client,
             user_api_key_cache,
         )
@@ -1528,7 +1527,7 @@ async def new_team(
 
         validate_budget_duration(data.budget_duration)
         validate_budget_duration(data.team_member_budget_duration)
-        validate_team_model_max_budget(model_max_budget=data.model_max_budget, premium_user=premium_user)
+        validate_team_model_max_budget(model_max_budget=data.model_max_budget)
 
         if data.soft_budget is not None:
             if data.max_budget is not None:
@@ -2243,7 +2242,6 @@ async def update_team(
         from litellm.proxy.proxy_server import (
             litellm_proxy_admin_name,
             llm_router,
-            premium_user,
             prisma_client,
             proxy_logging_obj,
             user_api_key_cache,
@@ -2282,7 +2280,7 @@ async def update_team(
 
         validate_budget_duration(data.budget_duration)
         validate_budget_duration(data.team_member_budget_duration)
-        validate_team_model_max_budget(model_max_budget=data.model_max_budget, premium_user=premium_user)
+        validate_team_model_max_budget(model_max_budget=data.model_max_budget)
 
         existing_team_row = await _raw_team_db(TeamRepository(prisma_client)).find_unique(
             where={"team_id": data.team_id}

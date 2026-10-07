@@ -4549,6 +4549,7 @@ async def test_user_new_persists_model_max_budget(
     an existing user's budgets.
     """
     from litellm.proxy.management_endpoints import key_management_endpoints
+    from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
     captured = {}
 
@@ -4574,9 +4575,7 @@ async def test_user_new_persists_model_max_budget(
     import litellm.proxy.proxy_server as proxy_server
 
     monkeypatch.setattr(proxy_server, "prisma_client", _FakePrisma(), raising=False)
-    # model_max_budget is an enterprise feature; without this the call is rejected
-    # before it ever reaches the write this test is about.
-    monkeypatch.setattr(proxy_server, "premium_user", True, raising=False)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
 
     await key_management_endpoints.generate_key_helper_fn(
         request_type="user",

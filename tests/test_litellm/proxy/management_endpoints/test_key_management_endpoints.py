@@ -1,4 +1,6 @@
 from collections.abc import Mapping, Sequence
+
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 from contextlib import ExitStack
 from typing import Final
 from types import SimpleNamespace
@@ -20421,3 +20423,17 @@ async def test_list_keys_lets_org_admins_filter_by_a_team_in_their_org():
 async def test_list_keys_refuses_org_admins_a_team_outside_their_org():
     with pytest.raises(ProxyException, match="not authorized to check this team's keys"):
         await _list_keys_as_org_caller(LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, team_id="team-b")
+
+
+@pytest.mark.parametrize(("features", "allowed"), [(("budgets",), True), (("sso",), False)], ids=["budgets", "other"])
+def test_key_model_max_budget_needs_the_budgets_licence_feature(features, allowed):
+    from litellm.proxy.management_endpoints.key_management_endpoints import validate_model_max_budget
+
+    entitlements: Final = licensed_entitlements(features=features)
+    budget: Final = {"gpt-4o": {"budget_limit": "5", "time_period": "1d"}}
+
+    if allowed:
+        assert validate_model_max_budget(budget, entitlements) is None
+        return
+    with pytest.raises(ValueError, match="'budgets' feature"):
+        validate_model_max_budget(budget, entitlements)

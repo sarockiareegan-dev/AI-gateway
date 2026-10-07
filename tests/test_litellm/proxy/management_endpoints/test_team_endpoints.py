@@ -15765,7 +15765,8 @@ def test_team_model_cap_authority_skips_omitted_field_malformed_rows_and_proxy_a
 
 
 @pytest.mark.asyncio
-async def test_new_team_persists_model_max_budget(mock_db_client, mock_admin_auth):
+async def test_new_team_persists_model_max_budget(mock_db_client, mock_admin_auth, monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
     mock_db_client.jsonify_team_object = lambda db_data: db_data
     mock_db_client.get_data = AsyncMock(return_value=None)
     mock_db_client.update_data = AsyncMock(return_value=MagicMock())
@@ -15806,7 +15807,8 @@ async def test_new_team_persists_model_max_budget(mock_db_client, mock_admin_aut
 
 
 @pytest.mark.asyncio
-async def test_new_team_rejects_unenforceable_model_max_budget(mock_db_client, mock_admin_auth):
+async def test_new_team_rejects_unenforceable_model_max_budget(mock_db_client, mock_admin_auth, monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
     from fastapi import Request
 
     from litellm.proxy._types import NewTeamRequest, ProxyException
@@ -15877,7 +15879,8 @@ async def test_update_team_clearing_model_max_budget_writes_an_empty_mapping(
 
 
 @pytest.mark.asyncio
-async def test_update_team_model_max_budget_raise_blocked_for_team_admin():
+async def test_update_team_model_max_budget_raise_blocked_for_team_admin(monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
     from fastapi import Request
 
     from litellm.proxy._types import ProxyException

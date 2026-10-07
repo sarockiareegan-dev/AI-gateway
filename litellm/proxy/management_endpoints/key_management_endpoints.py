@@ -66,6 +66,7 @@ from litellm.proxy.auth.auth_utils import (
     enforce_batch_enqueued_token_limit_is_admin_only,
     enforce_output_token_estimates_are_admin_only,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.auth_cache_invalidation_pubsub import (
     evict_and_broadcast,
@@ -7704,9 +7705,9 @@ async def _enforce_unique_key_alias(
             )
 
 
-def validate_model_max_budget(model_max_budget: dict | None) -> None:
+def validate_model_max_budget(model_max_budget: dict | None, entitlements: EntitlementService | None = None) -> None:
     """
-    Validate the model_max_budget is GenericBudgetConfigType + enforce user has an enterprise license
+    Validate the model_max_budget is GenericBudgetConfigType + enforce the license has the `budgets` feature
 
     Raises:
         Exception: If model_max_budget is not a valid GenericBudgetConfigType
@@ -7717,11 +7718,10 @@ def validate_model_max_budget(model_max_budget: dict | None) -> None:
         if len(model_max_budget) == 0:
             return
         if model_max_budget is not None:
-            from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
-
-            if premium_user is not True:
+            if not is_licensed(LicenseFeature.BUDGETS, entitlements):
                 raise ValueError(
-                    f"You must have an enterprise license to set model_max_budget. {CommonProxyErrors.not_premium_user.value}"
+                    "Setting model_max_budget needs the 'budgets' feature on the Agami license. "
+                    f"{CommonProxyErrors.not_premium_user.value}"
                 )
             for _model, _budget_info in model_max_budget.items():
                 assert isinstance(_model, str)

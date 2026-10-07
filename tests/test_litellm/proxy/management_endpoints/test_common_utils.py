@@ -9,6 +9,7 @@ users can intentionally clear previously-set fields.
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Final
 
 from fastapi import HTTPException
 from litellm import Router
@@ -36,6 +37,7 @@ from litellm.proxy.management_endpoints.common_utils import (
 )
 from litellm.proxy.management_endpoints.common_utils import _has_non_empty_value
 from litellm.types.utils import BudgetConfig
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 
 
 class TestUpdateMetadataFieldsEmptyCollections:
@@ -1184,7 +1186,9 @@ def test_validate_team_model_max_budget_rejects_unenforceable_entries(model_max_
     from litellm.proxy.management_endpoints.common_utils import validate_team_model_max_budget
 
     with pytest.raises(HTTPException) as exc:
-        validate_team_model_max_budget(model_max_budget=model_max_budget, premium_user=True)
+        validate_team_model_max_budget(
+            model_max_budget=model_max_budget, entitlements=licensed_entitlements(features=("budgets",))
+        )
     assert exc.value.status_code == 400
     assert error in exc.value.detail["error"]
 
@@ -1198,7 +1202,7 @@ def test_validate_team_model_max_budget_accepts_a_zero_cap_and_prefixed_models()
                 "gpt-4o": BudgetConfig(max_budget=0.0, budget_duration="1d"),
                 "openai/gpt-4o-mini": BudgetConfig(max_budget=2.5, budget_duration="30d"),
             },
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("budgets",)),
         )
         is None
     )
@@ -1207,10 +1211,11 @@ def test_validate_team_model_max_budget_accepts_a_zero_cap_and_prefixed_models()
 def test_validate_team_model_max_budget_is_license_gated_only_when_set() -> None:
     from litellm.proxy.management_endpoints.common_utils import validate_team_model_max_budget
 
-    validate_team_model_max_budget(model_max_budget=None, premium_user=False)
-    validate_team_model_max_budget(model_max_budget={}, premium_user=False)
+    other_feature: Final = licensed_entitlements(features=("sso",))
+    validate_team_model_max_budget(model_max_budget=None, entitlements=other_feature)
+    validate_team_model_max_budget(model_max_budget={}, entitlements=other_feature)
     with pytest.raises(HTTPException) as exc:
         validate_team_model_max_budget(
-            model_max_budget={"gpt-4o": BudgetConfig(max_budget=1.0, budget_duration="1d")}, premium_user=False
+            model_max_budget={"gpt-4o": BudgetConfig(max_budget=1.0, budget_duration="1d")}, entitlements=other_feature
         )
     assert exc.value.status_code == 403
