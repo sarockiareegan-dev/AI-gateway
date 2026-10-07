@@ -14878,32 +14878,23 @@ def test_request_size_limit_middleware_follows_the_request_limits_licence_featur
     assert middleware.kwargs["is_request_size_limit_enabled"]() is enabled
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(("features", "accepted"), [(("enforced_params",), True), (("sso",), False)])
-async def test_enforced_params_in_config_follow_the_licence_in_the_same_config(
-    tmp_path, monkeypatch, features, accepted
-):
-    from litellm.proxy.proxy_server import ProxyConfig
+@pytest.mark.parametrize(
+    ("setting", "value", "feature"),
+    [("enforced_params", ["user"], "enforced_params"), ("allowed_ips", ["127.0.0.1"], "access_control")],
+)
+@pytest.mark.parametrize("licensed", [True, False])
+def test_licence_gated_config_settings_follow_the_licence_in_the_same_config(setting, value, feature, licensed):
     from tests.test_litellm.proxy.auth.license_test_helpers import issue_test_license
 
-    service: Final = install_entitlements(monkeypatch, unlicensed_entitlements())
-    monkeypatch.setattr(proxy_server_module, "_license_check", service)
-    monkeypatch.setattr(proxy_server_module, "premium_user", False)
-    config_path: Final = tmp_path / "config.yaml"
-    config_path.write_text(
-        yaml.safe_dump(
-            {
-                "model_list": [],
-                "general_settings": {
-                    "agami_license": issue_test_license(features=features),
-                    "enforced_params": ["user"],
-                },
-            }
-        )
-    )
+    service: Final = unlicensed_entitlements()
+    general_settings: Final = {
+        "agami_license": issue_test_license(features=(feature,) if licensed else ("sso",)),
+        setting: value,
+    }
 
-    if accepted:
-        await ProxyConfig().load_config(router=MagicMock(), config_file_path=str(config_path))
+    if licensed:
+        proxy_server_module._apply_config_licence(general_settings, service)
+        assert service.grants_feature(feature)
         return
-    with pytest.raises(ValueError, match="'enforced_params' feature"):
-        await ProxyConfig().load_config(router=MagicMock(), config_file_path=str(config_path))
+    with pytest.raises(ValueError, match=f"'{feature}' feature"):
+        proxy_server_module._apply_config_licence(general_settings, service)

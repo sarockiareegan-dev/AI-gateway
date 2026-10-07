@@ -336,6 +336,7 @@ from litellm.proxy.auth.entitlements import (
     AUTO_ROUTER_LICENSE_REMEDY,
     LICENSE_CONFIG_KEY,
     LICENSE_ENV_VAR,
+    EntitlementService,
     LicenseFeature,
     get_entitlement_service,
     is_licensed,
@@ -4526,6 +4527,26 @@ def _environment_has_redis_connection_target() -> bool:
     )
 
 
+def _apply_config_licence(general_settings: Mapping[str, object], license_check: EntitlementService) -> None:
+    token: Final = general_settings.get(LICENSE_CONFIG_KEY)
+    if isinstance(token, str):
+        license_check.load(token)
+    if general_settings.get("allowed_ips") is not None and not is_licensed(
+        LicenseFeature.ACCESS_CONTROL, license_check
+    ):
+        raise ValueError(
+            "allowed_ips needs the 'access_control' feature on the Agami license. "
+            f"Please add a valid {LICENSE_ENV_VAR} to your environment."
+        )
+    if general_settings.get("enforced_params") is not None and not is_licensed(
+        LicenseFeature.ENFORCED_PARAMS, license_check
+    ):
+        raise ValueError(
+            "`enforced_params` needs the 'enforced_params' feature on the Agami license. "
+            + CommonProxyErrors.not_premium_user.value
+        )
+
+
 def _build_redis_usage_cache_from_environment() -> RedisCache | None:
     """
     Builds a standalone coordination Redis from REDIS_* environment variables.
@@ -6318,14 +6339,12 @@ class ProxyConfig:
                     config_file_path=config_file_path,
                 )
 
+            _apply_config_licence(general_settings, _license_check)
+            if LICENSE_CONFIG_KEY in general_settings:
+                premium_user = _license_check.is_premium()
+
             ## ADMIN UI ACCESS ##
             ui_access_mode = general_settings.get("ui_access_mode", "all")  # can be either ["admin_only" or "all"]
-            ### ALLOWED IP ###
-            allowed_ips: Final = general_settings.get("allowed_ips", None)
-            if allowed_ips is not None and premium_user is False:
-                raise ValueError(
-                    f"allowed_ips is a premium feature. Please add a valid {LICENSE_ENV_VAR} to your environment."
-                )
             ## BUDGET RESCHEDULER ##
             proxy_budget_rescheduler_min_time = general_settings.get(
                 "proxy_budget_rescheduler_min_time", proxy_budget_rescheduler_min_time
@@ -6375,18 +6394,6 @@ class ProxyConfig:
 
             ### SSRF URL VALIDATION SETTINGS ###
             _apply_ssrf_general_settings(general_settings)
-
-            if LICENSE_CONFIG_KEY in general_settings:
-                _license_check.load(general_settings[LICENSE_CONFIG_KEY])
-                premium_user = _license_check.is_premium()
-
-            if general_settings.get("enforced_params") is not None and not is_licensed(
-                LicenseFeature.ENFORCED_PARAMS
-            ):
-                raise ValueError(
-                    "`enforced_params` needs the 'enforced_params' feature on the Agami license. "
-                    + CommonProxyErrors.not_premium_user.value
-                )
 
         router_params: Final[dict] = {
             "cache_responses": litellm.cache is not None,  # cache if user passed in cache values
