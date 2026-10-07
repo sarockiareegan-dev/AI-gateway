@@ -31,6 +31,11 @@ from litellm.types.proxy.management_endpoints.ui_sso import (
     MicrosoftServicePrincipalTeam,
     TeamMappings,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 
 _SSO_PROVIDER_ENV_VARS = (
     "DISABLE_ADMIN_UI",
@@ -8206,6 +8211,55 @@ async def test_saml_callback_enforces_free_sso_user_limit_after_validation():
 
     assert str(exc.value.code) == "403"
     assert call_order == ["validate", "count"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("entitlements", "billable_users", "allowed"),
+    [
+        pytest.param(licensed_entitlements(features=("sso",)), 6, True, id="sso-licence-lifts-the-limit"),
+        pytest.param(licensed_entitlements(features=("budgets",)), 6, False, id="other-feature-does-not"),
+        pytest.param(unlicensed_entitlements(), 6, False, id="no-licence-over-the-limit"),
+        pytest.param(unlicensed_entitlements(), 5, True, id="no-licence-within-the-free-limit"),
+    ],
+)
+async def test_sso_free_user_limit_is_lifted_only_by_the_sso_licence_feature(entitlements, billable_users, allowed):
+    from litellm.proxy._types import ProxyException
+    from litellm.proxy.management_endpoints.ui_sso import _raise_if_sso_exceeds_free_user_limit
+
+    prisma_client = MagicMock()
+
+    with patch(  # test-quality-ok: the billable-user count is a DB query and unit tests have no DB
+        "litellm.repositories.user_repository.UserRepository.count_billable_users",
+        new=AsyncMock(return_value=billable_users),
+    ):
+        if allowed:
+            await _raise_if_sso_exceeds_free_user_limit(prisma_client, entitlements)
+            return
+        with pytest.raises(ProxyException) as exc:
+            await _raise_if_sso_exceeds_free_user_limit(prisma_client, entitlements)
+
+    assert str(exc.value.code) == "403"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("features", "allowed"), [(("sso",), True), (("budgets",), False)], ids=["sso", "other"])
+async def test_sso_debug_login_requires_the_sso_licence_feature(monkeypatch, features, allowed):
+    from litellm.proxy._types import ProxyException
+    from litellm.proxy.management_endpoints.ui_sso import SSOAuthenticationHandler, debug_sso_login
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "debug-client")
+    redirect = MagicMock()
+    monkeypatch.setattr(SSOAuthenticationHandler, "get_redirect_url_for_sso", MagicMock(return_value="https://x/cb"))
+    monkeypatch.setattr(SSOAuthenticationHandler, "get_sso_login_redirect", AsyncMock(return_value=redirect))
+
+    if allowed:
+        assert await debug_sso_login(MagicMock(spec=Request)) is redirect
+        return
+    with pytest.raises(ProxyException) as exc:
+        await debug_sso_login(MagicMock(spec=Request))
+    assert str(exc.value.code) == "403"
 
 
 @pytest.mark.asyncio

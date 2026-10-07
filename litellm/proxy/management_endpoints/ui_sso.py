@@ -93,6 +93,7 @@ from litellm.proxy.auth.auth_utils import (
     _get_request_ip_address,
     has_user_setup_sso,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.handle_jwt import JWTHandler
 from litellm.proxy.auth.ip_address_utils import IPAddressUtils
 from litellm.proxy.auth.team_grants import TeamModelAliasTable
@@ -974,9 +975,11 @@ def _merge_sso_token_claims(
     )
 
 
-async def _raise_if_sso_exceeds_free_user_limit(premium_user: bool, prisma_client: PrismaClient | None) -> None:
-    """Free tier allows SSO for up to 5 billable users; beyond that requires an Enterprise license."""
-    if premium_user is True:
+async def _raise_if_sso_exceeds_free_user_limit(
+    prisma_client: PrismaClient | None, entitlements: EntitlementService | None = None
+) -> None:
+    """Free tier allows SSO for up to 5 billable users; beyond that requires the `sso` license feature."""
+    if is_licensed(LicenseFeature.SSO, entitlements):
         return
     if prisma_client is None:
         raise ProxyException(
@@ -1012,7 +1015,6 @@ async def google_login(
     from litellm.proxy.proxy_server import (
         cli_sso_session_cache,
         general_settings,
-        premium_user,
         prisma_client,
         user_api_key_cache,
         user_custom_ui_sso_sign_in_handler,
@@ -1036,7 +1038,7 @@ async def google_login(
         or generic_client_id is not None
         or SAMLAuthHandler.is_saml_configured()
     ):
-        await _raise_if_sso_exceeds_free_user_limit(premium_user, prisma_client)
+        await _raise_if_sso_exceeds_free_user_limit(prisma_client)
 
     ####### Detect DB + MASTER KEY in .env #######
     missing_env_vars: Final = show_missing_vars_in_env()
@@ -2134,7 +2136,6 @@ async def saml_callback(request: Request):
         general_settings,
         jwt_handler,
         master_key,
-        premium_user,
         prisma_client,
         user_api_key_cache,
     )
@@ -2159,7 +2160,7 @@ async def saml_callback(request: Request):
 
     result: Final = await SAMLAuthHandler.handle_acs(request=request, cache=user_api_key_cache, post_data=post_data)
 
-    await _raise_if_sso_exceeds_free_user_limit(premium_user, prisma_client)
+    await _raise_if_sso_exceeds_free_user_limit(prisma_client)
 
     ui_access_mode: Final = general_settings.get("ui_access_mode", None)
     relay_state: Final = post_data.get("RelayState")
@@ -4613,15 +4614,13 @@ async def debug_sso_login(request: Request):
     PROXY_BASE_URL should be the your deployed proxy endpoint, e.g. PROXY_BASE_URL="https://litellm-production-7002.up.railway.app/"
     Example:
     """
-    from litellm.proxy.proxy_server import premium_user
-
     microsoft_client_id: Final = os.getenv("MICROSOFT_CLIENT_ID", None)
     google_client_id: Final = os.getenv("GOOGLE_CLIENT_ID", None)
     generic_client_id: Final = os.getenv("GENERIC_CLIENT_ID", None)
 
     ####### Check if user is a Enterprise / Premium User #######
     if microsoft_client_id is not None or google_client_id is not None or generic_client_id is not None:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.SSO):
             raise ProxyException(
                 message="SSO is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
                 type=ProxyErrorTypes.auth_error,

@@ -69,7 +69,7 @@ The audit ranked 9 leaks. Six are fixed
 
 One commit per feature. Each needs a test that a licence holding only some other feature is refused and a licence holding only this feature is allowed
 
-- [ ] `sso`: `ui_sso.py` `_raise_if_sso_exceeds_free_user_limit` (takes a `premium_user` parameter, drop it like the email branding change did) and the SSO env check around `MICROSOFT_CLIENT_ID` / `GOOGLE_CLIENT_ID` / `GENERIC_CLIENT_ID`
+- [x] `sso`, done Oct 7: `_raise_if_sso_exceeds_free_user_limit` (used by `/sso/key/generate` and the SAML callback) lets more than 5 billable SSO users in only with the `sso` feature, and takes an optional `EntitlementService` for tests. `/sso/debug/login` checks the same feature. The UI token's `premium_user` flag stays until Checkpoint D
 - [ ] `guardrails`: `custom_guardrail.py` `_validate_premium_user`
 - [ ] `budgets`: tag budgets in `router_strategy/budget_limiter.py` `_init_tag_budgets`, team `model_max_budget` in `management_endpoints/common_utils.py` `validate_team_model_max_budget` (takes a `premium_user` parameter), key `model_max_budget` in `key_management_endpoints.py`
 - [ ] `access_control`: `allowed_routes` and `public_routes` in `auth/auth_utils.py`, `admin_only_routes` in `auth/route_checks.py` `custom_admin_only_route_check`
