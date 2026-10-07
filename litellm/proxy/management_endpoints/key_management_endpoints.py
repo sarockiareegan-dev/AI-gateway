@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Optional, Protocol, TypeV
 import fastapi
 import yaml
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from pydantic import AliasChoices, Field
 from typing_extensions import ReadOnly, TypedDict
 
 import litellm
@@ -91,7 +92,9 @@ from litellm.proxy.management_endpoints.common_utils import (
     _set_object_metadata_field,
     _team_member_has_permission,
     _user_has_admin_view,
+    caller_org_wide_read_org_ids,
     can_see_every_team_key,
+    org_wide_read_org_ids,
     validate_budget_duration,
     validate_finite_spend,
 )
@@ -6193,8 +6196,10 @@ async def validate_key_list_check(
                 code=status.HTTP_403_FORBIDDEN,
             )
 
-    if team_id:
-        if team_id not in complete_user_info.teams:
+    if team_id and team_id not in complete_user_info.teams:
+        if team_id not in await _org_team_ids(
+            prisma_client, _org_wide_read_org_ids_of(user_api_key_dict, complete_user_info)
+        ):
             raise ProxyException(
                 message="You are not authorized to check this team's keys",
                 type=ProxyErrorTypes.bad_request_error,
@@ -6245,6 +6250,19 @@ async def validate_key_list_check(
                 detail=f"You are not allowed to access this key's info. Your role={user_api_key_dict.user_role}",
             )
     return complete_user_info
+
+
+def _org_wide_read_org_ids_of(user_api_key_dict: UserAPIKeyAuth, user_info: LiteLLM_UserTable) -> frozenset[str]:
+    return frozenset(org_wide_read_org_ids(user_api_key_dict.user_role, user_info.organization_memberships))
+
+
+async def _org_team_ids(prisma_client: PrismaClient, org_ids: frozenset[str]) -> frozenset[str]:
+    if not org_ids:
+        return frozenset()
+    teams: Final = await TeamRepository(prisma_client).table.find_many(
+        where={"organization_id": {"in": sorted(org_ids)}}  # mutable-ok: Prisma query filters are dict-shaped
+    )
+    return frozenset(team.team_id for team in teams)
 
 
 async def _fetch_user_team_objects(
@@ -6458,6 +6476,12 @@ async def list_keys(
             prisma_client=prisma_client,
         )
 
+        readable_org_ids: Final = (
+            _org_wide_read_org_ids_of(user_api_key_dict, complete_user_info)
+            if include_team_keys and complete_user_info is not None
+            else frozenset[str]()
+        )
+
         # Fetch team objects once when needed for either admin or member filtering.
         # This avoids duplicate DB queries for the same team data.
         if include_team_keys or include_created_by_keys:
@@ -6487,6 +6511,9 @@ async def list_keys(
             )
             if list_permission_team_ids:
                 admin_team_ids = list({*admin_team_ids, *list_permission_team_ids})
+            org_team_ids: Final = await _org_team_ids(prisma_client, readable_org_ids)
+            if org_team_ids:
+                admin_team_ids = list({*admin_team_ids, *org_team_ids})
         else:
             admin_team_ids = None
 
@@ -6516,6 +6543,7 @@ async def list_keys(
             return_full_object=return_full_object,
             organization_id=organization_id,
             admin_team_ids=admin_team_ids,
+            admin_org_ids=tuple(sorted(readable_org_ids)),
             member_team_ids=member_team_ids,
             include_created_by_keys=include_created_by_keys,
             sort_by=sort_by,
@@ -6777,6 +6805,7 @@ def _build_key_filter_conditions(
     admin_team_ids: list[str] | None,
     member_team_ids: list[str] | None = None,
     include_created_by_keys: bool = False,
+    admin_org_ids: Sequence[str] = (),
     project_id: str | None = None,
     access_group_id: str | None = None,
     agent_id: str | None = None,
@@ -6851,6 +6880,8 @@ def _build_key_filter_conditions(
     # Add condition for admin team keys (admins see ALL team keys)
     if admin_team_ids:
         or_conditions.append({"team_id": {"in": admin_team_ids}})
+    if admin_org_ids:
+        or_conditions.append({"organization_id": {"in": list(admin_org_ids)}})
 
     # Add condition for member team service accounts (members only see keys with user_id=NULL)
     if member_team_ids:
@@ -6916,6 +6947,7 @@ async def _list_key_helper(
     exclude_team_id: str | None = None,
     return_full_object: bool = False,
     admin_team_ids: list[str] | None = None,  # New parameter for teams where user is admin
+    admin_org_ids: Sequence[str] = (),
     member_team_ids: list[str]
     | None = None,  # Team IDs where user is a member (any role) - for service account visibility
     include_created_by_keys: bool = False,
@@ -6961,6 +6993,7 @@ async def _list_key_helper(
         key_hash=key_hash,
         exclude_team_id=exclude_team_id,
         admin_team_ids=admin_team_ids,
+        admin_org_ids=admin_org_ids,
         member_team_ids=member_team_ids,
         include_created_by_keys=include_created_by_keys,
         project_id=project_id,
@@ -7488,7 +7521,9 @@ async def _can_user_query_key_info(
     ):
         return True
     if key_info.team_id is None:
-        return False
+        return await _caller_reads_org_wide(
+            user_api_key_dict, _KeyOrganization.model_validate(key_info.model_dump()).organization_id
+        )
 
     from litellm.proxy.proxy_server import prisma_client, user_api_key_cache
 
@@ -7499,7 +7534,19 @@ async def _can_user_query_key_info(
         parent_otel_span=user_api_key_dict.parent_otel_span,
         check_db_only=True,
     )
-    return can_see_every_team_key(user_api_key_dict=user_api_key_dict, team_obj=team_table)
+    return can_see_every_team_key(
+        user_api_key_dict=user_api_key_dict, team_obj=team_table
+    ) or await _caller_reads_org_wide(user_api_key_dict, team_table.organization_id)
+
+
+class _KeyOrganization(BaseModel):
+    organization_id: str | None = Field(default=None, validation_alias=AliasChoices("organization_id", "org_id"))
+
+
+async def _caller_reads_org_wide(user_api_key_dict: UserAPIKeyAuth, organization_id: str | None) -> bool:
+    if organization_id is None:
+        return False
+    return organization_id in await caller_org_wide_read_org_ids(user_api_key_dict)
 
 
 async def test_key_logging(

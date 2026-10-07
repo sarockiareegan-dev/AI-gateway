@@ -224,6 +224,16 @@ async def _get_caller_user(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTab
     )
 
 
+async def caller_org_wide_read_org_ids(user_api_key_dict: UserAPIKeyAuth) -> frozenset[str]:
+    try:
+        caller_user: Final = await _get_caller_user(user_api_key_dict)
+    except ValueError:
+        return frozenset()
+    if caller_user is None:
+        return frozenset()
+    return frozenset(org_wide_read_org_ids(user_api_key_dict.user_role, caller_user.organization_memberships))
+
+
 async def _is_user_org_admin_for_team(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_TeamTable) -> bool:
     """
     Check if user is an org admin for the team's organization.

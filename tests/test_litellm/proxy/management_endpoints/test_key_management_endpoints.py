@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import ExitStack
 from typing import Final
 from types import SimpleNamespace
@@ -20199,3 +20199,225 @@ async def test_can_user_query_key_info_hides_teammates_keys_from_plain_members(c
             )
             is allowed
         )
+
+
+def _caller_in_org(user_id: str, org_role: LitellmUserRoles) -> LiteLLM_UserTable:
+    from litellm.proxy._types import LiteLLM_OrganizationMembershipTable
+
+    return LiteLLM_UserTable(
+        user_id=user_id,
+        organization_memberships=[
+            LiteLLM_OrganizationMembershipTable(
+                user_id=user_id,
+                organization_id="org-a",
+                user_role=org_role.value,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+        ],
+    )
+
+
+_ORG_KEY_READER_CASES: Final = [
+    pytest.param(LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, True, id="org-admin"),
+    pytest.param(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER, True, id="org-viewer"),
+    pytest.param(LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.INTERNAL_USER, False, id="plain-org-member"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("caller_role", "org_role", "allowed"), _ORG_KEY_READER_CASES)
+@pytest.mark.parametrize(
+    "key_info",
+    [
+        pytest.param(
+            LiteLLM_VerificationToken(token="hashed-team-key", user_id="member-2", team_id="team-in-org-a"),
+            id="key-on-an-org-team",
+        ),
+        pytest.param(
+            LiteLLM_VerificationToken(token="hashed-org-key", user_id="member-2", org_id="org-a"),
+            id="team-less-key-in-the-org",
+        ),
+    ],
+)
+async def test_can_user_query_key_info_lets_org_wide_readers_read_their_orgs_keys(
+    caller_role, org_role, allowed, key_info
+):
+    from litellm.proxy.management_endpoints import key_management_endpoints
+
+    org_team: Final = LiteLLM_TeamTableCachedObj(team_id="team-in-org-a", organization_id="org-a")
+    caller: Final = UserAPIKeyAuth(user_id="org-caller", user_role=caller_role)
+
+    with (
+        patch.object(  # test-quality-ok: _can_user_query_key_info reads the team through the module-level lookup
+            key_management_endpoints, "get_team_object", AsyncMock(return_value=org_team)
+        ),
+        patch(  # test-quality-ok: the caller's org memberships come from a user row, and unit tests have no DB
+            "litellm.proxy.management_endpoints.common_utils._get_caller_user",
+            AsyncMock(return_value=_caller_in_org("org-caller", org_role)),
+        ),
+    ):
+        assert (
+            await key_management_endpoints._can_user_query_key_info(
+                user_api_key_dict=caller, key=key_info.token, key_info=key_info
+            )
+            is allowed
+        )
+
+
+@pytest.mark.asyncio
+async def test_can_user_query_key_info_keeps_other_orgs_keys_hidden_from_org_admins():
+    from litellm.proxy.management_endpoints import key_management_endpoints
+
+    other_org_team: Final = LiteLLM_TeamTableCachedObj(team_id="team-in-org-b", organization_id="org-b")
+    other_org_key: Final = LiteLLM_VerificationToken(token="hashed-b-key", user_id="member-b", team_id="team-in-org-b")
+
+    with (
+        patch.object(  # test-quality-ok: _can_user_query_key_info reads the team through the module-level lookup
+            key_management_endpoints, "get_team_object", AsyncMock(return_value=other_org_team)
+        ),
+        patch(  # test-quality-ok: the caller's org memberships come from a user row, and unit tests have no DB
+            "litellm.proxy.management_endpoints.common_utils._get_caller_user",
+            AsyncMock(return_value=_caller_in_org("org-caller", LitellmUserRoles.ORG_ADMIN)),
+        ),
+    ):
+        assert not await key_management_endpoints._can_user_query_key_info(
+            user_api_key_dict=UserAPIKeyAuth(user_id="org-caller", user_role=LitellmUserRoles.INTERNAL_USER),
+            key=other_org_key.token,
+            key_info=other_org_key,
+        )
+
+
+class _FakeRow(dict):
+    def __getattr__(self, name):
+        return self.get(name)
+
+    def model_dump(self):
+        return dict(self)
+
+
+def _row_matches(row: Mapping[str, object], where: Mapping[str, object]) -> bool:
+    def field_matches(value, condition) -> bool:
+        if not isinstance(condition, Mapping):
+            return value == condition
+        return all(
+            (op == "in" and value in operand)
+            or (op == "not" and value != operand)
+            or (op == "contains" and isinstance(value, str) and operand.lower() in value.lower())
+            or op == "mode"
+            for op, operand in condition.items()
+        )
+
+    return all(
+        all(_row_matches(row, c) for c in condition)
+        if field == "AND"
+        else any(_row_matches(row, c) for c in condition)
+        if field == "OR"
+        else field_matches(row.get(field), condition)
+        for field, condition in where.items()
+    )
+
+
+def _fake_table(rows: Sequence[_FakeRow]) -> MagicMock:
+    table = MagicMock()
+
+    async def find_many(*, where=None, skip=0, take=None, **_):
+        matched = [row for row in rows if _row_matches(row, where or {})]
+        return matched[skip : None if take is None else skip + take]
+
+    async def count(*, where=None):
+        return len([row for row in rows if _row_matches(row, where or {})])
+
+    table.find_many = AsyncMock(side_effect=find_many)
+    table.count = AsyncMock(side_effect=count)
+    return table
+
+
+_ORG_TEAMS: Final = (
+    _FakeRow(team_id="team-a", organization_id="org-a", members_with_roles=[]),
+    _FakeRow(team_id="team-b", organization_id="org-b", members_with_roles=[]),
+)
+_ORG_KEYS: Final = (
+    _FakeRow(token="own", user_id="org-caller", team_id=None, organization_id=None),
+    _FakeRow(token="team-a-member", user_id="u2", team_id="team-a", organization_id="org-a"),
+    _FakeRow(token="team-a-service", user_id=None, team_id="team-a", organization_id=None),
+    _FakeRow(token="team-b-member", user_id="u3", team_id="team-b", organization_id="org-b"),
+    _FakeRow(token="org-a-personal", user_id="u4", team_id=None, organization_id="org-a"),
+    _FakeRow(token="unrelated-personal", user_id="u5", team_id=None, organization_id=None),
+)
+
+
+async def _list_keys_as_org_caller(caller_role, org_role, team_id=None):
+    from unittest.mock import Mock
+
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_usertable.find_unique = AsyncMock(return_value=_caller_in_org("org-caller", org_role))
+    prisma_client.db.litellm_teamtable = _fake_table(_ORG_TEAMS)
+    prisma_client.db.litellm_verificationtoken = _fake_table(_ORG_KEYS)
+
+    global_client: Final = "litellm.proxy.proxy_server.prisma_client"
+    with patch(global_client, prisma_client):  # test-quality-ok: list_keys reads it globally
+        return await list_keys(
+            request=Mock(),
+            user_api_key_dict=UserAPIKeyAuth(user_id="org-caller", user_role=caller_role),
+            page=1,
+            size=100,
+            user_id=None,
+            team_id=team_id,
+            organization_id=None,
+            key_hash=None,
+            key_alias=None,
+            search=None,
+            return_full_object=False,
+            include_team_keys=True,
+            include_created_by_keys=False,
+            sort_by=None,
+            sort_order="desc",
+            expand=None,
+            status=None,
+            project_id=None,
+            access_group_id=None,
+            agent_id=None,
+            substring_matching=False,
+            expires=None,
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("caller_role", "org_role", "expected"),
+    [
+        pytest.param(
+            LitellmUserRoles.INTERNAL_USER,
+            LitellmUserRoles.ORG_ADMIN,
+            ["org-a-personal", "own", "team-a-member", "team-a-service"],
+            id="org-admin",
+        ),
+        pytest.param(
+            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
+            LitellmUserRoles.INTERNAL_USER,
+            ["org-a-personal", "own", "team-a-member", "team-a-service"],
+            id="org-viewer",
+        ),
+        pytest.param(LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.INTERNAL_USER, ["own"], id="plain-org-member"),
+    ],
+)
+async def test_list_keys_shows_org_wide_readers_every_key_in_their_org(caller_role, org_role, expected):
+    response = await _list_keys_as_org_caller(caller_role, org_role)
+
+    assert sorted(response["keys"]) == expected
+
+
+@pytest.mark.asyncio
+async def test_list_keys_lets_org_admins_filter_by_a_team_in_their_org():
+    response = await _list_keys_as_org_caller(
+        LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, team_id="team-a"
+    )
+
+    assert sorted(response["keys"]) == ["team-a-member", "team-a-service"]
+
+
+@pytest.mark.asyncio
+async def test_list_keys_refuses_org_admins_a_team_outside_their_org():
+    with pytest.raises(ProxyException, match="not authorized to check this team's keys"):
+        await _list_keys_as_org_caller(LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, team_id="team-b")
