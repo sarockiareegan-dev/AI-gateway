@@ -141,6 +141,12 @@ def get_session_id_from_request_data(request_data: dict[str, Any]) -> str | None
     return None
 
 
+def _guardrails_licensed() -> bool:
+    from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
+
+    return is_licensed(LicenseFeature.GUARDRAILS)
+
+
 class CustomGuardrail(CustomLogger):
     # If True, during_call runs async_moderation_hook instead of the unified apply_guardrail path.
     use_native_during_call_hook: ClassVar[bool] = False
@@ -1092,10 +1098,11 @@ class CustomGuardrail(CustomLogger):
                 # Get the configuration for this guardrail
                 guardrail_config: DynamicGuardrailParams = DynamicGuardrailParams(**guardrail[self.guardrail_name])
                 extra_body = guardrail_config.get("extra_body", {})
-                if self._validate_premium_user() is not True:
+                if not _guardrails_licensed():
                     if isinstance(extra_body, dict) and extra_body:
                         verbose_logger.warning(
-                            "Guardrail %s: ignoring dynamic extra_body keys %s because premium_user is False",
+                            "Guardrail %s: ignoring dynamic extra_body keys %s because the Agami license lacks the "
+                            "'guardrails' feature",
                             self.guardrail_name,
                             list(extra_body.keys()),
                         )
@@ -1105,19 +1112,6 @@ class CustomGuardrail(CustomLogger):
                 return extra_body
 
         return {}
-
-    def _validate_premium_user(self) -> bool:
-        """
-        Returns True if the user is a premium user
-        """
-        from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
-
-        if premium_user is not True:
-            verbose_logger.warning(
-                "Trying to use premium guardrail without premium user %s", CommonProxyErrors.not_premium_user.value
-            )
-            return False
-        return True
 
     def add_standard_logging_guardrail_information_to_request_data(
         self,

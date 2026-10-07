@@ -20,9 +20,23 @@ from litellm.types.utils import (
     Message,
     ModelResponse,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+
+
+@pytest.mark.parametrize(
+    ("features", "expected"),
+    [(("guardrails",), {"policy_id": "p-1"}), (("budgets",), {})],
+    ids=["guardrails-licence", "other-feature"],
+)
+def test_dynamic_guardrail_extra_body_needs_the_guardrails_licence_feature(monkeypatch, features, expected):
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    guardrail: Final = CustomGuardrail(guardrail_name="judge")
+    request_data: Final = {"metadata": {"guardrails": [{"judge": {"extra_body": {"policy_id": "p-1"}}}]}}
+
+    assert guardrail.get_guardrail_dynamic_request_body_params(request_data) == expected
 
 
 class TestCustomGuardrailDeploymentHook:
