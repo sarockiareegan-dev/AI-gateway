@@ -7,11 +7,13 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Optional
 
 import httpx
+import pytest
 import pytest_asyncio
 import yaml
 from prisma import Json
 
 from litellm.proxy.utils import hash_token
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 MASTER_KEY = "sk-1234"
 SCRATCH_PREFIX = "scratch-"
@@ -52,19 +54,21 @@ async def proxy_app():
     os.environ["LITELLM_MASTER_KEY"] = MASTER_KEY
     os.environ["CONFIG_FILE_PATH"] = config_path
 
-    await initialize(config=config_path)
+    with pytest.MonkeyPatch.context() as mp:
+        install_entitlements(mp, licensed_entitlements())
+        await initialize(config=config_path)
 
-    # /key/regenerate is gated behind premium_user; flipping it lets the matrix
-    # pin authz behavior instead of the licensing gate.
-    proxy_server.premium_user = True
+        # /key/regenerate is gated behind premium_user; flipping it lets the matrix
+        # pin authz behavior instead of the licensing gate.
+        proxy_server.premium_user = True
 
-    async with proxy_startup_event(app):
-        proxy_server.premium_user = True  # lifespan re-runs _license_check
-        # The lifespan fires check_view_exists() as a background task; on a
-        # fresh DB the first auth call races it and resolves user_id=None.
-        if proxy_server.prisma_client is not None:
-            await proxy_server.prisma_client.check_view_exists()
-        yield app
+        async with proxy_startup_event(app):
+            proxy_server.premium_user = True  # lifespan re-runs _license_check
+            # The lifespan fires check_view_exists() as a background task; on a
+            # fresh DB the first auth call races it and resolves user_id=None.
+            if proxy_server.prisma_client is not None:
+                await proxy_server.prisma_client.check_view_exists()
+            yield app
 
 
 @pytest_asyncio.fixture(scope="session")

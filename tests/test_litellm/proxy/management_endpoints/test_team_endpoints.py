@@ -74,7 +74,11 @@ from litellm.types.proxy.management_endpoints.team_endpoints import (
     TeamMemberAddResult,
 )
 from litellm.types.utils import StandardAuditLogPayload
-from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 from tests.test_litellm.proxy.management_endpoints.jwt_key_mapping_doubles import (
     CascadingJWTMappingTable,
     JWTMappingRow,
@@ -13446,12 +13450,14 @@ class _RecordingAuditLogger(CustomLogger):
         self.payloads.append(audit_log_payload)
 
 
-def _wire_audit_log_callback(monkeypatch: pytest.MonkeyPatch) -> _RecordingAuditLogger:
+def _wire_audit_log_callback(
+    monkeypatch: pytest.MonkeyPatch, extra_features: tuple[str, ...] = ()
+) -> _RecordingAuditLogger:
     audit_logger = _RecordingAuditLogger()
     monkeypatch.setattr("litellm.store_audit_logs", True)
     monkeypatch.setattr("litellm.audit_log_callbacks", [audit_logger])
     monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
-    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs", *extra_features)))
     return audit_logger
 
 
@@ -13605,7 +13611,7 @@ async def test_team_member_delete_emits_a_roster_audit_event(monkeypatch, mock_d
 
 @pytest.mark.asyncio
 async def test_team_member_update_role_change_emits_a_roster_audit_event(monkeypatch):
-    audit_logger = _wire_audit_log_callback(monkeypatch)
+    audit_logger = _wire_audit_log_callback(monkeypatch, extra_features=("team_admin_roles",))
 
     mock_prisma_client = MagicMock()
     team_row = LiteLLM_TeamTable(
@@ -13708,7 +13714,7 @@ def _member_update_patches(team_snapshot: LiteLLM_TeamTable):
 async def test_team_member_update_role_change_rewrites_the_roster_it_read_under_the_lock(monkeypatch):
     """Regression: a member added between /team/member_update's permission checks and its write
     was dropped, because the new roster was built from the pre-check snapshot."""
-    audit_logger = _wire_audit_log_callback(monkeypatch)
+    audit_logger = _wire_audit_log_callback(monkeypatch, extra_features=("team_admin_roles",))
 
     stale_snapshot = LiteLLM_TeamTable(
         team_id="team-race",
@@ -13759,7 +13765,7 @@ async def test_team_member_update_role_change_rewrites_the_roster_it_read_under_
 
 @pytest.mark.asyncio
 async def test_team_member_update_role_change_404s_when_the_team_is_gone_under_the_lock(monkeypatch):
-    _wire_audit_log_callback(monkeypatch)
+    _wire_audit_log_callback(monkeypatch, extra_features=("team_admin_roles",))
     snapshot = LiteLLM_TeamTable(
         team_id="team-gone-race",
         team_alias="gone-race",
@@ -13789,7 +13795,7 @@ async def test_team_member_update_role_change_404s_when_the_team_is_gone_under_t
 @pytest.mark.asyncio
 async def test_team_member_update_role_change_404s_when_the_member_left_before_the_locked_read(monkeypatch):
     """Regression: a member removed between the pre-lock read and the locked read was reported as updated."""
-    audit_logger = _wire_audit_log_callback(monkeypatch)
+    audit_logger = _wire_audit_log_callback(monkeypatch, extra_features=("team_admin_roles",))
     snapshot = LiteLLM_TeamTable(
         team_id="team-member-gone-race",
         team_alias="member-gone-race",
@@ -16590,3 +16596,37 @@ def test_team_member_update_request_rejects_unusable_temp_budget_increase(increa
         TeamMemberUpdateRequest(
             team_id="team-1", user_id="user-1", temp_budget_increase=increase, temp_budget_expiry="2030-01-01T00:00:00Z"
         )
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        Member(user_id="u1", role="admin"),
+        [Member(user_id="u1", role="user"), Member(user_id="u2", role="admin")],
+    ],
+)
+@pytest.mark.parametrize(
+    ("service", "allowed"),
+    [
+        (licensed_entitlements(features=("team_admin_roles",)), True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+def test_adding_a_team_admin_needs_the_team_admin_roles_licence_feature(member, service, allowed):
+    from litellm.proxy.management_endpoints.team_endpoints import _check_team_member_admin_add
+
+    if allowed:
+        _check_team_member_admin_add(member, entitlements=service)
+        return
+    with pytest.raises(ValueError, match="'team_admin_roles' feature"):
+        _check_team_member_admin_add(member, entitlements=service)
+
+
+def test_adding_plain_team_members_needs_no_licence():
+    from litellm.proxy.management_endpoints.team_endpoints import _check_team_member_admin_add
+
+    _check_team_member_admin_add(
+        [Member(user_id="u1", role="user"), Member(user_id="u2", role="user")],
+        entitlements=unlicensed_entitlements(),
+    )

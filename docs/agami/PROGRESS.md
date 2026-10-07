@@ -83,7 +83,7 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 - [x] Request, response and upload size limits. Done Oct 7. `LicenseFeature.REQUEST_LIMITS` (`request_limits`) now decides whether `max_request_size_mb` and `max_response_size_mb` are enforced in `auth_utils.py`, whether `RequestSizeLimitMiddleware` is on, and whether a deployment's `max_file_size_mb` is accepted in `http_parsing_utils.py` (refused with a 400 naming the feature otherwise, as before). Tests cover a `request_limits` licence, a licence holding only another feature and no licence for each of the four
 - [x] Enforced params. Done Oct 7. `LicenseFeature.ENFORCED_PARAMS` (`enforced_params`) gates `general_settings.enforced_params` at config load and the per-request `_enforced_params_check`, which now takes an optional `entitlements` instead of `premium_user`. The config-load check used to run before `agami_license` from the same config was loaded, so a licence set only in the config file was refused; the licence now loads first, and `test_licence_gated_config_settings_follow_the_licence_in_the_same_config` pins that
 - [x] `allowed_ips`. Done Oct 7 (decided Oct 7: gate it on `access_control`). `_apply_config_licence` in `proxy_server.py` loads `agami_license` from the config first and then checks `allowed_ips` (`access_control`) and `enforced_params`, so a licence set only in the config file is honoured for both. The config-load tests call it directly instead of `load_config`, because `load_config` picks up `REDIS_URL` from `.env` and leaks a Redis client into later tests on the same worker. The `save_config`, price reload and anthropic beta reload tests in `test_proxy_server.py` and `proxy_server/` still fail in a full xdist run for that reason (they pass alone and fail on the base too)
-- [ ] Team admin roles: `team_endpoints.py` "Assigning team admins is a premium feature" (two checks)
+- [x] Team admin roles. Done Oct 7. `LicenseFeature.TEAM_ADMIN_ROLES` (`team_admin_roles`) gates adding an admin through `/team/member_add` (`_check_team_member_admin_add`, which now takes an optional `entitlements`) and promoting a member to admin through `/team/member_update`. Both return the same 400 naming the feature. Plain members never need a licence. The live-DB `proxy_behavior/management` conftest now installs a full test licence for the session, because that matrix pins authorization and every licence gate moved off `premium_user`; it has not been run locally (it needs a migrated DB)
 - [ ] Key features: key tags, wildcard model access groups, `get_spend_routes` permission, key regeneration (all in `key_management_endpoints.py`)
 - [ ] Team-scoped models and team metadata: `model_management_endpoints.py`, `management_helpers/team_metadata_validation.py`
 - [ ] Auto-router permissions: `management_helpers/auto_router_permissions.py` (the licence already has an `auto_router` feature string, so this may only need a `LicenseFeature` member)
@@ -134,7 +134,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-Checkpoint C, the `team_admin_roles` feature
+Checkpoint C, the `advanced_keys` feature (key tags, wildcard model access groups, `get_spend_routes`, key regeneration)
 
 ## Session log
 

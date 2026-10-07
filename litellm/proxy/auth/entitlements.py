@@ -52,6 +52,7 @@ class LicenseFeature(str, Enum):
     JWT_AUTH = "jwt_auth"
     REQUEST_LIMITS = "request_limits"
     ENFORCED_PARAMS = "enforced_params"
+    TEAM_ADMIN_ROLES = "team_admin_roles"
 
 
 class _LicenseClaims(BaseModel):

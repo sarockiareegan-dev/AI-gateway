@@ -111,6 +111,7 @@ from litellm.proxy.auth.auth_utils import (
     enforce_batch_enqueued_token_limit_is_admin_only,
     enforce_output_token_estimates_are_admin_only,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.auth_cache_invalidation_pubsub import evict_and_broadcast
 from litellm.proxy.common_utils.callback_utils import encrypt_callback_vars
@@ -2732,26 +2733,25 @@ async def handle_update_object_permission(data_json: dict, existing_team_row: _O
     return data_json
 
 
+_TEAM_ADMIN_LICENCE_MESSAGE: Final = (
+    "Assigning team admins needs the 'team_admin_roles' feature on the Agami license. "
+    + CommonProxyErrors.not_premium_user.value
+)
+
+
 def _check_team_member_admin_add(
     member: Member | list[Member],
-    premium_user: bool,
-):
-    if isinstance(member, Member) and member.role == "admin":
-        if premium_user is not True:
-            raise ValueError(f"Assigning team admins is a premium feature. {CommonProxyErrors.not_premium_user.value}")
-    elif isinstance(member, list):
-        for m in member:
-            if m.role == "admin":
-                if premium_user is not True:
-                    raise ValueError(
-                        f"Assigning team admins is a premium feature. Got={m}. {CommonProxyErrors.not_premium_user.value}. "
-                    )
+    entitlements: EntitlementService | None = None,
+) -> None:
+    members: Final = member if isinstance(member, list) else [member]
+    if any(m.role == "admin" for m in members) and not is_licensed(LicenseFeature.TEAM_ADMIN_ROLES, entitlements):
+        raise ValueError(_TEAM_ADMIN_LICENCE_MESSAGE)
 
 
 def team_call_validation_checks(
     prisma_client: PrismaClient | None,
     data: TeamMemberAddRequest,
-    premium_user: bool,
+    entitlements: EntitlementService | None = None,
 ):
     if prisma_client is None:
         raise HTTPException(status_code=500, detail={"error": "No db connected"})
@@ -2763,10 +2763,7 @@ def team_call_validation_checks(
         raise HTTPException(status_code=400, detail={"error": "No member/members passed in"})
 
     try:
-        _check_team_member_admin_add(
-            member=data.member,
-            premium_user=premium_user,
-        )
+        _check_team_member_admin_add(member=data.member, entitlements=entitlements)
     except Exception as e:
         raise HTTPException(status_code=400, detail={"error": str(e)})
 
@@ -3425,18 +3422,13 @@ async def team_member_add(
     from litellm.proxy.common_utils.auth_cache_invalidation_pubsub import evict_and_broadcast
     from litellm.proxy.proxy_server import (
         litellm_proxy_admin_name,
-        premium_user,
         prisma_client,
         proxy_logging_obj,
         user_api_key_cache,
     )
 
     try:
-        team_call_validation_checks(
-            prisma_client=prisma_client,
-            data=data,
-            premium_user=premium_user,
-        )
+        team_call_validation_checks(prisma_client=prisma_client, data=data)
     except HTTPException as e:
         raise e
 
@@ -3813,7 +3805,6 @@ async def team_member_update(
     """
     from litellm.proxy.proxy_server import (
         litellm_proxy_admin_name,
-        premium_user,
         prisma_client,
         user_api_key_cache,
     )
@@ -3824,12 +3815,8 @@ async def team_member_update(
     if data.team_id is None:
         raise HTTPException(status_code=400, detail={"error": "No team id passed in"})
 
-    if data.role == "admin" and not premium_user:
-        # exactly the same text your proxy throws for add:
-        raise HTTPException(
-            status_code=400,
-            detail="Assigning team admins is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env.",
-        )
+    if data.role == "admin" and not is_licensed(LicenseFeature.TEAM_ADMIN_ROLES):
+        raise HTTPException(status_code=400, detail=_TEAM_ADMIN_LICENCE_MESSAGE)
     if data.user_id is None and data.user_email is None:
         raise HTTPException(
             status_code=400,
