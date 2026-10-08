@@ -118,7 +118,7 @@ The user's overall plan, mapped to the work above. Steps 1, 4 and 5 are done: th
   - [ ] `llmguard_moderations`
   - [ ] `google_text_moderation`
   - [x] tag-based guardrail modes: a guardrail whose `mode` is `{tags: {...}, default: ...}` runs on the hooks of every request tag it matches (tags from `metadata`, `litellm_metadata` or the body), falls back to `default` when none match, and doesn't run if there is no default. When it would run without `guardrails` on the licence, the request gets a 403
-  - [ ] custom UI SSO sign-in handler
+  - [x] custom UI SSO sign-in handler: `general_settings.custom_ui_sso_sign_in_handler` works again behind the `sso` licence feature. Before the handler reads any header, the request must come straight from a peer in `general_settings.trusted_proxy_ranges` (403 otherwise, also when the setting is missing), because this path trusts identity headers set by the reverse proxy. The returned `OpenID` then goes through the same session path as the regular SSO and SAML callbacks
 - [ ] Step 6, rename `litellm` to `agami` in the folder structure and module names. `litellm/` holds about 2,470 Python files and about 4,300 files import it, so the approach needs a decision first
 - [ ] Step 7, refactor and optimize. Needs a scope decision
 

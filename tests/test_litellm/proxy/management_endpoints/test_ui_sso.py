@@ -4,10 +4,13 @@ import logging
 import os
 from contextlib import ExitStack, asynccontextmanager
 from types import SimpleNamespace
+from typing import Final
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, Request
+from fastapi.responses import RedirectResponse
+from fastapi_sso.sso.base import OpenID
 
 import litellm
 from litellm._uuid import uuid
@@ -9199,3 +9202,137 @@ class TestSessionTokenCookie:
         resp = Response()
         set_session_token_cookie(resp, _make_http_request(), "jwt-token-value")
         assert "Secure" in self._cookie(resp)
+
+
+class _HeaderSignInHandler:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def handle_custom_ui_sso_sign_in(self, request: Request) -> OpenID:
+        self.calls += 1
+        return OpenID(id=request.headers["x-forwarded-user"], email="dev@example.com", provider="oauth2-proxy")
+
+
+class _RecordedSignIn:
+    def __init__(self) -> None:
+        self.kwargs: dict[str, object] = {}
+
+    async def __call__(self, **kwargs: object) -> RedirectResponse:
+        self.kwargs = kwargs
+        return RedirectResponse("/ui/")
+
+
+def _peer_request(client_ip: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/sso/key/generate",
+            "query_string": b"",
+            "headers": [(b"x-forwarded-user", b"user-from-proxy")],
+            "client": (client_ip, 51000),
+        }
+    )
+
+
+@pytest.fixture
+def behind_trusted_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {"trusted_proxy_ranges": ["10.0.0.0/8"]})
+
+
+@pytest.mark.usefixtures("behind_trusted_proxy")
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_signs_in_the_user_it_returns(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+    finish: Final = _RecordedSignIn()
+
+    response: Final = await _sign_in_with_custom_ui_sso_handler(
+        handler=_HeaderSignInHandler(),
+        request=_peer_request("10.1.2.3"),
+        return_to="https://attacker.example/steal",
+        complete_sign_in=finish,
+    )
+
+    assert response.headers["location"] == "/ui/"
+    result: Final = finish.kwargs["result"]
+    assert isinstance(result, OpenID)
+    assert result.id == "user-from-proxy"
+    assert finish.kwargs["return_to"] is None
+
+
+@pytest.mark.usefixtures("behind_trusted_proxy")
+@pytest.mark.parametrize(
+    ("features", "client_ip"),
+    [(("guardrails",), "10.1.2.3"), (("sso",), "203.0.113.9")],
+    ids=["without-sso-feature", "untrusted-peer"],
+)
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_is_refused_before_it_reads_headers(
+    monkeypatch: pytest.MonkeyPatch, features: tuple[str, ...], client_ip: str
+) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    handler: Final = _HeaderSignInHandler()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _sign_in_with_custom_ui_sso_handler(
+            handler=handler, request=_peer_request(client_ip), return_to=None, complete_sign_in=_RecordedSignIn()
+        )
+
+    assert exc_info.value.status_code == 403
+    assert handler.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_needs_trusted_proxy_ranges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+    monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {})
+    handler: Final = _HeaderSignInHandler()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _sign_in_with_custom_ui_sso_handler(
+            handler=handler, request=_peer_request("10.1.2.3"), return_to=None, complete_sign_in=_RecordedSignIn()
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "trusted_proxy_ranges" in str(exc_info.value.detail)
+    assert handler.calls == 0
+
+
+@pytest.mark.usefixtures("behind_trusted_proxy")
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_without_the_sign_in_method_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+
+    with pytest.raises(ValueError, match="handle_custom_ui_sso_sign_in"):
+        await _sign_in_with_custom_ui_sso_handler(
+            handler=object(), request=_peer_request("10.1.2.3"), return_to=None, complete_sign_in=_RecordedSignIn()
+        )
+
+
+@pytest.mark.asyncio
+async def test_sso_login_endpoint_routes_to_the_custom_ui_sso_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import google_login
+
+    install_entitlements(monkeypatch, unlicensed_entitlements())
+    handler: Final = _HeaderSignInHandler()
+    for var in _SSO_PROVIDER_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("litellm.proxy.proxy_server.master_key", "sk-1234")
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock())
+    monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {"trusted_proxy_ranges": ["10.0.0.0/8"]})
+    monkeypatch.setattr("litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler", handler)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await google_login(request=_peer_request("10.1.2.3"))
+
+    assert exc_info.value.status_code == 403
+    assert "Custom UI SSO sign-in" in str(exc_info.value.detail)
+    assert handler.calls == 0

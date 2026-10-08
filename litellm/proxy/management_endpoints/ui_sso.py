@@ -32,6 +32,7 @@ from typing import (
     Union,
     cast,
     overload,
+    runtime_checkable,
 )
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -130,6 +131,7 @@ from litellm.proxy.utils import (
     ProxyLogging,
     get_custom_url,
     get_server_root_path,
+    require_license_feature,
 )
 from litellm.repositories.prisma_protocols import TableActions
 from litellm.repositories.table_repositories import SSOConfigRepository
@@ -998,6 +1000,53 @@ async def _raise_if_sso_exceeds_free_user_limit(
         )
 
 
+@runtime_checkable
+class CustomUISSOSignInHandler(Protocol):
+    async def handle_custom_ui_sso_sign_in(self, request: Request) -> OpenID: ...
+
+
+class _CompleteSignIn(Protocol):
+    async def __call__(
+        self,
+        *,
+        result: OpenID,
+        request: Request,
+        ui_access_mode: dict | None,
+        jwt_handler: JWTHandler | None,
+        return_to: str | None,
+    ) -> RedirectResponse: ...
+
+
+async def _sign_in_with_custom_ui_sso_handler(
+    handler: object,
+    request: Request,
+    return_to: str | None,
+    complete_sign_in: _CompleteSignIn | None = None,
+) -> RedirectResponse:
+    from litellm.proxy.auth.trusted_proxy_utils import require_trusted_proxy_request
+    from litellm.proxy.proxy_server import general_settings, jwt_handler
+
+    require_license_feature(LicenseFeature.SSO, "Custom UI SSO sign-in")
+    if not isinstance(handler, CustomUISSOSignInHandler):
+        raise ValueError(
+            "general_settings.custom_ui_sso_sign_in_handler must point to an object with "
+            "an async handle_custom_ui_sso_sign_in(request) method"
+        )
+    try:
+        require_trusted_proxy_request(request=request, general_settings=general_settings, feature_name="Custom UI SSO")
+    except ValueError as untrusted:
+        raise HTTPException(status_code=403, detail={"error": str(untrusted)}) from untrusted
+    result: Final = await handler.handle_custom_ui_sso_sign_in(request)
+    finish: Final = complete_sign_in or SSOAuthenticationHandler.get_redirect_response_from_openid
+    return await finish(
+        result=result,
+        request=request,
+        ui_access_mode=general_settings.get("ui_access_mode", None),
+        jwt_handler=jwt_handler,
+        return_to=return_to if return_to and SSOAuthenticationHandler._validate_return_to(return_to) else None,
+    )
+
+
 @router.get("/sso/key/generate", tags=["experimental"], include_in_schema=False)
 async def google_login(
     request: Request,
@@ -1061,9 +1110,10 @@ async def google_login(
         user_code=(user_code if _cli_sso_verification_uri_complete_enabled() else None),
     )
 
-    # check if user defined a custom auth sso sign in handler, if yes, use it
     if user_custom_ui_sso_sign_in_handler is not None:
-        raise ValueError("Custom UI SSO sign-in handlers are not available in this build")
+        return await _sign_in_with_custom_ui_sso_handler(
+            handler=user_custom_ui_sso_sign_in_handler, request=request, return_to=return_to
+        )
 
     if (
         microsoft_client_id is None
