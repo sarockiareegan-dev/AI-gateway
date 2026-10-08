@@ -173,10 +173,6 @@ def initialize_presidio(litellm_params: LitellmParams, guardrail: Guardrail) -> 
     )
 
 
-def initialize_hide_secrets(litellm_params: LitellmParams, guardrail: Guardrail):
-    raise ValueError("The 'hide-secrets' guardrail is not available in this build")
-
-
 def initialize_tool_permission(litellm_params: LitellmParams, guardrail: Guardrail):
     from litellm.proxy.guardrails.guardrail_hooks.tool_permission import (
         ToolPermissionGuardrail,

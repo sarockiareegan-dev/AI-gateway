@@ -3,39 +3,42 @@ from pathlib import Path
 from typing import Final
 
 from fastapi import HTTPException
+from pydantic import TypeAdapter
 
 from litellm.caching.caching import DualCache
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import CommonProxyErrors, UserAPIKeyAuth
 from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
+from litellm.proxy.guardrails.guardrail_hooks.hide_secrets.hide_secrets import (
+    HideSecretsGuardrail,
+    load_secret_patterns,
+)
 from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import ContentFilterGuardrail
 from litellm.types.guardrails import BlockedWord, ContentFilterAction, GuardrailEventHooks
 from litellm.types.utils import CallTypesLiteral
 
 REQUEST_AND_RESPONSE_HOOKS: Final = (GuardrailEventHooks.pre_call, GuardrailEventHooks.post_call)
+_SEQUENCE: Final = TypeAdapter(Sequence[object])
 
 
-def require_guardrails_licence(callback: str) -> None:
+def require_guardrails_licence(name: str) -> None:
     if is_licensed(LicenseFeature.GUARDRAILS):
         return
     raise ValueError(
-        f"The '{callback}' callback needs the 'guardrails' feature on the Agami license. "
-        f"{CommonProxyErrors.not_premium_user.value}"
+        f"'{name}' needs the 'guardrails' feature on the Agami license. {CommonProxyErrors.not_premium_user.value}"
     )
 
 
-def _raw_entries(setting: str, value: object) -> Sequence[object]:
+def _raw_entries(setting: str, value: object) -> Sequence[str]:
     if isinstance(value, str):
         return Path(value).read_text(encoding="utf-8").splitlines()
     if isinstance(value, Sequence):
-        return value
+        return tuple(entry for entry in _SEQUENCE.validate_python(value) if isinstance(entry, str))
     raise ValueError(f"Set litellm_settings.{setting} to a list, or to a .txt file with one entry per line")
 
 
 def load_setting_entries(setting: str, value: object) -> tuple[str, ...]:
-    cleaned: Final = tuple(
-        entry.strip() for entry in _raw_entries(setting, value) if isinstance(entry, str) and entry.strip()
-    )
+    cleaned: Final = tuple(entry.strip() for entry in _raw_entries(setting, value) if entry.strip())
     if not cleaned:
         raise ValueError(f"litellm_settings.{setting} has no entries")
     return cleaned
@@ -55,9 +58,9 @@ class BlockedUserGuardrail(CustomGuardrail):
         self,
         user_api_key_dict: UserAPIKeyAuth,
         cache: DualCache,
-        data: dict,
+        data: dict[str, object],
         call_type: CallTypesLiteral,
-    ) -> dict:
+    ) -> dict[str, object]:
         request_user: Final = data.get("user")
         candidates: Final = (user_api_key_dict.end_user_id, request_user if isinstance(request_user, str) else None)
         blocked: Final = next((user for user in candidates if user is not None and user in self.blocked_users), None)
@@ -70,6 +73,11 @@ def build_blocked_user_guardrail(litellm_settings: Mapping[str, object], fallbac
     require_guardrails_licence("blocked_user_check")
     users: Final = load_setting_entries("blocked_user_list", litellm_settings.get("blocked_user_list", fallback))
     return BlockedUserGuardrail(blocked_users=frozenset(users))
+
+
+def build_hide_secrets_guardrail() -> HideSecretsGuardrail:
+    require_guardrails_licence("hide_secrets")
+    return HideSecretsGuardrail(guardrail_name="hide_secrets", patterns=load_secret_patterns(None), default_on=True)
 
 
 def build_banned_keywords_guardrail(litellm_settings: Mapping[str, object], fallback: object) -> ContentFilterGuardrail:

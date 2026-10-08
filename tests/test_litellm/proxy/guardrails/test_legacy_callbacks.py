@@ -169,7 +169,7 @@ def test_missing_or_empty_entries_are_rejected(value: object) -> None:
 def test_blocked_user_check_without_the_guardrails_feature_fails_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
     install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
 
-    with pytest.raises(ValueError, match="'blocked_user_check' callback needs the 'guardrails' feature"):
+    with pytest.raises(ValueError, match="'blocked_user_check' needs the 'guardrails' feature"):
         _register_blocked_users(["mallory"])
 
     assert litellm.callbacks == []

@@ -755,9 +755,8 @@ async def test_provider_specific_params_exposes_bedrock_streaming_flags():
 
 @pytest.mark.asyncio
 async def test_provider_specific_params_includes_hide_secrets():
-    """hide-secrets lives in the enterprise package so it is not in
-    guardrail_class_registry; the endpoint must still advertise it or the
-    Add Guardrail UI dropdown never offers it (LIT-3548)."""
+    """The Add Guardrail UI dropdown only offers providers the endpoint
+    advertises (LIT-3548)."""
     from litellm.proxy.guardrails.guardrail_endpoints import (
         get_provider_specific_params,
     )
@@ -773,8 +772,8 @@ async def test_provider_specific_params_includes_hide_secrets():
 
 @pytest.mark.asyncio
 async def test_add_guardrail_settings_restricts_hide_secrets_to_pre_call():
-    """hide-secrets only implements async_pre_call_hook, so offering the other
-    modes in the UI would create configs that boot clean and never run."""
+    """hide-secrets only masks requests, so offering the other modes in the UI
+    would create configs that boot clean and never run."""
     from litellm.proxy.guardrails.guardrail_endpoints import (
         get_guardrail_ui_settings,
     )

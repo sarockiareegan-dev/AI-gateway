@@ -58,7 +58,6 @@ TRUSTED_PILLAR_RESPONSE_HEADERS_METADATA_KEY: Final = "_pillar_response_headers_
 UNAVAILABLE_GUARDRAIL_CALLBACKS: Final = frozenset(
     {
         "llamaguard_moderations",
-        "hide_secrets",
         "openai_moderations",
         "google_text_moderation",
         "llmguard_moderations",
@@ -217,6 +216,10 @@ def initialize_callbacks_on_proxy(
                 from litellm.proxy.guardrails.legacy_callbacks import build_blocked_user_guardrail
 
                 imported_list.append(build_blocked_user_guardrail(litellm_settings, fallback=litellm.blocked_user_list))
+            elif isinstance(callback, str) and callback == "hide_secrets":
+                from litellm.proxy.guardrails.legacy_callbacks import build_hide_secrets_guardrail
+
+                imported_list.append(build_hide_secrets_guardrail())
             elif isinstance(callback, str) and callback == "lakera_prompt_injection":
                 from litellm.proxy.guardrails.guardrail_hooks.lakera_ai import (
                     lakeraAI_Moderation,

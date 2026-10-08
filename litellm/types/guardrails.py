@@ -966,7 +966,9 @@ class BaseLitellmParams(ContentFilterConfigModel):  # works for new and patch up
     )
 
     # hide secrets params
-    detect_secrets_config: dict | None = Field(default=None, description="Configuration for detect-secrets guardrail")
+    detect_secrets_config: dict[str, object] | None = Field(
+        default=None, description="Configuration for detect-secrets guardrail"
+    )
 
     # guardrails ai params
     guard_name: str | None = Field(default=None, description="Name of the guardrail in guardrails.ai")
