@@ -1,6 +1,6 @@
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from fastapi import HTTPException
 from pydantic import TypeAdapter
@@ -14,11 +14,13 @@ from litellm.proxy.guardrails.guardrail_hooks.hide_secrets.hide_secrets import (
     load_secret_patterns,
 )
 from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import ContentFilterGuardrail
+from litellm.proxy.guardrails.guardrail_hooks.openai.moderations import OpenAIModerationGuardrail
 from litellm.types.guardrails import BlockedWord, ContentFilterAction, GuardrailEventHooks
 from litellm.types.utils import CallTypesLiteral
 
 REQUEST_AND_RESPONSE_HOOKS: Final = (GuardrailEventHooks.pre_call, GuardrailEventHooks.post_call)
 _SEQUENCE: Final = TypeAdapter(Sequence[object])
+_MODERATION_MODEL: Final = TypeAdapter(Literal["omni-moderation-latest", "text-moderation-latest"] | None)
 
 
 def require_guardrails_licence(name: str) -> None:
@@ -78,6 +80,20 @@ def build_blocked_user_guardrail(litellm_settings: Mapping[str, object], fallbac
 def build_hide_secrets_guardrail() -> HideSecretsGuardrail:
     require_guardrails_licence("hide_secrets")
     return HideSecretsGuardrail(guardrail_name="hide_secrets", patterns=load_secret_patterns(None), default_on=True)
+
+
+def build_openai_moderation_guardrail(
+    litellm_settings: Mapping[str, object], fallback: object
+) -> OpenAIModerationGuardrail:
+    require_guardrails_licence("openai_moderations")
+    model: Final = _MODERATION_MODEL.validate_python(litellm_settings.get("openai_moderations_model_name", fallback))
+    return OpenAIModerationGuardrail(
+        guardrail_name="openai_moderations",
+        model=model,
+        event_hook=GuardrailEventHooks.during_call,
+        default_on=True,
+        required_license_feature=LicenseFeature.GUARDRAILS,
+    )
 
 
 def build_banned_keywords_guardrail(litellm_settings: Mapping[str, object], fallback: object) -> ContentFilterGuardrail:

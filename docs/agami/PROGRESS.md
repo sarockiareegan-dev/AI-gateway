@@ -113,7 +113,7 @@ The user's overall plan, mapped to the work above. Steps 1, 4 and 5 are done: th
   - [x] `banned_keywords`: built on the open-source content filter with `banned_keywords_list` (a list or a `.txt` path) as BLOCK words on the request and the response (`litellm/proxy/guardrails/legacy_callbacks.py`)
   - [x] `blocked_user_check`: our own pre-call guardrail that answers 403 when the request's `user` field or the end user resolved by auth (customer headers or body) is in `blocked_user_list` (a list or a `.txt` path). Matching is exact, since user ids are identifiers. Blocking end users stored in the database stays with the existing open-source end-user `blocked` flag
   - [x] `hide_secrets` callback and the `hide-secrets` guardrail: `guardrail_hooks/hide_secrets/` masks secrets in the request as `[REDACTED <type>]`, built on the regex detectors of `detect-secrets` (already a pinned `proxy-runtime` dependency). Every regex detector runs by default except public IP detection, and `detect_secrets_config.plugins_used` narrows the set. The entropy and keyword detectors can't say where a secret starts and ends, so asking for them fails at startup. The guardrail type is now found by the registry's directory discovery, which replaced the stub and the hard-coded entries in the registry and the guardrail endpoints
-  - [ ] `openai_moderations`
+  - [x] `openai_moderations`: the open-source OpenAI moderation guardrail, run during the call like the legacy callback did, with `openai_moderations_model_name` checked at startup against the two models it supports
   - [ ] `llamaguard_moderations`
   - [ ] `llmguard_moderations`
   - [ ] `google_text_moderation`

@@ -1,12 +1,16 @@
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
+import httpx
 import pytest
+import respx
 from fastapi import HTTPException
 
 import litellm
 from litellm.caching.caching import DualCache
+from litellm.caching.llm_caching_handler import LLMClientCache
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.common_utils.callback_utils import initialize_callbacks_on_proxy
 from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import ContentFilterGuardrail
@@ -215,6 +219,93 @@ async def test_global_blocked_user_list_is_used_when_the_setting_is_absent(monke
         await _pre_call("hello", user="from-global")
 
     assert exc_info.value.status_code == 403
+
+
+def _moderation_reply(flagged: bool) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "id": "modr-test",
+            "model": "omni-moderation-latest",
+            "results": [
+                {
+                    "flagged": flagged,
+                    "categories": {"violence": flagged},
+                    "category_scores": {"violence": 0.99 if flagged else 0.01},
+                    "category_applied_input_types": {"violence": ["text"]},
+                }
+            ],
+        },
+    )
+
+
+def _register_openai_moderations(litellm_settings: dict[str, object]) -> None:
+    initialize_callbacks_on_proxy(
+        value=["openai_moderations"],
+        config_file_path="",
+        litellm_settings=litellm_settings,
+        callback_specific_params={},
+    )
+
+
+async def _during_call(content: str) -> object:
+    return await ProxyLogging(user_api_key_cache=DualCache()).during_call_hook(
+        data={"model": "gpt-4", "messages": [{"role": "user", "content": content}], "metadata": {}},
+        user_api_key_dict=UserAPIKeyAuth(api_key="sk-test"),
+        call_type="acompletion",
+    )
+
+
+@pytest.fixture
+def openai_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-test")
+    monkeypatch.setattr(litellm, "disable_aiohttp_transport", True)
+    monkeypatch.setattr(litellm, "in_memory_llm_clients_cache", LLMClientCache())
+
+
+@pytest.mark.usefixtures("guardrails_licence", "openai_key")
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_moderations_blocks_flagged_requests_with_the_configured_model() -> None:
+    route: Final = respx.post("https://api.openai.com/v1/moderations").mock(return_value=_moderation_reply(True))
+    _register_openai_moderations({"openai_moderations_model_name": "text-moderation-latest"})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _during_call("something violent")
+
+    assert exc_info.value.status_code == 400
+    assert "violence" in str(exc_info.value.detail)
+    sent: Final = json.loads(route.calls.last.request.content)
+    assert sent == {"model": "text-moderation-latest", "input": "something violent"}
+
+
+@pytest.mark.usefixtures("guardrails_licence", "openai_key")
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_moderations_lets_unflagged_requests_through() -> None:
+    route: Final = respx.post("https://api.openai.com/v1/moderations").mock(return_value=_moderation_reply(False))
+    _register_openai_moderations({})
+
+    await _during_call("what is the weather")
+
+    assert route.call_count == 1
+    assert json.loads(route.calls.last.request.content)["model"] == "omni-moderation-latest"
+
+
+@pytest.mark.usefixtures("guardrails_licence", "openai_key")
+def test_openai_moderations_rejects_an_unknown_model_at_startup() -> None:
+    with pytest.raises(ValueError, match="omni-moderation-latest"):
+        _register_openai_moderations({"openai_moderations_model_name": "gpt-4"})
+
+    assert litellm.callbacks == []
+
+
+@pytest.mark.usefixtures("openai_key")
+def test_openai_moderations_without_the_guardrails_feature_fails_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+
+    with pytest.raises(ValueError, match="'openai_moderations' needs the 'guardrails' feature"):
+        _register_openai_moderations({})
 
 
 @pytest.mark.asyncio
