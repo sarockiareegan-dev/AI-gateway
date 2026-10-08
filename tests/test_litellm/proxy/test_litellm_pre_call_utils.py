@@ -56,6 +56,7 @@ from litellm.constants import (
 from litellm.llms.bedrock.base_aws_llm import BaseAWSLLM
 from litellm.llms.fireworks_ai.common_utils import get_fireworks_session_id
 from litellm.types.utils import CredentialItem
+from litellm.proxy.auth.entitlements import EntitlementService
 from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements, unlicensed_entitlements
 
 _LICENCE_SEAM: Final = "litellm.proxy.auth.entitlements.get_entitlement_service"
@@ -194,22 +195,26 @@ def test_get_enforced_params(general_settings, user_api_key_dict, expected_enfor
     assert enforced_params == expected_enforced_params
 
 
-@pytest.mark.parametrize(
-    ("service", "error"),
-    [
-        (licensed_entitlements(features=("enforced_params",)), "please pass param=user"),
-        (licensed_entitlements(features=("sso",)), "'enforced_params' feature"),
-        (unlicensed_entitlements(), "'enforced_params' feature"),
-    ],
-)
-def test_enforced_params_need_the_enforced_params_licence_feature(service, error):
-    with pytest.raises(ValueError, match=error):
-        _enforced_params_check(
-            request_body={"model": "gpt-4o"},
-            general_settings={"enforced_params": ["user"]},
-            user_api_key_dict=UserAPIKeyAuth(api_key="sk-test"),
-            entitlements=service,
-        )
+def _check_enforced_user_param(service: EntitlementService) -> None:
+    _enforced_params_check(
+        request_body={"model": "gpt-4o"},
+        general_settings={"enforced_params": ["user"]},
+        user_api_key_dict=UserAPIKeyAuth(api_key="sk-test"),
+        entitlements=service,
+    )
+
+
+def test_enforced_params_are_checked_with_the_enforced_params_licence_feature():
+    with pytest.raises(ValueError, match="please pass param=user"):
+        _check_enforced_user_param(licensed_entitlements(features=("enforced_params",)))
+
+
+@pytest.mark.parametrize("service", [licensed_entitlements(features=("sso",)), unlicensed_entitlements()])
+def test_enforced_params_without_the_licence_feature_are_forbidden(service):
+    with pytest.raises(HTTPException) as exc_info:
+        _check_enforced_user_param(service)
+    assert exc_info.value.status_code == 403
+    assert "'enforced_params' feature" in str(exc_info.value.detail)
 
 
 _METADATA_SOURCES: Final = ("key_metadata", "team_metadata", "project_metadata")

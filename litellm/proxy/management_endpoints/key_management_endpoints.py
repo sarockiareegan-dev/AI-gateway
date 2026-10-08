@@ -5690,9 +5690,12 @@ async def regenerate_key_fn(
         )
 
         if not is_master_key_regeneration and not is_licensed(LicenseFeature.ADVANCED_KEYS):
-            raise ValueError(
-                "Regenerating virtual keys needs the 'advanced_keys' feature on the Agami license. "
-                f"{CommonProxyErrors.not_premium_user.value}"
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "Regenerating virtual keys needs the 'advanced_keys' feature on the Agami license. "
+                    f"{CommonProxyErrors.not_premium_user.value}"
+                },
             )
 
         # Check if key exists, raise exception if key is not in the DB
@@ -7683,17 +7686,18 @@ def validate_model_max_budget(model_max_budget: dict | None, entitlements: Entit
     Raises:
         Exception: If model_max_budget is not a valid GenericBudgetConfigType
     """
+    if not model_max_budget:
+        return
+    if not is_licensed(LicenseFeature.BUDGETS, entitlements):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Setting model_max_budget needs the 'budgets' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}"
+            },
+        )
     try:
-        if model_max_budget is None:
-            return
-        if len(model_max_budget) == 0:
-            return
         if model_max_budget is not None:
-            if not is_licensed(LicenseFeature.BUDGETS, entitlements):
-                raise ValueError(
-                    "Setting model_max_budget needs the 'budgets' feature on the Agami license. "
-                    f"{CommonProxyErrors.not_premium_user.value}"
-                )
             for _model, _budget_info in model_max_budget.items():
                 assert isinstance(_model, str)
 

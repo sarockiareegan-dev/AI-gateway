@@ -20407,8 +20407,10 @@ def test_key_model_max_budget_needs_the_budgets_licence_feature(features, allowe
     if allowed:
         assert validate_model_max_budget(budget, entitlements) is None
         return
-    with pytest.raises(ValueError, match="'budgets' feature"):
+    with pytest.raises(HTTPException) as exc_info:
         validate_model_max_budget(budget, entitlements)
+    assert exc_info.value.status_code == 403
+    assert "'budgets' feature" in str(exc_info.value.detail)
 
 
 _ADVANCED_KEYS_LICENCES: Final = pytest.mark.parametrize(
@@ -20477,7 +20479,7 @@ async def test_virtual_key_regeneration_needs_the_advanced_keys_licence_feature(
 
     install_entitlements(monkeypatch, service)
 
-    with pytest.raises(Exception, match=r"'advanced_keys' feature|No key passed in") as exc_info:
+    with pytest.raises(ProxyException) as exc_info:
         await regenerate_key_fn(
             key=None,
             data=None,
@@ -20485,9 +20487,9 @@ async def test_virtual_key_regeneration_needs_the_advanced_keys_licence_feature(
             litellm_changed_by=None,
         )
 
-    assert ("'advanced_keys' feature" in str(exc_info.value)) is not allowed
-    if allowed:
-        assert "No key passed in" in str(exc_info.value)
+    expected: Final = ("400", "No key passed in") if allowed else ("403", "'advanced_keys' feature")
+    assert exc_info.value.code == expected[0]
+    assert expected[1] in exc_info.value.message
 
 
 @pytest.mark.parametrize(
