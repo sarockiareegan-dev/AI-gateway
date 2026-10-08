@@ -100,7 +100,7 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 ### Checkpoint E: ship
 
 - [x] Run the `make check` steps that work on Windows and fix anything new. Done Oct 8. Circular imports and import safety pass. `ruff check` on `litellm` and `ruff check --config ruff-tests.toml tests` pass; the branch had added 11 findings (unused and unsorted imports, a triplicated import in `test_secret_manager.py`, three duplicated tests in `test_entitlements.py`, a redefined `MagicMock` and a `pytest.raises(Exception)` without `match`). `ruff format --check` flagged 98 of the 223 changed files, but 92 of those were already unformatted on `dev`, so only the 7 the branch broke were formatted. There is no `make`, `bash` or `gh` here, and the budget gates (`ruff_strict_gate.py`, `type_discipline_gate.py`, `type_check_gate.py`, `test_quality_gate.py`) need `fcntl` and `SIGHUP`, so CI has to run them. `test_secret_manager.py::test_aws_secret_manager` and `::test_oidc_env_path` fail on `dev` too (AWS access and a Windows temp file lock)
-- [ ] Run `tests/proxy_behavior` on a migrated database
+- [x] Run `tests/proxy_behavior` on a migrated database. Done Oct 8 on a throwaway `agami_behavior_test` database on the local server, seeded with `prisma db push` like CI: 902 passed, and `tests/proxy_security_tests` passed too. Seven tests pinned upstream behaviour that Checkpoint A changed on purpose, so they were updated: org admins now get 200 on `/team/daily/activity`, `/team/daily/activity/aggregated` and `/team/spend/by_user` for teams in their own organization (still 404 for other organizations), and the available-team self-join read now uses a caller from the team's organization, with a cross-organization caller asserted to get 403
 - [ ] Proof of fix against a live proxy on `localhost:4000`: one request per gated feature with a licence that lacks it (403) and one that has it (200), shown as curl commands and output
 - [ ] Open the PR against the default branch from `python3 scripts/default_branch.py --branch`, following `.github/pull_request_template.md`
 
@@ -139,7 +139,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-Checkpoint E: the `tests/proxy_behavior` suite on a migrated database, then the live curl proof on `localhost:4000` and the PR. The PR base is still open: `origin/main` only has the README, and `origin/dev` holds the code this branch started from. Follow-up after the PR: per-feature UI gating instead of the single `premium_user` token flag
+Checkpoint E: the live curl proof on `localhost:4000`, then the PR against `dev` (decided Oct 8, because `origin/main` only has the README). Follow-up after the PR: per-feature UI gating instead of the single `premium_user` token flag
 
 ## Session log
 
