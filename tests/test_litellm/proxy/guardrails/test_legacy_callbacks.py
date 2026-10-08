@@ -44,10 +44,24 @@ def _register_banned_keywords(keywords: object) -> None:
     )
 
 
-async def _pre_call(content: str) -> dict:
+def _register_blocked_users(users: object) -> None:
+    initialize_callbacks_on_proxy(
+        value=["blocked_user_check"],
+        config_file_path="",
+        litellm_settings={"blocked_user_list": users},
+        callback_specific_params={},
+    )
+
+
+async def _pre_call(content: str, user: str | None = None, end_user_id: str | None = None) -> dict:
     return await ProxyLogging(user_api_key_cache=DualCache()).pre_call_hook(
-        user_api_key_dict=UserAPIKeyAuth(api_key="sk-test"),
-        data={"model": "gpt-4", "messages": [{"role": "user", "content": content}], "metadata": {}},
+        user_api_key_dict=UserAPIKeyAuth(api_key="sk-test", end_user_id=end_user_id),
+        data={
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": content}],
+            "metadata": {},
+            **({"user": user} if user is not None else {}),
+        },
         call_type="acompletion",
     )
 
@@ -150,3 +164,67 @@ def test_entries_load_from_a_text_file_and_skip_blank_lines(tmp_path: Path) -> N
 def test_missing_or_empty_entries_are_rejected(value: object) -> None:
     with pytest.raises(ValueError, match="banned_keywords_list"):
         load_setting_entries("banned_keywords_list", value)
+
+
+def test_blocked_user_check_without_the_guardrails_feature_fails_at_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+
+    with pytest.raises(ValueError, match="'blocked_user_check' callback needs the 'guardrails' feature"):
+        _register_blocked_users(["mallory"])
+
+    assert litellm.callbacks == []
+
+
+@pytest.mark.usefixtures("guardrails_licence")
+@pytest.mark.parametrize(
+    "user, end_user_id",
+    [("mallory", None), (None, "mallory"), ("alice", "mallory"), ("mallory", "alice")],
+    ids=["request-user", "auth-end-user", "auth-end-user-wins-over-clean-user", "request-user-with-clean-end-user"],
+)
+@pytest.mark.asyncio
+async def test_blocked_end_user_is_forbidden(user: str | None, end_user_id: str | None) -> None:
+    _register_blocked_users(["mallory", "trudy"])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _pre_call("hello", user=user, end_user_id=end_user_id)
+
+    assert exc_info.value.status_code == 403
+    assert "mallory" in str(exc_info.value.detail)
+
+
+@pytest.mark.usefixtures("guardrails_licence")
+@pytest.mark.parametrize("user, end_user_id", [("alice", "bob"), (None, None), ("Mallory", None)])
+@pytest.mark.asyncio
+async def test_unlisted_end_users_pass_through(user: str | None, end_user_id: str | None) -> None:
+    _register_blocked_users(["mallory"])
+
+    data: Final = await _pre_call("hello", user=user, end_user_id=end_user_id)
+
+    assert data["messages"][0]["content"] == "hello"
+
+
+@pytest.mark.usefixtures("guardrails_licence")
+@pytest.mark.asyncio
+async def test_global_blocked_user_list_is_used_when_the_setting_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(litellm, "blocked_user_list", ["from-global"])
+    initialize_callbacks_on_proxy(
+        value=["blocked_user_check"], config_file_path="", litellm_settings={}, callback_specific_params={}
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _pre_call("hello", user="from-global")
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_blocked_user_check_forbids_requests_once_the_licence_lapses(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
+    _register_blocked_users(["mallory"])
+    install_entitlements(monkeypatch, unlicensed_entitlements())
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _pre_call("hello", user="alice")
+
+    assert exc_info.value.status_code == 403
+    assert "guardrails" in str(exc_info.value.detail)

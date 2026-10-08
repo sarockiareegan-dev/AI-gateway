@@ -62,7 +62,6 @@ UNAVAILABLE_GUARDRAIL_CALLBACKS: Final = frozenset(
         "openai_moderations",
         "google_text_moderation",
         "llmguard_moderations",
-        "blocked_user_check",
     }
 )
 
@@ -214,6 +213,10 @@ def initialize_callbacks_on_proxy(
                 imported_list.append(
                     build_banned_keywords_guardrail(litellm_settings, fallback=litellm.banned_keywords_list)
                 )
+            elif isinstance(callback, str) and callback == "blocked_user_check":
+                from litellm.proxy.guardrails.legacy_callbacks import build_blocked_user_guardrail
+
+                imported_list.append(build_blocked_user_guardrail(litellm_settings, fallback=litellm.blocked_user_list))
             elif isinstance(callback, str) and callback == "lakera_prompt_injection":
                 from litellm.proxy.guardrails.guardrail_hooks.lakera_ai import (
                     lakeraAI_Moderation,
