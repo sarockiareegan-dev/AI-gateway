@@ -61,8 +61,6 @@ _PRE_CALL_EXECUTED_TOKEN: Final = secrets.token_hex(16)
 
 _GUARDRAIL_BLOCK_STATUS_CODES: Final = frozenset({400, 403, 422})
 
-TAG_BASED_GUARDRAIL_MODE_UNAVAILABLE: Final = "Tag-based guardrail modes are not available in this build"
-
 DEFAULT_ADVISORY_MESSAGE: Final = (
     "The user's latest message was flagged for {reason} by a content safety "
     "guardrail. This may be a false positive. Use your judgment: respond "
@@ -162,6 +160,17 @@ def _raise_unless_licensed(guardrail_name: str | None, feature: "LicenseFeature"
             "error": f"Guardrail '{guardrail_name}' needs the '{feature.value}' feature on the Agami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
         },
+    )
+
+
+def _hooks_for_request_tags(mode: Mode, data: Mapping[str, object]) -> frozenset[str]:
+    from litellm.proxy.common_utils.http_parsing_utils import get_tags_from_request_body
+
+    request_tags: Final = frozenset(get_tags_from_request_body(data))
+    matched: Final = tuple(hooks for tag, hooks in mode.tags.items() if tag in request_tags)
+    fallback: Final = () if mode.default is None else (mode.default,)
+    return frozenset(
+        hook for hooks in (matched or fallback) for hook in ((hooks,) if isinstance(hooks, str) else hooks)
     )
 
 
@@ -1053,11 +1062,9 @@ class CustomGuardrail(CustomLogger):
             return False
 
         if self.default_on is True and disable_global_guardrail is not True:
-            if self._event_hook_is_event_type(event_type):
-                if isinstance(self.event_hook, Mode):
-                    raise ValueError(TAG_BASED_GUARDRAIL_MODE_UNAVAILABLE)
-                return True
-            return False
+            if not self._event_hook_is_event_type(event_type):
+                return False
+            return self._mode_selects_event(data, event_type)
 
         if (
             self.event_hook
@@ -1069,9 +1076,18 @@ class CustomGuardrail(CustomLogger):
         if not self._event_hook_is_event_type(event_type):
             return False
 
-        if isinstance(self.event_hook, Mode):
-            raise ValueError(TAG_BASED_GUARDRAIL_MODE_UNAVAILABLE)
-        return True
+        return self._mode_selects_event(data, event_type)
+
+    def _mode_selects_event(self, data: Mapping[str, object], event_type: GuardrailEventHooks) -> bool:
+        mode: Final = self.event_hook
+        if not isinstance(mode, Mode):
+            return True
+        selected: Final = event_type.value in _hooks_for_request_tags(mode, data)
+        if selected:
+            from litellm.proxy.auth.entitlements import LicenseFeature
+
+            _raise_unless_licensed(self.guardrail_name, LicenseFeature.GUARDRAILS)
+        return selected
 
     def _event_hook_is_event_type(self, event_type: GuardrailEventHooks) -> bool:
         """
