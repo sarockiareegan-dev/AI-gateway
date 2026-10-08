@@ -104,6 +104,15 @@ Each needs a `LicenseFeature` member added and a name agreed (see Open decisions
 - [x] Proof of fix against a live proxy on `localhost:4000`: one request per gated feature with a licence that lacks it (403) and one that has it (200), shown as curl commands and output. Done Oct 8 on a fresh `agami_proof` database. With an `sso`-only licence, SCIM is 200 while `/organization/new`, `/key/generate` with `model_max_budget` and `/key/regenerate` are 403. With `sso,organizations,advanced_keys,budgets` all four are 200, and an org admin of org A sees only org A's team in `/team/list` and gets 401 on `/organization/info` for org B. This run caught key regeneration, `model_max_budget` and enforced params answering 500 instead of 403 (also true upstream), fixed in `33b627d`. A real Groq call (`groq/openai/gpt-oss-120b`) returns 200 under both licences. A Before run on `dev` could not be captured: its proxy never reaches the database on this machine (the Prisma query engine refuses connections even after regenerating the client from `dev`'s schema)
 - [ ] Open the PR against the default branch from `python3 scripts/default_branch.py --branch`, following `.github/pull_request_template.md`
 
+### Plan from Oct 8: the remaining steps
+
+The user's overall plan, mapped to the work above. Steps 1, 4 and 5 are done: the code came from `origin/dev` (`2167fb7`), the premium checks were re-implemented as per-feature licence gates (Phase 4 and Checkpoints B to D), and RBAC was replaced with the tenant scope (Checkpoint A)
+
+- [ ] Step 2, finish removing the enterprise folder. No tracked file or import is left, but the untracked `enterprise/dist` build artefacts are still on disk, and `ruff.toml`, `codecov.yaml` and `backend/routes/allowlist.py` still name the folder
+- [ ] Step 3, replace what the enterprise removal turned into refusals with our own licence-gated code instead of leaving the feature off. Each currently raises "not available in this build": tag-based guardrail modes (`custom_guardrail.py`), the `hide-secrets` guardrail (`guardrail_initializers.py`), the legacy guardrail callbacks in `UNAVAILABLE_GUARDRAIL_CALLBACKS` (`llamaguard_moderations`, `hide_secrets`, `openai_moderations`, `google_text_moderation`, `llmguard_moderations`, `blocked_user_check`, `banned_keywords`), and custom UI SSO sign-in handlers (`ui_sso.py`)
+- [ ] Step 6, rename `litellm` to `agami` in the folder structure and module names. `litellm/` holds about 2,470 Python files and about 4,300 files import it, so the approach needs a decision first
+- [ ] Step 7, refactor and optimize. Needs a scope decision
+
 ## Open decisions
 
 - Decided Oct 4: `proxy_admin_viewer` is per-organization (leak 6 plan above). This matches how `agami/adapters/litellm_compat.py` already maps it to an org-scoped `VIEWER`
