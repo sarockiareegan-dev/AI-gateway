@@ -55,14 +55,6 @@ reset_color_code: Final = "\033[0m"
 
 TRUSTED_PILLAR_RESPONSE_HEADERS_METADATA_KEY: Final = "_pillar_response_headers_trusted"
 
-UNAVAILABLE_GUARDRAIL_CALLBACKS: Final = frozenset(
-    {
-        "llamaguard_moderations",
-        "google_text_moderation",
-        "llmguard_moderations",
-    }
-)
-
 GUARDRAIL_SCAN_IDS_METADATA_KEY: Final = "guardrail_scan_ids"
 GUARDRAIL_SCAN_METADATA_METADATA_KEY: Final = "guardrail_scan_metadata"
 
@@ -203,8 +195,28 @@ def initialize_callbacks_on_proxy(
                 }
                 pii_masking_object = _OPTIONAL_PresidioPIIMasking(**params)
                 imported_list.append(pii_masking_object)
-            elif isinstance(callback, str) and callback in UNAVAILABLE_GUARDRAIL_CALLBACKS:
-                raise ValueError(f"Callback '{callback}' is not available in this build")
+            elif isinstance(callback, str) and callback == "llamaguard_moderations":
+                from litellm.proxy.guardrails.legacy_callbacks import build_llamaguard_guardrail
+
+                imported_list.append(
+                    build_llamaguard_guardrail(
+                        litellm_settings,
+                        model_fallback=litellm.llamaguard_model_name,
+                        categories_fallback=litellm.llamaguard_unsafe_content_categories,
+                    )
+                )
+            elif isinstance(callback, str) and callback == "llmguard_moderations":
+                from litellm.proxy.guardrails.legacy_callbacks import build_llm_guard_guardrail
+
+                imported_list.append(build_llm_guard_guardrail(litellm_settings, mode_fallback=litellm.llm_guard_mode))
+            elif isinstance(callback, str) and callback == "google_text_moderation":
+                from litellm.proxy.guardrails.legacy_callbacks import build_google_text_moderation_guardrail
+
+                imported_list.append(
+                    build_google_text_moderation_guardrail(
+                        litellm_settings, fallback=litellm.google_moderation_confidence_threshold
+                    )
+                )
             elif isinstance(callback, str) and callback == "banned_keywords":
                 from litellm.proxy.guardrails.legacy_callbacks import build_banned_keywords_guardrail
 

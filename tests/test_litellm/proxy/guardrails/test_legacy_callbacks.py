@@ -308,6 +308,97 @@ def test_openai_moderations_without_the_guardrails_feature_fails_at_startup(monk
         _register_openai_moderations({})
 
 
+def _register(callback: str, litellm_settings: dict[str, object]) -> None:
+    initialize_callbacks_on_proxy(
+        value=[callback], config_file_path="", litellm_settings=litellm_settings, callback_specific_params={}
+    )
+
+
+_EXTERNAL_MODERATIONS: Final = (
+    ("llamaguard_moderations", {"llamaguard_model_name": "groq/llama-guard"}),
+    ("llmguard_moderations", {}),
+    ("google_text_moderation", {}),
+)
+
+
+@pytest.fixture
+def llm_guard_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_GUARD_API_BASE", "http://llm-guard.internal:8000")
+
+
+@pytest.mark.usefixtures("llm_guard_server")
+@pytest.mark.parametrize(("callback", "litellm_settings"), _EXTERNAL_MODERATIONS, ids=lambda value: str(value))
+def test_external_moderations_without_the_guardrails_feature_fail_at_startup(
+    monkeypatch: pytest.MonkeyPatch, callback: str, litellm_settings: dict[str, object]
+) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+
+    with pytest.raises(ValueError, match=f"'{callback}' needs the 'guardrails' feature"):
+        _register(callback, litellm_settings)
+
+    assert litellm.callbacks == []
+
+
+@pytest.mark.usefixtures("guardrails_licence", "llm_guard_server")
+@pytest.mark.parametrize(
+    ("callback", "litellm_settings", "guardrail_name"),
+    [(*entry, entry[0]) for entry in _EXTERNAL_MODERATIONS],
+    ids=lambda value: str(value),
+)
+def test_external_moderations_register_when_licensed(
+    callback: str, litellm_settings: dict[str, object], guardrail_name: str
+) -> None:
+    _register(callback, litellm_settings)
+
+    assert [getattr(cb, "guardrail_name", None) for cb in litellm.callbacks] == [guardrail_name]
+
+
+@pytest.mark.usefixtures("guardrails_licence")
+@pytest.mark.parametrize(
+    ("callback", "litellm_settings", "error"),
+    [
+        ("llamaguard_moderations", {}, "llamaguard_model_name"),
+        ("llamaguard_moderations", {"llamaguard_model_name": "  "}, "llamaguard_model_name"),
+        (
+            "llamaguard_moderations",
+            {"llamaguard_model_name": "m", "llamaguard_unsafe_content_categories": 3},
+            "llamaguard_unsafe_content_categories",
+        ),
+        ("llmguard_moderations", {}, "LLM_GUARD_API_BASE"),
+        ("google_text_moderation", {"google_moderation_confidence_threshold": 1.5}, "less than or equal to 1"),
+    ],
+    ids=["no-model", "blank-model", "categories-not-a-path", "no-llm-guard-server", "threshold-out-of-range"],
+)
+def test_external_moderations_reject_bad_settings_at_startup(
+    monkeypatch: pytest.MonkeyPatch, callback: str, litellm_settings: dict[str, object], error: str
+) -> None:
+    monkeypatch.delenv("LLM_GUARD_API_BASE", raising=False)
+
+    with pytest.raises(ValueError, match=error):
+        _register(callback, litellm_settings)
+
+    assert litellm.callbacks == []
+
+
+@pytest.mark.usefixtures("guardrails_licence", "llm_guard_server")
+def test_llm_guard_rejects_an_unknown_mode_at_startup() -> None:
+    with pytest.raises(ValueError, match="key-specific"):
+        _register("llmguard_moderations", {"llm_guard_mode": "sometimes"})
+
+
+@pytest.mark.usefixtures("guardrails_licence")
+def test_llamaguard_reads_custom_categories_from_the_configured_file(tmp_path: Path) -> None:
+    categories: Final = tmp_path / "categories.txt"
+    categories.write_text("S1: Pirate talk.\n", encoding="utf-8")
+
+    _register(
+        "llamaguard_moderations",
+        {"llamaguard_model_name": "groq/llama-guard", "llamaguard_unsafe_content_categories": str(categories)},
+    )
+
+    assert getattr(litellm.callbacks[0], "categories", None) == "S1: Pirate talk.\n"
+
+
 @pytest.mark.asyncio
 async def test_blocked_user_check_forbids_requests_once_the_licence_lapses(monkeypatch: pytest.MonkeyPatch) -> None:
     install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))

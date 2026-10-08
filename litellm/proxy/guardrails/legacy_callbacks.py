@@ -1,26 +1,34 @@
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final, Literal
+from typing import Annotated, Final, Literal, TypeAlias
 
 from fastapi import HTTPException
-from pydantic import TypeAdapter
+from pydantic import Field, TypeAdapter
 
 from litellm.caching.caching import DualCache
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import CommonProxyErrors, UserAPIKeyAuth
 from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
+from litellm.proxy.guardrails.google_text_moderation import DEFAULT_CONFIDENCE_THRESHOLD, GoogleTextModeration
 from litellm.proxy.guardrails.guardrail_hooks.hide_secrets.hide_secrets import (
     HideSecretsGuardrail,
     load_secret_patterns,
 )
 from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import ContentFilterGuardrail
 from litellm.proxy.guardrails.guardrail_hooks.openai.moderations import OpenAIModerationGuardrail
+from litellm.proxy.guardrails.llamaguard_moderation import LlamaGuardModeration
+from litellm.proxy.guardrails.llm_guard_moderation import LLMGuardMode, LLMGuardModeration
+from litellm.secret_managers.main import get_secret_str
 from litellm.types.guardrails import BlockedWord, ContentFilterAction, GuardrailEventHooks
 from litellm.types.utils import CallTypesLiteral
 
 REQUEST_AND_RESPONSE_HOOKS: Final = (GuardrailEventHooks.pre_call, GuardrailEventHooks.post_call)
 _SEQUENCE: Final = TypeAdapter(Sequence[object])
-_MODERATION_MODEL: Final = TypeAdapter(Literal["omni-moderation-latest", "text-moderation-latest"] | None)
+OpenAIModerationModel: TypeAlias = Literal["omni-moderation-latest", "text-moderation-latest"]
+UnitInterval: TypeAlias = Annotated[float, Field(ge=0, le=1)]
+_MODERATION_MODEL: Final = TypeAdapter[OpenAIModerationModel | None](OpenAIModerationModel | None)
+_LLM_GUARD_MODE: Final = TypeAdapter[LLMGuardMode](LLMGuardMode)
+_CONFIDENCE: Final = TypeAdapter[float | None](UnitInterval | None)
 
 
 def require_guardrails_licence(name: str) -> None:
@@ -94,6 +102,51 @@ def build_openai_moderation_guardrail(
         default_on=True,
         required_license_feature=LicenseFeature.GUARDRAILS,
     )
+
+
+def _read_text_file(setting: str, value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"Set litellm_settings.{setting} to the path of a text file")
+    text: Final = Path(value).read_text(encoding="utf-8")
+    if not text.strip():
+        raise ValueError(f"litellm_settings.{setting} points to an empty file")
+    return text
+
+
+def build_llamaguard_guardrail(
+    litellm_settings: Mapping[str, object], model_fallback: object, categories_fallback: object
+) -> LlamaGuardModeration:
+    require_guardrails_licence("llamaguard_moderations")
+    model: Final = litellm_settings.get("llamaguard_model_name", model_fallback)
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("Set litellm_settings.llamaguard_model_name to the Llama Guard model to call")
+    categories: Final = litellm_settings.get("llamaguard_unsafe_content_categories", categories_fallback)
+    return LlamaGuardModeration(
+        model=model,
+        categories=None if categories is None else _read_text_file("llamaguard_unsafe_content_categories", categories),
+    )
+
+
+def build_llm_guard_guardrail(litellm_settings: Mapping[str, object], mode_fallback: object) -> LLMGuardModeration:
+    require_guardrails_licence("llmguard_moderations")
+    api_base: Final = get_secret_str("LLM_GUARD_API_BASE")
+    if not api_base:
+        raise ValueError("Set LLM_GUARD_API_BASE to the URL of your LLM Guard API server")
+    return LLMGuardModeration(
+        api_base=api_base,
+        api_key=get_secret_str("LLM_GUARD_API_KEY"),
+        mode=_LLM_GUARD_MODE.validate_python(litellm_settings.get("llm_guard_mode", mode_fallback)),
+    )
+
+
+def build_google_text_moderation_guardrail(
+    litellm_settings: Mapping[str, object], fallback: object
+) -> GoogleTextModeration:
+    require_guardrails_licence("google_text_moderation")
+    threshold: Final = _CONFIDENCE.validate_python(
+        litellm_settings.get("google_moderation_confidence_threshold", fallback)
+    )
+    return GoogleTextModeration(confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD if threshold is None else threshold)
 
 
 def build_banned_keywords_guardrail(litellm_settings: Mapping[str, object], fallback: object) -> ContentFilterGuardrail:
