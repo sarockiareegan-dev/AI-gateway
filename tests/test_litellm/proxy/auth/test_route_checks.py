@@ -2932,10 +2932,6 @@ async def test_initialize_pass_through_registers_wildcard_for_auth_subpath():
                 MagicMock(),
             ),
             patch(
-                "litellm.proxy.proxy_server.premium_user",
-                True,
-            ),
-            patch(
                 "litellm.proxy.proxy_server.config_passthrough_endpoints",
                 None,
             ),

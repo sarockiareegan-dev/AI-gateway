@@ -126,7 +126,6 @@ def test_login_v2_returns_redirect_url_and_sets_cookie(monkeypatch):
     monkeypatch.setattr("jwt.encode", mock_jwt_encode)
     monkeypatch.setattr("litellm.proxy.proxy_server.master_key", "test-master-key")
     monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {})
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     monkeypatch.setattr("litellm.proxy.utils.get_server_root_path", lambda: "")
     monkeypatch.setattr("litellm.proxy.utils.get_proxy_base_url", lambda: None)
@@ -155,7 +154,6 @@ def test_login_v2_returns_redirect_url_and_sets_cookie(monkeypatch):
     mock_create_ui_token_object.assert_called_once_with(
         login_result=mock_login_result,
         general_settings={},
-        premium_user=False,
     )
     mock_jwt_encode.assert_called_once()
     payload, secret = mock_jwt_encode.call_args.args
@@ -179,7 +177,6 @@ def _mock_login_v2_deps(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr("jwt.encode", MagicMock(return_value="signed-token"))
     monkeypatch.setattr("litellm.proxy.proxy_server.master_key", "test-master-key")
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock())
     monkeypatch.setattr("litellm.proxy.utils.get_server_root_path", lambda: "")
     monkeypatch.setattr("litellm.proxy.utils.get_proxy_base_url", lambda: None)
@@ -374,7 +371,6 @@ def test_login_v3_returns_code(monkeypatch):
         "litellm.proxy.proxy_server.general_settings",
         {"control_plane_url": "https://cp.example.com"},
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -412,7 +408,6 @@ def test_login_v3_exchange_happy_path(monkeypatch):
         "litellm.proxy.proxy_server.general_settings",
         {"control_plane_url": "https://cp.example.com"},
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -464,7 +459,6 @@ def test_login_v3_exchange_sets_secure_cookie_behind_trusted_tls_terminating_pro
             "mcp_trusted_proxy_ranges": ["10.0.0.0/8"],
         },
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -504,7 +498,6 @@ def test_login_v3_exchange_single_use(monkeypatch):
         "litellm.proxy.proxy_server.general_settings",
         {"control_plane_url": "https://cp.example.com"},
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -674,11 +667,6 @@ def test_sso_key_generate_shows_deprecation_banner(client_no_auth, monkeypatch):
     monkeypatch.setattr(
         "litellm.proxy.management_endpoints.ui_sso.SSOAuthenticationHandler.should_use_sso_handler",
         lambda *args, **kwargs: False,
-    )
-    # Mock premium_user to bypass enterprise check (prevents 403 Forbidden)
-    monkeypatch.setattr(
-        "litellm.proxy.proxy_server.premium_user",
-        True,
     )
     monkeypatch.setenv("UI_USERNAME", "admin")
 
@@ -3711,7 +3699,6 @@ async def test_load_environment_variables_agami_license_and_edge_cases():
 
     with (
         patch("litellm.proxy.proxy_server._license_check", license_check),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch.dict(os.environ, {}, clear=False),
     ):
         proxy_config._load_environment_variables(
@@ -3720,7 +3707,6 @@ async def test_load_environment_variables_agami_license_and_edge_cases():
 
         assert os.environ["AGAMI_LICENSE"] == token
         assert license_check.is_premium()
-        assert proxy_server_module.premium_user is True
 
     # Test Case 2: No environment_variables in config
     test_config_no_env_vars = {}
@@ -11956,7 +11942,6 @@ async def test_create_config_audit_log_writes_redacted_entry(monkeypatch):
 
     fake = _fake_prisma_with_config({})
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
@@ -11994,7 +11979,6 @@ async def test_create_config_audit_log_noop_when_store_audit_logs_disabled(monke
 
     fake = _fake_prisma_with_config({})
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", False)
 
     await create_config_audit_log(
@@ -12031,7 +12015,6 @@ async def test_update_config_general_settings_emits_audit_log(monkeypatch):
     existing = {"max_parallel_requests": 5, "some_api_key": "sk-stored-secret"}
     fake = _fake_prisma_with_config(existing)
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
@@ -12426,7 +12409,6 @@ async def test_delete_config_general_settings_emits_deleted_audit_log(monkeypatc
     existing = {"max_parallel_requests": 5}
     fake = _fake_prisma_with_config(existing)
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
@@ -12462,7 +12444,6 @@ def test_update_config_audits_every_written_section(_update_config_setup, monkey
     client, prisma, restore = _update_config_setup(initial_rows={"litellm_settings": {"drop_params": True}})
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     try:
@@ -12505,7 +12486,6 @@ def test_delete_callback_audits_litellm_settings_deletion(_update_config_setup, 
     client, prisma, restore = _update_config_setup()
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
@@ -12539,7 +12519,6 @@ def test_delete_callback_audits_before_reload_failure(_update_config_setup, monk
     client, prisma, restore = _update_config_setup()
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
@@ -12582,7 +12561,6 @@ def test_update_config_redacts_all_environment_variable_values(_update_config_se
     )
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     try:

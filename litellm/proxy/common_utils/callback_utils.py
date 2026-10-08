@@ -144,7 +144,6 @@ def _loaded_callback_or_raise(entry: str, loaded: object) -> CustomLogger | Call
 
 def initialize_callbacks_on_proxy(
     value: Any,
-    premium_user: bool,
     config_file_path: str,
     litellm_settings: dict,
     callback_specific_params: dict | None = None,

@@ -18,7 +18,6 @@ from litellm.proxy.guardrails.guardrail_hooks.llm_as_a_judge import (
 )
 from litellm.types.guardrails import GuardrailEventHooks, Mode
 from litellm.types.utils import LLM_AS_A_JUDGE_GUARDRAIL_CALL_ORIGIN
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -158,11 +157,9 @@ def test_initialize_guardrail_preserves_every_mode_shape(
     lp: Final = _make_litellm_params(mode=mode)
     instance: Final = initialize_guardrail(lp, _make_guardrail_dict())
     request_data: Final[dict[str, object]] = {"metadata": {"guardrails": ["g"], "tags": ["judge"]}}
-    premium: Final = patch("litellm.proxy.proxy_server.premium_user", True)  # test-quality-ok: no seam for Mode tags
     try:
-        with premium:
-            assert instance.should_run_guardrail(request_data, GuardrailEventHooks.pre_call) is runs_pre_call
-            assert instance.should_run_guardrail(request_data, GuardrailEventHooks.post_call) is runs_post_call
+        assert instance.should_run_guardrail(request_data, GuardrailEventHooks.pre_call) is runs_pre_call
+        assert instance.should_run_guardrail(request_data, GuardrailEventHooks.post_call) is runs_post_call
     finally:
         litellm.logging_callback_manager.remove_callback_from_all_lists(instance)
 

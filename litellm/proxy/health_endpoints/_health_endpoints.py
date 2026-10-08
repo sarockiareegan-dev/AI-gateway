@@ -1408,11 +1408,11 @@ async def health_license_endpoint(
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ):
     """Return metadata about the configured LiteLLM license without exposing the key."""
-    from litellm.proxy.proxy_server import _license_check, premium_user
+    from litellm.proxy.proxy_server import _license_check
 
     license_data: Final = _read_license_data()
     has_license: Final = _license_check.has_license
-    license_type: Final = "enterprise" if premium_user else "community"
+    license_type: Final = "enterprise" if _license_check.is_premium() else "community"
 
     if license_data is None:
         return {

@@ -50,7 +50,7 @@ def _make_audit_log(
 
 
 @pytest.mark.parametrize(
-    ("premium_user", "configured_value", "environment_value", "expected"),
+    ("licensed", "configured_value", "environment_value", "expected"),
     (
         (True, None, None, True),
         (True, False, None, False),
@@ -62,13 +62,13 @@ def _make_audit_log(
 )
 def test_is_audit_logging_enabled_precedence(
     monkeypatch: pytest.MonkeyPatch,
-    premium_user: bool,
+    licensed: bool,
     configured_value: bool | None,
     environment_value: str | None,
     expected: bool,
 ):
     monkeypatch.setattr(litellm, "store_audit_logs", configured_value)
-    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",) if premium_user else ("sso",)))
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",) if licensed else ("sso",)))
     if environment_value is None:
         monkeypatch.delenv("LITELLM_STORE_AUDIT_LOGS", raising=False)
     else:

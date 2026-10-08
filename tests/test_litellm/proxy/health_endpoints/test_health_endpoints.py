@@ -279,10 +279,7 @@ async def test_health_license_endpoint_with_active_license():
     license_check = licensed_entitlements(features=("feature-a",), max_users=100, max_teams=5)
     assert license_check.entitlements is not None
 
-    with (
-        patch("litellm.proxy.proxy_server._license_check", license_check),
-        patch("litellm.proxy.proxy_server.premium_user", True),
-    ):
+    with patch("litellm.proxy.proxy_server._license_check", license_check):
         response = await health_license_endpoint(user_api_key_dict=MagicMock())
 
     assert response["has_license"] is True
@@ -297,10 +294,7 @@ async def test_health_license_endpoint_without_valid_license():
     license_check = EntitlementService(public_key=None)
     license_check.load("invalid-key")
 
-    with (
-        patch("litellm.proxy.proxy_server._license_check", license_check),
-        patch("litellm.proxy.proxy_server.premium_user", False),
-    ):
+    with patch("litellm.proxy.proxy_server._license_check", license_check):
         response = await health_license_endpoint(user_api_key_dict=MagicMock())
 
     assert response["has_license"] is True
@@ -373,10 +367,6 @@ async def test_test_model_connection_loads_config_from_router():
         patch(
             "litellm.proxy.proxy_server.llm_router",
             mock_router,
-        ),
-        patch(
-            "litellm.proxy.proxy_server.premium_user",
-            False,
         ),
         patch(
             "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
@@ -524,10 +514,6 @@ async def test_test_model_connection_uses_model_info_id_to_disambiguate_duplicat
             mock_router,
         ),
         patch(
-            "litellm.proxy.proxy_server.premium_user",
-            False,
-        ),
-        patch(
             "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
             mock_can_user_make_model_call,
         ),
@@ -628,7 +614,6 @@ async def test_test_model_connection_falls_back_to_deployments_zero_without_id()
     with (
         patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client),
         patch("litellm.proxy.proxy_server.llm_router", mock_router),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch(
             "litellm.proxy.management_endpoints.model_management_endpoints.ModelManagementAuthChecks.can_user_make_model_call",
             mock_can_user_make_model_call,

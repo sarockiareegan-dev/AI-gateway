@@ -1581,7 +1581,7 @@ async def _user_api_key_auth_builder(
                     message="OAuth2 token validation needs the 'jwt_auth' feature on the Agami license. "
                     + CommonProxyErrors.not_premium_user.value,
                     type=ProxyErrorTypes.auth_error,
-                    param="premium_user",
+                    param="license",
                     code=status.HTTP_403_FORBIDDEN,
                 )
 
@@ -1599,7 +1599,7 @@ async def _user_api_key_auth_builder(
                         message="JWT auth needs the 'jwt_auth' feature on the Agami license. "
                         f"{CommonProxyErrors.not_premium_user.value}",
                         type=ProxyErrorTypes.auth_error,
-                        param="premium_user",
+                        param="license",
                         code=status.HTTP_403_FORBIDDEN,
                     )
                 # Try JWT-to-Virtual-Key mapping first to avoid

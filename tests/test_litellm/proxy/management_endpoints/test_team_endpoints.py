@@ -13395,7 +13395,6 @@ async def test_team_member_add_audits_a_user_created_from_a_list_payload(monkeyp
 
     mock_prisma_client = AsyncMock()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.litellm_proxy_admin_name", "default_user_id")
 
     team_row = LiteLLM_TeamTable(team_id=team_id, team_alias="list-audit", members_with_roles=[])
@@ -13462,7 +13461,6 @@ def _wire_audit_log_callback(
     audit_logger = _RecordingAuditLogger()
     monkeypatch.setattr("litellm.store_audit_logs", True)
     monkeypatch.setattr("litellm.audit_log_callbacks", [audit_logger])
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs", *extra_features)))
     return audit_logger
 
@@ -13849,7 +13847,6 @@ async def test_team_member_delete_response_does_not_wait_for_the_audit_insert(
     from litellm.proxy._types import TeamMemberDeleteRequest
 
     audit_logger = _wire_audit_log_callback(monkeypatch)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
 
     team_row = LiteLLM_TeamTable(
         team_id="team-slow-audit",
@@ -14064,7 +14061,6 @@ async def test_team_member_add_evicts_the_new_members_cached_user_row_on_every_w
     )
     broadcast = AsyncMock()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", AsyncMock())
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.litellm_proxy_admin_name", "default_user_id")
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", cache)
     monkeypatch.setattr(
@@ -15260,7 +15256,6 @@ async def test_team_member_update_invalidates_team_member_spend_state_when_budge
 
     mock_prisma_client.db.litellm_teamtable.find_unique = AsyncMock(return_value=team_row)
 
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", real_cache)
     monkeypatch.setattr("litellm.proxy.proxy_server.spend_counter_cache", real_spend_counter_cache)
@@ -15313,7 +15308,6 @@ async def test_team_member_update_skips_invalidation_when_no_budget_fields_sent(
 
     mock_prisma_client.db.litellm_teamtable.find_unique = AsyncMock(return_value=team_row)
 
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", real_cache)
     monkeypatch.setattr("litellm.proxy.proxy_server.spend_counter_cache", real_spend_counter_cache)
@@ -15802,15 +15796,14 @@ async def test_new_team_persists_model_max_budget(mock_db_client, mock_admin_aut
     from litellm.proxy._types import NewTeamRequest
     from litellm.proxy.management_endpoints.team_endpoints import new_team
 
-    with patch("litellm.proxy.proxy_server.premium_user", True):  # test-quality-ok: proxy_server module global is the endpoint's only injection point
-        await new_team(
-            data=NewTeamRequest(
-                team_alias="model-caps",
-                model_max_budget={"gpt-4o": {"max_budget": 10.0, "budget_duration": "1d"}},
-            ),
-            http_request=MagicMock(spec=Request),
-            user_api_key_dict=mock_admin_auth,
-        )
+    await new_team(
+        data=NewTeamRequest(
+            team_alias="model-caps",
+            model_max_budget={"gpt-4o": {"max_budget": 10.0, "budget_duration": "1d"}},
+        ),
+        http_request=MagicMock(spec=Request),
+        user_api_key_dict=mock_admin_auth,
+    )
 
     team_data = mock_team_create.call_args.kwargs["data"]
     assert team_data["model_max_budget"] == {
@@ -15828,7 +15821,7 @@ async def test_new_team_rejects_unenforceable_model_max_budget(mock_db_client, m
 
     mock_db_client.db.litellm_teamtable.create = AsyncMock()
 
-    with patch("litellm.proxy.proxy_server.premium_user", True), pytest.raises(ProxyException) as exc:  # test-quality-ok: proxy_server module global is the endpoint's only injection point
+    with pytest.raises(ProxyException) as exc:
         await new_team(
             data=NewTeamRequest(team_alias="model-caps", model_max_budget={"gpt-4o": {"max_budget": 10.0}}),
             http_request=MagicMock(spec=Request),
@@ -15869,7 +15862,6 @@ async def test_update_team_clearing_model_max_budget_writes_an_empty_mapping(
         patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma,  # test-quality-ok: proxy_server module global is the endpoint's only injection point
         patch("litellm.proxy.proxy_server.user_api_key_cache") as mock_cache,  # test-quality-ok: proxy_server module global is the endpoint's only injection point
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
-        patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
     ):
         mock_prisma.db.litellm_teamtable.find_unique = AsyncMock(
             return_value=_existing_team_with_model_caps(_EXISTING_TEAM_MODEL_CAPS)
@@ -15902,7 +15894,6 @@ async def test_update_team_model_max_budget_raise_blocked_for_team_admin(monkeyp
         patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma,  # test-quality-ok: proxy_server module global is the endpoint's only injection point
         patch("litellm.proxy.proxy_server.user_api_key_cache") as mock_cache,  # test-quality-ok: proxy_server module global is the endpoint's only injection point
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
-        patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: proxy_server module global is the endpoint's only injection point
         patch("litellm.proxy.proxy_server.create_audit_log_for_update", new=AsyncMock()),  # test-quality-ok: stubs the audit write so the test observes only the team update result
     ):
         mock_prisma.db.litellm_teamtable.find_unique = AsyncMock(

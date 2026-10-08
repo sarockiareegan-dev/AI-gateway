@@ -179,7 +179,6 @@ async def test_get_token_returns_onboarding_token_without_minting_ui_key():
         patch("litellm.proxy.proxy_server.prisma_client", prisma),
         patch("litellm.proxy.proxy_server.master_key", "sk-test"),
         patch("litellm.proxy.proxy_server.general_settings", {}),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch(
             "litellm.proxy.proxy_server.generate_key_helper_fn",
             new_callable=AsyncMock,
@@ -427,7 +426,6 @@ async def test_claim_token_sets_accepted_at_after_password_written():
         patch("litellm.proxy.proxy_server.prisma_client", prisma),
         patch("litellm.proxy.proxy_server.master_key", "sk-test"),
         patch("litellm.proxy.proxy_server.general_settings", {}),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch(
             "litellm.proxy.proxy_server.generate_key_helper_fn",
             new_callable=AsyncMock,

@@ -2583,7 +2583,6 @@ class TestCLIKeyRegenerationFlow:
         async def drive(enabled: bool):
             with (
                 patch.dict(os.environ, env_without_sso_providers, clear=True),
-                patch("litellm.proxy.proxy_server.premium_user", True),
                 patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
                 patch("litellm.proxy.proxy_server.user_api_key_cache", mock_cache),
                 patch("litellm.proxy.proxy_server.cli_sso_session_cache", mock_cache),
@@ -8069,7 +8068,6 @@ async def _render_legacy_login_page(env_overrides, general_settings):
         patch.dict(os.environ, {}, clear=False),
         patch("litellm.proxy.proxy_server.master_key", "sk-1234"),
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.general_settings", general_settings),
         patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
         patch("litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler", None),
@@ -8196,8 +8194,8 @@ async def test_saml_callback_enforces_free_sso_user_limit_after_validation():
     request_double = SimpleNamespace(cookies={}, headers={}, stream=_stream)
 
     with patch.dict(os.environ, {"DISABLE_ADMIN_UI": "false"}), patch(
-        "litellm.proxy.proxy_server.premium_user", False
-    ), patch("litellm.proxy.proxy_server.prisma_client", MagicMock()), patch(
+        "litellm.proxy.proxy_server.prisma_client", MagicMock()
+    ), patch(
         "litellm.proxy.proxy_server.master_key", "sk-1234"
     ), patch(
         "litellm.proxy.management_endpoints.sso.saml_sso.SAMLAuthHandler.handle_acs",
@@ -8524,7 +8522,6 @@ async def test_redirect_from_openid_persists_assertion_under_canonical_user_id()
         patch("litellm.proxy.utils.get_prisma_client_or_throw", return_value=MagicMock()),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),
         patch("litellm.proxy.proxy_server.general_settings", {}),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.user_custom_sso", None),
         patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),
         patch("litellm.proxy.proxy_server.redis_usage_cache", None),
@@ -8763,7 +8760,6 @@ async def test_browser_funnel_reports_an_uncaptured_assertion(monkeypatch, caplo
         ),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.general_settings", {}),  # test-quality-ok: endpoint reads proxy globals
-        patch("litellm.proxy.proxy_server.premium_user", False),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.user_custom_sso", None),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.redis_usage_cache", None),  # test-quality-ok: endpoint reads proxy globals

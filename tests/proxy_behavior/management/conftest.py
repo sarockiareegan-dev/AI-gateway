@@ -58,12 +58,7 @@ async def proxy_app():
         install_entitlements(mp, licensed_entitlements())
         await initialize(config=config_path)
 
-        # /key/regenerate is gated behind premium_user; flipping it lets the matrix
-        # pin authz behavior instead of the licensing gate.
-        proxy_server.premium_user = True
-
         async with proxy_startup_event(app):
-            proxy_server.premium_user = True  # lifespan re-runs _license_check
             # The lifespan fires check_view_exists() as a background task; on a
             # fresh DB the first auth call races it and resolves user_id=None.
             if proxy_server.prisma_client is not None:

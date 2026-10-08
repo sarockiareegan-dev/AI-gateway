@@ -1110,10 +1110,6 @@ async def test_jwt_non_admin_team_route_access(monkeypatch):
     # in parallel test execution
     with (
         patch(
-            "litellm.proxy.proxy_server.premium_user",
-            True,
-        ),
-        patch(
             "litellm.proxy.auth.handle_jwt.JWTAuthManager.auth_builder",
             return_value=mock_jwt_response,
         ),

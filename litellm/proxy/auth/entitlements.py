@@ -241,3 +241,7 @@ def get_entitlement_service() -> EntitlementService:
 
 def is_licensed(feature: LicenseFeature, entitlements: EntitlementService | None = None) -> bool:
     return (entitlements or get_entitlement_service()).grants_feature(feature.value)
+
+
+def has_valid_license() -> bool:
+    return get_entitlement_service().is_premium()

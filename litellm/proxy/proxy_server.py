@@ -92,7 +92,6 @@ from litellm.proxy._types import (
     ConfigList,
     ConfigYAML,
     CoordinationRedisParams,
-    EnterpriseLicenseData,
     FieldDetail,
     InvitationClaim,
     InvitationDelete,
@@ -339,6 +338,7 @@ from litellm.proxy.auth.entitlements import (
     EntitlementService,
     LicenseFeature,
     get_entitlement_service,
+    has_valid_license,
     is_licensed,
 )
 from litellm.proxy.auth.fallback_budget import router_fallback_budget_check
@@ -863,8 +863,6 @@ from fastapi.staticfiles import StaticFiles
 
 server_root_path: Final = get_server_root_path()
 _license_check = get_entitlement_service()
-premium_user: bool = _license_check.is_premium()
-premium_user_data: Optional["EnterpriseLicenseData"] = _license_check.license_data
 global_max_parallel_request_retries_env: Final[str | None] = os.getenv("LITELLM_GLOBAL_MAX_PARALLEL_REQUEST_RETRIES")
 proxy_state: Final = ProxyState()
 SENSITIVE_DATA_MASKER: Final = SensitiveDataMasker()
@@ -931,13 +929,13 @@ custom_swagger_message: Final = (
 )
 
 ### CUSTOM BRANDING [ENTERPRISE FEATURE] ###
-_title: Final = os.getenv("DOCS_TITLE", "LiteLLM API") if premium_user else "LiteLLM API"
+_title: Final = os.getenv("DOCS_TITLE", "LiteLLM API") if _license_check.is_premium() else "LiteLLM API"
 _description: Final = (
     os.getenv(
         "DOCS_DESCRIPTION",
         f"Enterprise Edition \n\nProxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}",
     )
-    if premium_user
+    if _license_check.is_premium()
     else f"Proxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}"
 )
 
@@ -1118,7 +1116,6 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[None, None]:
         litellm_proxy_admin_name, \
         db_writer_client, \
         store_model_in_db, \
-        premium_user, \
         _license_check, \
         proxy_batch_polling_interval, \
         shared_aiohttp_session
@@ -1153,11 +1150,6 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception as e:
                 verbose_proxy_logger.error("Worker startup hook '%s' failed: %s", _hook_spec, e)
                 raise
-
-    ## CHECK PREMIUM USER
-    verbose_proxy_logger.debug("litellm.proxy.proxy_server.py::startup() - CHECKING PREMIUM USER - %s", premium_user)
-    if premium_user is False:
-        premium_user = _license_check.is_premium()
 
     ## CHECK MASTER KEY IN ENVIRONMENT ##
     master_key = get_secret_str("LITELLM_MASTER_KEY")
@@ -1694,7 +1686,7 @@ def custom_openapi():
     return app.openapi_schema
 
 
-if os.getenv("DOCS_FILTERED", "False") == "True" and premium_user:
+if os.getenv("DOCS_FILTERED", "False") == "True" and _license_check.is_premium():
     app.openapi = custom_openapi
 else:
     # For regular users, use get_openapi_schema to include LLM API schemas
@@ -2228,16 +2220,13 @@ app.add_middleware(PrometheusAuthMiddleware)
 app.add_middleware(
     BillableRequestMetricsMiddleware,
     # Factory, not an instance: the recorder is resolved on the first request so
-    # it sees premium_user and the billing env vars AFTER proxy_startup_event has
+    # it sees the licence and the billing env vars AFTER proxy_startup_event has
     # loaded the YAML config's environment_variables. Building it here at import
     # time would permanently capture recorder=None for YAML-configured
     # deployments. The lambda reads the module globals at call time.
     recorder_factory=lambda: (
         build_billing_metrics_recorder(
-            premium=premium_user,
-            # Read from the license check, not the premium_user_data module
-            # global: that global is bound once at import and goes stale when
-            # the license arrives via the YAML config's environment_variables.
+            premium=_license_check.is_premium(),
             license_data=_license_check.license_data,
             litellm_version=version,
         )
@@ -2432,7 +2421,7 @@ open_telemetry_logger: OpenTelemetry | None = None
 # LiteLLM_DailyGatewayRequests by the update_gateway_requests scheduler job.
 gateway_request_accumulator: Final = GatewayRequestAccumulator()
 ### INITIALIZE GLOBAL LOGGING OBJECT ###
-proxy_logging_obj: ProxyLogging = ProxyLogging(user_api_key_cache=user_api_key_cache, premium_user=premium_user)
+proxy_logging_obj: ProxyLogging = ProxyLogging(user_api_key_cache=user_api_key_cache)
 
 
 def _gateway_request_redis_buffer() -> GatewayRequestRedisBuffer | None:
@@ -5719,7 +5708,6 @@ class ProxyConfig:
 
     def _load_environment_variables(self, config: dict):
         ## ENVIRONMENT VARIABLES
-        global premium_user
         environment_variables: Final = config.get("environment_variables", None)
         if environment_variables:
             for key, value in environment_variables.items():
@@ -5749,7 +5737,6 @@ class ProxyConfig:
 
             if LICENSE_ENV_VAR in environment_variables:
                 _license_check.load(os.getenv(LICENSE_ENV_VAR))
-                premium_user = _license_check.is_premium()
 
     def _warn_on_misplaced_jwt_keys(self, config: dict) -> tuple[str, ...]:
         misplaced_jwt_keys = tuple(key for key in ("enable_jwt_auth", "litellm_jwtauth") if key in config)
@@ -5793,7 +5780,6 @@ class ProxyConfig:
             prompt_injection_detection_obj, \
             redis_usage_cache, \
             store_model_in_db, \
-            premium_user, \
             open_telemetry_logger, \
             health_check_details, \
             proxy_batch_polling_interval, \
@@ -5912,7 +5898,6 @@ class ProxyConfig:
                 elif key == "guardrails":
                     guardrail_name_config_map = initialize_guardrails(
                         guardrails_config=value,
-                        premium_user=premium_user,
                         config_file_path=config_file_path,
                         litellm_settings=litellm_settings,
                     )
@@ -5951,7 +5936,6 @@ class ProxyConfig:
                 elif key == "callbacks":
                     initialize_callbacks_on_proxy(
                         value=value,
-                        premium_user=premium_user,
                         config_file_path=config_file_path,
                         litellm_settings=litellm_settings,
                         callback_specific_params=callback_settings,
@@ -6340,8 +6324,6 @@ class ProxyConfig:
                 )
 
             _apply_config_licence(general_settings, _license_check)
-            if LICENSE_CONFIG_KEY in general_settings:
-                premium_user = _license_check.is_premium()
 
             ## ADMIN UI ACCESS ##
             ui_access_mode = general_settings.get("ui_access_mode", "all")  # can be either ["admin_only" or "all"]
@@ -16092,7 +16074,7 @@ async def fallback_login(request: Request):
 
 @router.post("/login", include_in_schema=False)  # hidden since this is a helper for UI sso login
 async def login(request: Request):
-    global premium_user, general_settings, master_key
+    global general_settings, master_key
     from litellm.proxy.auth.login_utils import authenticate_user, create_ui_token_object, encode_ui_session_jwt
     from litellm.proxy.utils import get_custom_url
 
@@ -16127,7 +16109,6 @@ async def login(request: Request):
     returned_ui_token_object: Final = create_ui_token_object(
         login_result=login_result,
         general_settings=general_settings,
-        premium_user=premium_user,
     )
 
     # Generate JWT token
@@ -16185,7 +16166,7 @@ async def login(request: Request):
 
 @router.post("/v2/login", include_in_schema=False)  # hidden helper for UI logins via API
 async def login_v2(request: Request):
-    global premium_user, general_settings, master_key
+    global general_settings, master_key
     from litellm.proxy.auth.login_utils import authenticate_user, create_ui_token_object, encode_ui_session_jwt
     from litellm.proxy.management_endpoints.ui_sso import set_session_token_cookie
     from litellm.proxy.utils import get_custom_url
@@ -16207,7 +16188,6 @@ async def login_v2(request: Request):
         returned_ui_token_object: Final = create_ui_token_object(
             login_result=login_result,
             general_settings=general_settings,
-            premium_user=premium_user,
         )
 
         jwt_token: Final = encode_ui_session_jwt(returned_ui_token_object, cast(str, master_key))
@@ -16250,7 +16230,7 @@ async def login_v2(request: Request):
     "/v3/login", include_in_schema=False
 )  # control-plane login — always returns token in body for cross-origin use
 async def login_v3(request: Request):
-    global premium_user, general_settings, master_key
+    global general_settings, master_key
     from litellm.proxy.auth.login_utils import authenticate_user, create_ui_token_object, encode_ui_session_jwt
     from litellm.proxy.utils import get_custom_url
 
@@ -16279,7 +16259,6 @@ async def login_v3(request: Request):
         returned_ui_token_object: Final = create_ui_token_object(
             login_result=login_result,
             general_settings=general_settings,
-            premium_user=premium_user,
         )
 
         jwt_token: Final = encode_ui_session_jwt(returned_ui_token_object, cast(str, master_key))
@@ -16463,7 +16442,7 @@ async def onboarding(invite_link: str, request: Request):
         user_email=user_obj.user_email,
         user_role=user_obj.user_role,  # pyright: ignore[reportArgumentType]  # nullable DB column, no unset contract
         login_method="username_password",
-        premium_user=premium_user,
+        premium_user=has_valid_license(),
         auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
         disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
         server_root_path=get_server_root_path(),
@@ -16573,7 +16552,7 @@ async def _generate_onboarding_ui_session_token(user_obj: _UserTableRow) -> str:
         user_email=user_obj.user_email,
         user_role=user_obj.user_role,  # pyright: ignore[reportArgumentType]  # nullable DB column, no unset contract
         login_method="username_password",
-        premium_user=premium_user,
+        premium_user=has_valid_license(),
         auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
         disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
         server_root_path=get_server_root_path(),

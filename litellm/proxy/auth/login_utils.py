@@ -27,6 +27,7 @@ from litellm.proxy._types import (
     UserAPIKeyAuth,
 )
 from litellm.proxy.auth.auth_utils import is_sso_provider_fully_configured
+from litellm.proxy.auth.entitlements import has_valid_license
 from litellm.proxy.auth.login_throttle import LoginAttempt, LoginThrottle
 from litellm.proxy.management_endpoints.internal_user_endpoints import user_update
 from litellm.proxy.management_endpoints.key_management_endpoints import (
@@ -435,7 +436,6 @@ def encode_ui_session_jwt(returned_ui_token_object: ReturnedUITokenObject, maste
 def create_ui_token_object(
     login_result: LoginResult,
     general_settings: dict,
-    premium_user: bool,
 ) -> ReturnedUITokenObject:
     """
     Create a ReturnedUITokenObject from a LoginResult.
@@ -443,7 +443,6 @@ def create_ui_token_object(
     Args:
         login_result: The result from authenticate_user
         general_settings: General proxy settings dictionary
-        premium_user: Whether premium features are enabled
 
     Returns:
         ReturnedUITokenObject: Token object ready for JWT encoding
@@ -456,7 +455,7 @@ def create_ui_token_object(
         user_email=login_result.user_email,
         user_role=login_result.user_role,
         login_method=login_result.login_method,
-        premium_user=premium_user,
+        premium_user=has_valid_license(),
         auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
         disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
         server_root_path=get_server_root_path(),

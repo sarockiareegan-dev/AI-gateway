@@ -1800,7 +1800,6 @@ async def test_standard_jwt_auth_propagates_user_email():
 
     with (
         patch("litellm.proxy.proxy_server.general_settings", general_settings),
-        patch("litellm.proxy.proxy_server.premium_user", True),
         patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),
         patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -1870,7 +1869,6 @@ async def test_jwt_auth_propagates_agent_id_to_user_api_key_auth(is_proxy_admin:
         patch.multiple(  # test-quality-ok: production auth reads these module globals; no dependency injection seam exists
             "litellm.proxy.proxy_server",
             general_settings=general_settings,
-            premium_user=True,
             master_key="sk-master",
             prisma_client=None,
             user_api_key_cache=user_api_key_cache,
@@ -2027,7 +2025,6 @@ async def test_auto_register_first_request_propagates_user_email():
 
     with (
         patch("litellm.proxy.proxy_server.general_settings", general_settings),
-        patch("litellm.proxy.proxy_server.premium_user", True),
         patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),
         patch("litellm.proxy.proxy_server.prisma_client", prisma_client),
@@ -2243,7 +2240,6 @@ async def test_jwt_auto_register_forwards_bound_agent_id():
         patch.multiple(  # test-quality-ok: production auth reads these module globals; no dependency injection seam exists
             "litellm.proxy.proxy_server",
             general_settings={"enable_jwt_auth": True},
-            premium_user=True,
             master_key="sk-master",
             prisma_client=MagicMock(),
             user_api_key_cache=user_api_key_cache,
@@ -2341,7 +2337,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -2388,7 +2383,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", False),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: licence),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -2431,7 +2425,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", {}),
-            patch("litellm.proxy.proxy_server.premium_user", False),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(False)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
@@ -2488,7 +2481,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -2565,7 +2557,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", prisma_client),
@@ -2657,7 +2648,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", prisma_client),
@@ -2736,7 +2726,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", prisma_client),
@@ -2809,7 +2798,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", prisma_client),
@@ -2866,7 +2854,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -2940,7 +2927,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3003,7 +2989,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3070,7 +3055,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3144,7 +3128,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3210,7 +3193,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3277,7 +3259,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3334,7 +3315,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3384,7 +3364,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3461,7 +3440,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -3523,7 +3501,6 @@ class TestJWTOAuth2Coexistence:
 
         with (
             patch("litellm.proxy.proxy_server.general_settings", general_settings),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -7043,8 +7020,8 @@ async def test_session_token_keeps_minted_grants_when_the_team_row_cannot_be_rea
 @pytest.mark.asyncio
 async def test_cli_session_token_authenticates_when_jwt_auth_enabled_without_license(monkeypatch):
     """A lite login token is an encrypted (non-JWT) session blob. With
-    enable_jwt_auth on and no enterprise license (premium_user False), the JWT
-    premium gate used to fire for every request before the token was decoded, so
+    enable_jwt_auth on and no license, the JWT
+    licence gate used to fire for every request before the token was decoded, so
     the CLI token 401'd with 'JWT Auth is an enterprise only feature' and was
     never decrypted. The gate must apply only to actual JWTs; a non-JWT session
     token has to keep authenticating on its own path regardless of license."""
@@ -7063,7 +7040,6 @@ async def test_cli_session_token_authenticates_when_jwt_auth_enabled_without_lic
 
     with (
         patch("litellm.proxy.proxy_server.general_settings", {"enable_jwt_auth": True}),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(False)),
         patch("litellm.proxy.proxy_server.jwt_handler", jwt_handler),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),
@@ -7098,7 +7074,6 @@ async def test_real_jwt_still_requires_license_when_jwt_auth_enabled(monkeypatch
 
     with (
         patch("litellm.proxy.proxy_server.general_settings", {"enable_jwt_auth": True}),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: licence),
         patch("litellm.proxy.proxy_server.jwt_handler", jwt_handler),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),
@@ -7226,7 +7201,6 @@ class TestJWTAuthUserEmail:
                 "litellm.proxy.proxy_server.general_settings",
                 {"enable_jwt_auth": True},
             ),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
             patch("litellm.proxy.proxy_server.master_key", "sk-master"),
             patch("litellm.proxy.proxy_server.prisma_client", None),
@@ -7909,7 +7883,7 @@ async def test_cached_key_team_member_budget_honours_temp_increase(expiry_offset
 async def _proxy_exception_for_key(
     api_key: str,
     general_settings: dict[str, bool],
-    premium_user: bool,
+    licensed: bool,
 ) -> ProxyException:
     mock_request = MagicMock()
     mock_request.url.path = "/v1/chat/completions"
@@ -7931,8 +7905,7 @@ async def _proxy_exception_for_key(
 
     with (
         patch("litellm.proxy.proxy_server.general_settings", general_settings),
-        patch("litellm.proxy.proxy_server.premium_user", premium_user),
-        patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(premium_user)),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(licensed)),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
         patch("litellm.proxy.proxy_server.user_api_key_cache", user_api_key_cache),
@@ -8240,7 +8213,6 @@ async def test_jwt_builder_returns_every_team_grant_the_key_path_gets(is_proxy_a
         "model_max_budget_limiter": MagicMock(),
         "user_custom_auth": None,
         "jwt_handler": jwt_handler,
-        "premium_user": True,
         "litellm_proxy_admin_name": "admin",
     }
     originals = {a: getattr(_proxy_server_mod, a, None) for a in attrs}
@@ -8670,7 +8642,6 @@ async def test_auth_flow_enters_virtual_key_mapping_when_only_an_issuer_configur
         patch(  # test-quality-ok: the builder reads proxy settings from module globals, no injection seam
             "litellm.proxy.proxy_server.general_settings", {"enable_jwt_auth": True}
         ),
-        patch("litellm.proxy.proxy_server.premium_user", True),  # test-quality-ok: module-global proxy state
         patch("litellm.proxy.auth.entitlements.get_entitlement_service", jwt_licence(True)),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),  # test-quality-ok: module-global proxy state
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),  # test-quality-ok: module-global proxy state

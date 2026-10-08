@@ -318,7 +318,6 @@ def test_initialize_callbacks_on_proxy_instantiates_compression_interception(
     try:
         initialize_callbacks_on_proxy(
             value=["compression_interception"],
-            premium_user=False,
             config_file_path=".",
             litellm_settings={"compression_interception_params": {"enabled": True}},
             callback_specific_params={},
@@ -514,7 +513,6 @@ def test_initialize_callbacks_on_proxy_lakera_ignores_non_dict_callback_settings
         # A non-dict value must be ignored (init_params stays {}), not **-unpacked.
         initialize_callbacks_on_proxy(
             value=["lakera_prompt_injection"],
-            premium_user=False,
             config_file_path=".",
             litellm_settings={},
             callback_specific_params={"lakera_prompt_injection": "any-string"},
@@ -552,7 +550,6 @@ def test_initialize_callbacks_on_proxy_non_dict_callback_specific_params_root(
     try:
         initialize_callbacks_on_proxy(
             value=["compression_interception"],
-            premium_user=False,
             config_file_path=".",
             litellm_settings={},
             callback_specific_params=bad_root,
@@ -661,7 +658,6 @@ def probe_config_path(tmp_path):
 def _load_callbacks(value, config_file_path):
     initialize_callbacks_on_proxy(
         value=value,
-        premium_user=False,
         config_file_path=config_file_path,
         litellm_settings={},
         callback_specific_params={},

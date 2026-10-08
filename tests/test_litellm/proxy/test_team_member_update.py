@@ -95,7 +95,6 @@ def happy_path_upsert(monkeypatch):
     prisma_client.tx = MagicMock(return_value=_FakeTx())
 
     monkeypatch.setattr(proxy_server, "prisma_client", prisma_client)
-    monkeypatch.setattr(proxy_server, "premium_user", False)
     monkeypatch.setattr(
         team_endpoints,
         "team_info",
@@ -180,7 +179,6 @@ async def test_team_member_update_rejects_invalid_budget_duration(
     """An invalid budget_duration must be rejected with a 400 before any DB
     write, so it can never be persisted and later break the budget reset job."""
     monkeypatch.setattr(proxy_server, "prisma_client", object())
-    monkeypatch.setattr(proxy_server, "premium_user", False)
     upsert_mock = AsyncMock()
     monkeypatch.setattr(team_endpoints, "_upsert_budget_and_membership", upsert_mock)
 

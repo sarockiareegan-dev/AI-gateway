@@ -1799,7 +1799,6 @@ async def test_generate_service_account_works_with_team_id():
     with (
         patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma,
         patch("litellm.proxy.proxy_server.llm_router") as mock_router,
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints.generate_key_helper_fn"
         ) as mock_generate_key,
@@ -1861,7 +1860,6 @@ async def test_generate_key_throttle_allowed_for_admin():
     with (
         patch("litellm.proxy.proxy_server.prisma_client", AsyncMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints.generate_key_helper_fn"
         ) as mock_generate_key,
@@ -1946,7 +1944,6 @@ async def test_generate_key_end_user_budget_id_lands_in_key_metadata():
             "litellm.proxy.proxy_server.prisma_client", mock_prisma_client
         ),
         patch("litellm.proxy.proxy_server.llm_router", None),  # test-quality-ok: read as a proxy_server global
-        patch("litellm.proxy.proxy_server.premium_user", False),  # test-quality-ok: read as a proxy_server global
         patch(  # test-quality-ok: assertion is on the metadata handed to the db writer
             "litellm.proxy.management_endpoints.key_management_endpoints.generate_key_helper_fn"
         ) as mock_generate_key,
@@ -2407,7 +2404,6 @@ async def test_prepare_key_update_data_disable_global_guardrails_false_no_premiu
     Regression #30285: editing a key via the UI sends disable_global_guardrails=False
     (unchanged default). A non-premium user must NOT get a 403, and False must persist.
     """
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     data = UpdateKeyRequest(key="sk-1", disable_global_guardrails=False)
     existing_key = LiteLLM_VerificationToken(token="hashed")
 
@@ -2421,7 +2417,6 @@ async def test_prepare_key_update_data_disable_global_guardrails_true_requires_p
     monkeypatch,
 ):
     """Control: enabling the premium feature (True) without a license still 403s."""
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     data = UpdateKeyRequest(key="sk-1", disable_global_guardrails=True)
     existing_key = LiteLLM_VerificationToken(token="hashed")
 
@@ -2886,7 +2881,6 @@ async def test_update_key_nonexistent_key_returns_404(monkeypatch):
         "litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
 
     mock_request = MagicMock()
     user_api_key_dict = UserAPIKeyAuth(
@@ -2913,7 +2907,6 @@ def _setup_update_key_mocks(monkeypatch, mock_prisma_client):
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", AsyncMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
 
 
@@ -2964,7 +2957,6 @@ async def test_generate_key_rejects_a_duration_that_never_advances(monkeypatch, 
     mock_prisma_client = AsyncMock()
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
 
     with patch(
         "litellm.proxy.management_endpoints.key_management_endpoints.generate_key_helper_fn",
@@ -4269,10 +4261,6 @@ async def test_generate_key_with_object_permission():
         ),
         patch("litellm.proxy.proxy_server.llm_router", None),
         patch(
-            "litellm.proxy.proxy_server.premium_user",
-            False,
-        ),
-        patch(
             "litellm.proxy.proxy_server.litellm_proxy_admin_name",
             "admin",
         ),
@@ -4347,7 +4335,6 @@ async def test_generate_key_team_member_inherits_org_skips_membership_check():
     with (
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", True),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints.validate_key_mcp_servers_against_team",
@@ -4429,7 +4416,6 @@ async def test_generate_key_foreign_org_without_team_still_enforces_membership()
     with (
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", True),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints._validate_caller_can_assign_key_org",
@@ -4499,7 +4485,6 @@ async def test_generate_key_foreign_org_with_mismatched_team_still_enforces_memb
     with (
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", True),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints.validate_key_mcp_servers_against_team",
@@ -8420,7 +8405,6 @@ async def test_update_key_spend_updates_counter(monkeypatch):
         "litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
     mock_spend_counter_cache = MagicMock()
     mock_spend_counter_cache.redis_cache = MagicMock()
@@ -9084,7 +9068,6 @@ async def test_key_with_budget_id_does_not_store_budget_duration():
     with (
         patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints.generate_key_helper_fn",
@@ -9148,7 +9131,6 @@ async def test_key_does_not_override_explicit_budget_duration():
     with (
         patch("litellm.proxy.proxy_server.prisma_client", mock_prisma),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "admin"),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints.generate_key_helper_fn",
@@ -10997,7 +10979,6 @@ async def test_update_key_max_budget_rejected_for_internal_user(monkeypatch):
         "litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
 
     mock_request = MagicMock()
     mock_request.query_params = {}
@@ -11070,7 +11051,6 @@ async def test_update_key_non_budget_fields_allowed_for_internal_user(monkeypatc
         "litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj
     )
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
 
     def mock_hash_token(token):
@@ -11162,7 +11142,6 @@ async def test_update_key_throttle_on_budget_exceeded_rejected_for_internal_user
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", mock_user_api_key_cache)
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj)
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
 
     mock_request = MagicMock()
     mock_request.query_params = {}
@@ -11234,7 +11213,6 @@ async def test_update_key_throttle_unchanged_allows_non_budget_edit_for_internal
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", mock_user_api_key_cache)
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj)
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
 
     monkeypatch.setattr("litellm.proxy.proxy_server.hash_token", lambda token: test_hashed_token)
@@ -11312,7 +11290,6 @@ async def test_update_key_non_budget_rejects_cross_user_modification(monkeypatch
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", AsyncMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr(
         "litellm.proxy.proxy_server.hash_token", lambda t: test_hashed_token
     )
@@ -11376,7 +11353,6 @@ async def test_update_key_creator_reassigned_key_blocked(monkeypatch):
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", AsyncMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
     monkeypatch.setattr(
         "litellm.proxy.proxy_server.hash_token", lambda t: test_hashed_token
@@ -11488,7 +11464,6 @@ async def test_update_key_team_member_with_permission_can_update_non_budget(
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", AsyncMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
     monkeypatch.setattr(
         "litellm.proxy.proxy_server.hash_token", lambda t: test_hashed_token
@@ -11580,7 +11555,6 @@ async def test_update_key_team_member_cannot_change_budget(monkeypatch):
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", AsyncMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr(
         "litellm.proxy.proxy_server.hash_token", lambda t: test_hashed_token
     )
@@ -14103,7 +14077,6 @@ class TestAllowedRoutesCallerPermission:
             patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
             patch("litellm.proxy.proxy_server.user_custom_key_update", None),
             patch("litellm.proxy.proxy_server.llm_router", None),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),
             patch(
                 "litellm.proxy.management_endpoints.key_management_endpoints._get_and_validate_existing_key",
@@ -14144,7 +14117,6 @@ class TestAllowedRoutesCallerPermission:
             patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
             patch("litellm.proxy.proxy_server.user_custom_key_update", None),
             patch("litellm.proxy.proxy_server.llm_router", None),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),
             patch(
                 "litellm.proxy.management_endpoints.key_management_endpoints._get_and_validate_existing_key",
@@ -14183,7 +14155,6 @@ class TestAllowedRoutesCallerPermission:
             patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
             patch("litellm.proxy.proxy_server.user_custom_key_update", None),
             patch("litellm.proxy.proxy_server.llm_router", None),
-            patch("litellm.proxy.proxy_server.premium_user", True),
             patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),
             patch(
                 "litellm.proxy.management_endpoints.key_management_endpoints._get_and_validate_existing_key",
@@ -14217,21 +14188,20 @@ class TestAllowedRoutesCallerPermission:
             user_role=LitellmUserRoles.INTERNAL_USER,
         )
 
-        with patch("litellm.proxy.proxy_server.premium_user", True):
-            with pytest.raises(ProxyException) as exc_info:
-                await regenerate_key_fn(
-                    key=None,
-                    data=data,
-                    user_api_key_dict=user_api_key_dict,
-                    litellm_changed_by=None,
-                )
+        with pytest.raises(ProxyException) as exc_info:
+            await regenerate_key_fn(
+                key=None,
+                data=data,
+                user_api_key_dict=user_api_key_dict,
+                litellm_changed_by=None,
+            )
         assert str(exc_info.value.code) == "403"
         assert "allowed_routes" in str(exc_info.value.message)
 
     @pytest.mark.asyncio
     async def test_non_admin_regenerate_key_allowed_routes_rejected_before_enterprise_gate(self):
         """`regenerate_key_fn` runs `_check_allowed_routes_caller_permission`
-        before the `premium_user` check, so a non-premium proxy still returns
+        before the `advanced_keys` licence check, so an unlicensed proxy still returns
         the allowed_routes rejection (403) rather than the enterprise-license
         error (500) when a non-admin sends `allowed_routes`."""
         from litellm.proxy._types import RegenerateKeyRequest
@@ -14245,14 +14215,13 @@ class TestAllowedRoutesCallerPermission:
             user_role=LitellmUserRoles.INTERNAL_USER,
         )
 
-        with patch("litellm.proxy.proxy_server.premium_user", False):
-            with pytest.raises(ProxyException) as exc_info:
-                await regenerate_key_fn(
-                    key=None,
-                    data=data,
-                    user_api_key_dict=user_api_key_dict,
-                    litellm_changed_by=None,
-                )
+        with pytest.raises(ProxyException) as exc_info:
+            await regenerate_key_fn(
+                key=None,
+                data=data,
+                user_api_key_dict=user_api_key_dict,
+                litellm_changed_by=None,
+            )
         assert str(exc_info.value.code) == "403"
         assert "allowed_routes" in str(exc_info.value.message)
         assert "Enterprise" not in str(exc_info.value.message)
@@ -15382,7 +15351,6 @@ async def test_regenerate_premium_gate_requires_actual_master_key():
     data = RegenerateKeyRequest(key="sk-not-master", new_master_key="anything")
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.master_key", "sk-the-real-master-key"),
         patch("litellm.proxy.proxy_server.prisma_client", AsyncMock()),
         pytest.raises((ValueError, HTTPException, ProxyException)),
@@ -15405,7 +15373,6 @@ async def test_regenerate_premium_gate_allows_actual_master_key_holder():
     data = RegenerateKeyRequest(key=master, new_master_key="sk-new-master")
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.master_key", master),
         patch("litellm.proxy.proxy_server.prisma_client", AsyncMock()),
         patch(
@@ -15447,7 +15414,6 @@ async def test_regenerate_applies_normalized_mcp_object_permission():
     execute_mock = AsyncMock(return_value=MagicMock())
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
         patch(
             "litellm.proxy.auth.entitlements.get_entitlement_service",
             lambda: licensed_entitlements(features=("advanced_keys",)),
@@ -15750,7 +15716,6 @@ async def test_ghsa_q775_ui_session_token_team_key_exempt_from_budget_ceiling():
         patch("litellm.proxy.proxy_server.prisma_client", AsyncMock()),
         patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "default_user_id"),
     ):
         try:
@@ -15835,7 +15800,6 @@ async def test_ghsa_q775_default_team_id_does_not_grant_session_token_exemption(
         patch("litellm.proxy.proxy_server.prisma_client", AsyncMock()),
         patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "default_user_id"),
         patch("litellm.default_key_generate_params", {"team_id": "injected-team"}),
     ):
@@ -17637,7 +17601,6 @@ async def test_regenerate_key_non_admin_permissions_rejected(monkeypatch):
         regenerate_key_fn,
     )
 
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
 
     data = RegenerateKeyRequest(
         key="sk-alice-personal",
@@ -17664,7 +17627,6 @@ async def test_regenerate_key_non_admin_permissions_explicit_empty_rejected(monk
         regenerate_key_fn,
     )
 
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
 
     data = RegenerateKeyRequest(key="sk-alice-personal", permissions={})
     assert "permissions" in data.model_fields_set
@@ -17683,7 +17645,7 @@ async def test_regenerate_key_non_admin_permissions_explicit_empty_rejected(monk
 @pytest.mark.asyncio
 async def test_regenerate_key_non_admin_permissions_rejected_before_enterprise_gate(monkeypatch):
     """`regenerate_key_fn` runs `_check_permissions_caller_permission`
-    before the `premium_user` check, so a non-premium proxy still returns
+    before the `advanced_keys` licence check, so an unlicensed proxy still returns
     the permissions rejection (403) rather than the enterprise-license
     error (500) when a non-admin sends `permissions`."""
     from litellm.proxy._types import RegenerateKeyRequest
@@ -17691,7 +17653,6 @@ async def test_regenerate_key_non_admin_permissions_rejected_before_enterprise_g
         regenerate_key_fn,
     )
 
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
 
     data = RegenerateKeyRequest(
         key="sk-alice-personal",
@@ -18253,7 +18214,6 @@ async def test_generate_key_output_token_estimate_allowed_for_admin():
     with (
         patch("litellm.proxy.proxy_server.prisma_client", AsyncMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch(
             "litellm.proxy.management_endpoints.key_management_endpoints.generate_key_helper_fn"
         ) as mock_generate_key,
@@ -18307,7 +18267,6 @@ def _wire_update_key_fn(monkeypatch, existing_key):
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", AsyncMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock())
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.hash_token", lambda token: existing_key.token)
 
@@ -19225,7 +19184,6 @@ async def test_generate_key_records_token_in_its_access_groups(monkeypatch):
     monkeypatch.setattr(
         "litellm.proxy.proxy_server.prisma_client", mock_prisma_client
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
     monkeypatch.setattr("litellm.store_audit_logs", False)
 
     with patch(

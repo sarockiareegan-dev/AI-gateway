@@ -158,19 +158,19 @@ class TestKeyManagementEventHooksIndependentOperations:
 
 
 @pytest.mark.parametrize(
-    ("premium_user", "expected_audit_log_calls"),
+    ("licensed", "expected_audit_log_calls"),
     ((True, 1), (False, 0)),
 )
 @pytest.mark.asyncio
 async def test_key_generated_audit_log_uses_license_default(
     monkeypatch: pytest.MonkeyPatch,
-    premium_user: bool,
+    licensed: bool,
     expected_audit_log_calls: int,
 ):
     from litellm.proxy._types import GenerateKeyRequest, GenerateKeyResponse, UserAPIKeyAuth
 
     monkeypatch.setattr("litellm.store_audit_logs", None)
-    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",) if premium_user else ("sso",)))
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",) if licensed else ("sso",)))
     monkeypatch.delenv("LITELLM_STORE_AUDIT_LOGS", raising=False)
 
     response = GenerateKeyResponse(key="sk-test-key", token_id="token-123")
