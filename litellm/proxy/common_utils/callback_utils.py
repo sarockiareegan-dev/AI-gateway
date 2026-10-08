@@ -63,7 +63,6 @@ UNAVAILABLE_GUARDRAIL_CALLBACKS: Final = frozenset(
         "google_text_moderation",
         "llmguard_moderations",
         "blocked_user_check",
-        "banned_keywords",
     }
 )
 
@@ -209,6 +208,12 @@ def initialize_callbacks_on_proxy(
                 imported_list.append(pii_masking_object)
             elif isinstance(callback, str) and callback in UNAVAILABLE_GUARDRAIL_CALLBACKS:
                 raise ValueError(f"Callback '{callback}' is not available in this build")
+            elif isinstance(callback, str) and callback == "banned_keywords":
+                from litellm.proxy.guardrails.legacy_callbacks import build_banned_keywords_guardrail
+
+                imported_list.append(
+                    build_banned_keywords_guardrail(litellm_settings, fallback=litellm.banned_keywords_list)
+                )
             elif isinstance(callback, str) and callback == "lakera_prompt_injection":
                 from litellm.proxy.guardrails.guardrail_hooks.lakera_ai import (
                     lakeraAI_Moderation,

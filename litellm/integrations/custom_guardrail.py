@@ -37,6 +37,7 @@ from litellm.types.utils import (
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
     from litellm.llms.base_llm.guardrail_translation.base_translation import BaseTranslation
+    from litellm.proxy.auth.entitlements import LicenseFeature
 dc: Final = DualCache()
 
 
@@ -147,6 +148,23 @@ def _guardrails_licensed() -> bool:
     return is_licensed(LicenseFeature.GUARDRAILS)
 
 
+def _raise_unless_licensed(guardrail_name: str | None, feature: "LicenseFeature") -> None:
+    from fastapi import HTTPException
+
+    from litellm.proxy._types import CommonProxyErrors
+    from litellm.proxy.auth.entitlements import is_licensed
+
+    if is_licensed(feature):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": f"Guardrail '{guardrail_name}' needs the '{feature.value}' feature on the Agami license. "
+            f"{CommonProxyErrors.not_premium_user.value}"
+        },
+    )
+
+
 class CustomGuardrail(CustomLogger):
     # If True, during_call runs async_moderation_hook instead of the unified apply_guardrail path.
     use_native_during_call_hook: ClassVar[bool] = False
@@ -181,6 +199,7 @@ class CustomGuardrail(CustomLogger):
         run_in_parallel: bool = False,
         scan_raw_request: bool = False,
         only_scan_new_messages: bool = False,
+        required_license_feature: "LicenseFeature | None" = None,
         **kwargs,
     ):
         """
@@ -209,8 +228,11 @@ class CustomGuardrail(CustomLogger):
                 guardrails: any data this guardrail returns is discarded, matching run_in_parallel's
                 contract, since applying its mutations on top of a stale snapshot would silently
                 undo whatever later guardrails already did to the live request.
+            required_license_feature: When set, every request this guardrail would run on is refused
+                with a 403 while the Agami license lacks the feature, so a lapsed license fails closed.
         """
         self.guardrail_name = guardrail_name
+        self.required_license_feature: LicenseFeature | None = required_license_feature
         self.supported_event_hooks = supported_event_hooks
         self.event_hook: GuardrailEventHooks | list[GuardrailEventHooks] | Mode | None = event_hook
         self.default_on: bool = default_on
@@ -1004,6 +1026,12 @@ class CustomGuardrail(CustomLogger):
         """
         Returns True if the guardrail should be run on the event_type
         """
+        should_run: Final = self._should_run_for_event(data, event_type)
+        if should_run and self.required_license_feature is not None:
+            _raise_unless_licensed(self.guardrail_name, self.required_license_feature)
+        return should_run
+
+    def _should_run_for_event(self, data, event_type: GuardrailEventHooks) -> bool:
         if self._suppressed_by_auto_router_compression():
             return False
 
