@@ -4115,8 +4115,6 @@ class CommonProxyErrors(str, enum.Enum):
         "`general_settings.agami_license` in your config."
     )
     max_parallel_request_limit_reached = "Crossed TPM / RPM / Max Parallel Request Limit"
-    missing_enterprise_package = "Missing litellm-enterprise package. Please install it to use this feature. Run `pip install litellm-enterprise`"
-    missing_enterprise_package_docker = "This uses the enterprise folder - only available on the Docker image."
 
 
 class SpendCalculateRequest(LiteLLMPydanticObjectBase):
