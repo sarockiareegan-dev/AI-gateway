@@ -463,9 +463,7 @@ async def test_update_values_repeated_alerting_reload_keeps_single_periodic_flus
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("features", "allowed"), [(("email_branding",), True), (("*",), True), (("sso",), False)]
-)
+@pytest.mark.parametrize(("features", "allowed"), [(("email_branding",), True), (("*",), True), (("sso",), False)])
 async def test_custom_email_branding_requires_the_email_branding_feature(monkeypatch, features, allowed):
     from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 

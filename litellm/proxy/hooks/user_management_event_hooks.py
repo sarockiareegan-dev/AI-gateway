@@ -6,7 +6,6 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Final
 
-import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.proxy._types import (

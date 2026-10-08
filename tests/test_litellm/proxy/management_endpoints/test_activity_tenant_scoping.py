@@ -196,7 +196,9 @@ async def _team_activity_as(user_role, org_role, team_ids=None):
     prisma = _org_teams_prisma()
     fake_get_daily = AsyncMock(return_value=MagicMock())
     with (
-        patch("litellm.proxy.management_endpoints.team_endpoints.get_user_object", new=AsyncMock(return_value=user_info)),
+        patch(
+            "litellm.proxy.management_endpoints.team_endpoints.get_user_object", new=AsyncMock(return_value=user_info)
+        ),
         patch("litellm.proxy.management_endpoints.team_endpoints.get_daily_activity", new=fake_get_daily),
         patch("litellm.proxy.proxy_server.prisma_client", prisma),
         patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),

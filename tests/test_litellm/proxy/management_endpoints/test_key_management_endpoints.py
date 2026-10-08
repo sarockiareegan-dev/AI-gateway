@@ -20477,7 +20477,7 @@ async def test_virtual_key_regeneration_needs_the_advanced_keys_licence_feature(
 
     install_entitlements(monkeypatch, service)
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(Exception, match=r"'advanced_keys' feature|No key passed in") as exc_info:
         await regenerate_key_fn(
             key=None,
             data=None,

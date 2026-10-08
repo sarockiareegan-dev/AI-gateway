@@ -252,7 +252,9 @@ def test_vault_refuses_to_start_without_the_secret_managers_feature(
     monkeypatch.setenv("HCP_VAULT_ADDR", VAULT_ADDR)
     monkeypatch.setenv("HCP_VAULT_APPROLE_ROLE_ID", "role-id")
     monkeypatch.setenv("HCP_VAULT_APPROLE_SECRET_ID", "secret-id")
-    install_entitlements(monkeypatch, licensed_entitlements(features=features) if features else unlicensed_entitlements())
+    install_entitlements(
+        monkeypatch, licensed_entitlements(features=features) if features else unlicensed_entitlements()
+    )
 
     with pytest.raises(ValueError, match="premium"):
         HashicorpSecretManager()

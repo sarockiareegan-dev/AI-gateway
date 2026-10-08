@@ -27,8 +27,8 @@ from litellm.integrations.dotprompt import DotpromptManager
 from litellm.integrations.focus.focus_logger import FocusLogger
 from litellm.integrations.galileo import GalileoObserve
 from litellm.integrations.gcs_bucket.gcs_bucket import GCSBucketLogger
-from litellm.integrations.generic_api.generic_api_callback import GenericAPILogger
 from litellm.integrations.gcs_pubsub.pub_sub import GcsPubSubLogger
+from litellm.integrations.generic_api.generic_api_callback import GenericAPILogger
 from litellm.integrations.gitlab import GitLabPromptManager
 from litellm.integrations.humanloop import HumanloopLogger
 from litellm.integrations.lago import LagoLogger

@@ -25,10 +25,6 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 
-from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
-
-from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
-
 
 def load_vertex_ai_credentials():
     # Define the path to the vertex_key.json file

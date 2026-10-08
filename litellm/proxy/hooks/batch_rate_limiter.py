@@ -920,9 +920,7 @@ class _PROXY_BatchRateLimiter(CustomLogger):
                     custom_llm_provider=custom_llm_provider,
                     data=data or {},
                     visibility=(
-                        key_model_visibility(user_api_key_dict)
-                        if user_api_key_dict is not None
-                        else GLOBAL_MODELS_ONLY
+                        key_model_visibility(user_api_key_dict) if user_api_key_dict is not None else GLOBAL_MODELS_ONLY
                     ),
                 )
                 # For non-managed files, use the standard litellm.afile_content

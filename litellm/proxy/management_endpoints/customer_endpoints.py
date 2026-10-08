@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
     from litellm.proxy.utils import PrismaClient
 
-import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.litellm_core_utils.duration_parser import duration_in_seconds
 from litellm.proxy._types import *

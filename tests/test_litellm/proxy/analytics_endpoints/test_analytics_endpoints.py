@@ -79,7 +79,9 @@ def mock_prisma(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_returns_groups_totals_and_filter_options(mock_prisma: MagicMock):
-    response = await get_global_activity(start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN)
+    response = await get_global_activity(
+        start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN
+    )
 
     assert [group.call_type for group in response.groups] == ["acompletion", "Unknown"]
     assert response.groups[0].api_requests == 1000
@@ -122,7 +124,9 @@ async def test_every_query_excludes_the_same_info_routes(mock_prisma: MagicMock)
     """Regression for LIT-5884: failed info-route calls are spend-logged but are not inference traffic, so
     the groups, error breakdown and both filter-option queries all receive the same exclusion list. What
     the SQL does with it is covered against Postgres in tests/proxy_behavior/spend/test_cache_activity.py."""
-    await get_global_activity(start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN)
+    await get_global_activity(
+        start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN
+    )
 
     exclusions_by_query = {call.args[0]: json.loads(call.args[-1]) for call in mock_prisma.db.query_raw.call_args_list}
     assert set(exclusions_by_query) == {GROUPS_SQL, ERROR_BREAKDOWN_SQL, KEY_ALIAS_OPTIONS_SQL, MODEL_OPTIONS_SQL}
@@ -135,7 +139,9 @@ async def test_every_query_excludes_the_same_info_routes(mock_prisma: MagicMock)
 @pytest.mark.asyncio
 async def test_rejects_malformed_dates_with_400(mock_prisma: MagicMock):
     with pytest.raises(HTTPException) as exc_info:
-        await get_global_activity(start_date="07/01/2026", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN)
+        await get_global_activity(
+            start_date="07/01/2026", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN
+        )
 
     assert exc_info.value.status_code == 400
     mock_prisma.db.query_raw.assert_not_called()

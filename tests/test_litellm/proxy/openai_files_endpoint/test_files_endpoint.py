@@ -3975,8 +3975,6 @@ def test_get_file_content_model_routed_attaches_trusted_model_credentials(monkey
         ]
     )
 
-    from unittest.mock import MagicMock
-
     managed_file_row = MagicMock()
     managed_file_row.created_by = "test-user"
     managed_file_row.team_id = None

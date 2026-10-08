@@ -827,7 +827,9 @@ async def test_create__unified_executed_provider_runs_inside_litellm(harness, ex
 
     harness.router_acreate.assert_not_called()
     harness.litellm_acreate.assert_not_called()
-    harness.creds_resolver.assert_called_once_with(model_id="my-vllm", team_id="team-vllm", visibility=GLOBAL_MODELS_ONLY)
+    harness.creds_resolver.assert_called_once_with(
+        model_id="my-vllm", team_id="team-vllm", visibility=GLOBAL_MODELS_ONLY
+    )
     factory.assert_called_once_with(harness.router, harness.logging)
     runner.create.assert_awaited_once()
     create_kwargs = runner.create.call_args.kwargs
