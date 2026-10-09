@@ -20227,7 +20227,7 @@ async def test_can_user_query_key_info_lets_org_wide_readers_read_their_orgs_key
             key_management_endpoints, "get_team_object", AsyncMock(return_value=org_team)
         ),
         patch(  # test-quality-ok: the caller's org memberships come from a user row, and unit tests have no DB
-            "litellm.proxy.management_endpoints.common_utils._get_caller_user",
+            "litellm.proxy.management_endpoints.common_utils.get_caller_user",
             AsyncMock(return_value=_caller_in_org("org-caller", org_role)),
         ),
     ):
@@ -20251,7 +20251,7 @@ async def test_can_user_query_key_info_keeps_other_orgs_keys_hidden_from_org_adm
             key_management_endpoints, "get_team_object", AsyncMock(return_value=other_org_team)
         ),
         patch(  # test-quality-ok: the caller's org memberships come from a user row, and unit tests have no DB
-            "litellm.proxy.management_endpoints.common_utils._get_caller_user",
+            "litellm.proxy.management_endpoints.common_utils.get_caller_user",
             AsyncMock(return_value=_caller_in_org("org-caller", LitellmUserRoles.ORG_ADMIN)),
         ),
     ):

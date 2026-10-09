@@ -57,6 +57,7 @@ class LicenseFeature(str, Enum):
     TEAM_MODELS = "team_models"
     AUTO_ROUTER = "auto_router"
     MODEL_AUDIT = "model_audit"
+    PROJECTS = "projects"
 
 
 class _LicenseClaims(BaseModel):

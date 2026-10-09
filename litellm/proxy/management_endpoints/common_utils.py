@@ -235,7 +235,7 @@ def org_wide_read_org_ids(user_role: str | None, memberships: Iterable[_OrgMembe
     )
 
 
-async def _get_caller_user(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTable | None:
+async def get_caller_user(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTable | None:
     if not user_api_key_dict.user_id:
         return None
 
@@ -257,7 +257,7 @@ async def _get_caller_user(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTab
 
 async def caller_org_wide_read_org_ids(user_api_key_dict: UserAPIKeyAuth) -> frozenset[str]:
     try:
-        caller_user: Final = await _get_caller_user(user_api_key_dict)
+        caller_user: Final = await get_caller_user(user_api_key_dict)
     except ValueError:
         return frozenset()
     if caller_user is None:
@@ -276,7 +276,7 @@ async def _is_user_org_admin_for_team(user_api_key_dict: UserAPIKeyAuth, team_ob
     if not team_obj.organization_id:
         return False
 
-    caller_user: Final = await _get_caller_user(user_api_key_dict)
+    caller_user: Final = await get_caller_user(user_api_key_dict)
     if caller_user is None:
         return False
 
@@ -290,7 +290,7 @@ async def _can_read_team_org_wide(user_api_key_dict: UserAPIKeyAuth, team_obj: L
     if not team_obj.organization_id:
         return False
 
-    caller_user: Final = await _get_caller_user(user_api_key_dict)
+    caller_user: Final = await get_caller_user(user_api_key_dict)
     if caller_user is None:
         return False
 
