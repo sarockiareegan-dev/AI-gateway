@@ -22,11 +22,13 @@ from litellm.proxy.proxy_server import (  # Replace with the actual module where
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
     filepath = os.path.dirname(os.path.abspath(__file__))
     config_fp = f"{filepath}/test_configs/test_guardrails_config.yaml"
-    with mock.patch("litellm.proxy.proxy_server.premium_user", True):
-        asyncio.run(initialize(config=config_fp))
+    asyncio.run(initialize(config=config_fp))
     from litellm.proxy.proxy_server import app
 
     return TestClient(app)
@@ -47,7 +49,7 @@ def test_active_callbacks(client):
     expected_callback_names = [
         "lakeraAI_Moderation",
         "_OPTIONAL_PromptInjectionDetectio",
-        "_ENTERPRISE_SecretDetection",
+        "HideSecretsGuardrail",
     ]
 
     for callback_name in expected_callback_names:
@@ -62,5 +64,5 @@ def test_active_callbacks(client):
         ), f"{callback_name} not found in _active_callbacks={_active_callbacks}"
 
     assert not any(
-        "_ENTERPRISE_OpenAI_Moderation" in callback for callback in _active_callbacks
-    ), f"_ENTERPRISE_OpenAI_Moderation should not be in _active_callbacks={_active_callbacks}"
+        "OpenAIModerationGuardrail" in callback for callback in _active_callbacks
+    ), f"OpenAIModerationGuardrail should not be in _active_callbacks={_active_callbacks}"

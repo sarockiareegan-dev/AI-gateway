@@ -4,8 +4,9 @@ import pytest
 from fastapi import HTTPException
 
 import litellm
+from agami.routing.org_models import org_model_name
 from litellm import ModelResponse
-from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.utils import (
     create_model_info_response,
     get_available_models_for_user,
@@ -521,3 +522,41 @@ async def test_get_available_models_for_user_resolves_key_access_group_models(
         user_api_key_cache=MagicMock(),
     )
     assert result == ["model-b"]
+
+
+def _org_router() -> litellm.Router:
+    return litellm.Router(
+        model_list=[
+            {
+                "model_name": org_model_name(organization_id, "gpt-4o"),
+                "litellm_params": {"model": "openai/gpt-4o", "api_key": "sk-fake"},
+                "model_info": {"organization_id": organization_id, "organization_public_model_name": "gpt-4o"},
+            }
+            for organization_id in ("org-a", "org-b")
+        ]
+        + [{"model_name": "global-model", "litellm_params": {"model": "openai/gpt-4o-mini", "api_key": "sk-fake"}}]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("org_id", "user_role", "expected"),
+    [
+        ("org-a", None, ["global-model", org_model_name("org-a", "gpt-4o")]),
+        (None, None, ["global-model"]),
+        (
+            None,
+            LitellmUserRoles.PROXY_ADMIN,
+            ["global-model", org_model_name("org-a", "gpt-4o"), org_model_name("org-b", "gpt-4o")],
+        ),
+    ],
+)
+async def test_get_available_models_for_user_lists_only_the_keys_organization_models(org_id, user_role, expected):
+    result = await get_available_models_for_user(
+        user_api_key_dict=UserAPIKeyAuth(api_key="sk-test-key", org_id=org_id, user_role=user_role),
+        llm_router=_org_router(),
+        general_settings={},
+        user_model=None,
+    )
+
+    assert sorted(result) == sorted(expected)

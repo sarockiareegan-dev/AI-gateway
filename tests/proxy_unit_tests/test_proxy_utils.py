@@ -1021,6 +1021,7 @@ def test_enforced_params_check(
     general_settings, user_api_key_dict, request_body, expected_error
 ):
     from litellm.proxy.litellm_pre_call_utils import _enforced_params_check
+    from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 
     if expected_error:
         with pytest.raises(ValueError, match='in request body\\. This is a required param'):
@@ -1028,14 +1029,14 @@ def test_enforced_params_check(
                 request_body=request_body,
                 general_settings=general_settings,
                 user_api_key_dict=user_api_key_dict,
-                premium_user=True,
+                entitlements=licensed_entitlements(features=("enforced_params",)),
             )
     else:
         _enforced_params_check(
             request_body=request_body,
             general_settings=general_settings,
             user_api_key_dict=user_api_key_dict,
-            premium_user=True,
+            entitlements=licensed_entitlements(features=("enforced_params",)),
         )
 
 

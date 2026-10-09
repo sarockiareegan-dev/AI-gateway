@@ -17,12 +17,13 @@ from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "role",
-    [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY],
-)
-def test_owner_filter_admin_unscoped(role):
-    assert build_owner_filter(UserAPIKeyAuth(user_role=role)) == {}
+def test_owner_filter_admin_unscoped():
+    assert build_owner_filter(UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN)) == {}
+
+
+def test_owner_filter_scopes_the_admin_viewer_to_its_own_resources():
+    viewer = UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, user_id="viewer")
+    assert build_owner_filter(viewer) == {"created_by": "viewer"}
 
 
 def test_owner_filter_user_scoped_to_user_id():
@@ -61,21 +62,17 @@ def test_owner_filter_no_identity_returns_none():
 
 
 @pytest.mark.parametrize(
-    "role",
-    [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY],
-)
-@pytest.mark.parametrize(
     "created_by,resource_team_id",
     [("alice", "team-eng"), (None, None)],
 )
-def test_access_admin_can_read_any_resource(role, created_by, resource_team_id):
-    admin = UserAPIKeyAuth(user_role=role)
-    assert (
-        can_access_resource(
-            admin, created_by=created_by, resource_team_id=resource_team_id
-        )
-        is True
-    )
+def test_access_admin_can_read_any_resource(created_by, resource_team_id):
+    admin = UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN)
+    assert can_access_resource(admin, created_by=created_by, resource_team_id=resource_team_id) is True
+
+
+def test_access_admin_viewer_cannot_read_another_users_resource():
+    viewer = UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, user_id="viewer")
+    assert can_access_resource(viewer, created_by="alice", resource_team_id="team-eng") is False
 
 
 @pytest.mark.parametrize(

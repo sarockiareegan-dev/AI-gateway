@@ -9,8 +9,9 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 # resolver, so the matrix must hold for both). A proxy admin (admin view) sees
 # activity for any team. A non-admin is scoped to user_info.teams: a bare query
 # defaults to its own teams (200), and an explicit team_ids filter naming a
-# team it does not belong to is 404 (the VERIA-43 fix). Org admins have no
-# team memberships, so they behave like a non-member for any specific team.
+# team it does not belong to is 404 (the VERIA-43 fix). Org admins read every
+# team in their own organization and are 404 on other organizations' teams.
+_ORG_ADMINS = {"alpha": Actor.ORG_ADMIN, "beta": Actor.ORG_B_ADMIN}
 _MEMBERS = {
     "alpha": {
         Actor.TEAM_ADMIN,
@@ -24,7 +25,7 @@ _MEMBERS = {
 
 
 def _expected(actor: Actor, team: str) -> int:
-    if team == "none" or actor == Actor.PROXY_ADMIN:
+    if team == "none" or actor in (Actor.PROXY_ADMIN, _ORG_ADMINS.get(team)):
         return 200
     return 200 if actor in _MEMBERS.get(team, set()) else 404
 

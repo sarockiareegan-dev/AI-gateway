@@ -104,8 +104,7 @@ ui_eslint_pattern='^ui/litellm-dashboard/.*\.(js|jsx|ts|tsx|mjs|cjs)$'
 litellm_py_files=$(scope_match "$litellm_py_pattern")
 e2e_py_files=$(scope_match "$e2e_py_pattern")
 test_tree_files=$(scope_match "$test_tree_pattern")
-# ruff format (and CI's format step) skip enterprise; the rest of make lint covers it.
-fmt_files=$(printf '%s\n' "$litellm_py_files" | grep -v '^litellm/enterprise/' | existing_files)
+fmt_files=$(printf '%s\n' "$litellm_py_files" | existing_files)
 # check-ui-api-types.yml triggers on any file under litellm/proxy or litellm/types
 # (Prisma schema and configs included, not just Python) plus the generator and its
 # lockfiles, so match that whole trigger set rather than a Python subset.
@@ -198,7 +197,7 @@ python_checks() {
     # cover a brand-new commit before it lands.
     if [ -n "$fmt_files" ]; then
         echo "check: ruff format --check (scoped litellm files)"
-        printf '%s\n' "$fmt_files" | xargs uv run --no-sync ruff format --check --exclude '/enterprise/' \
+        printf '%s\n' "$fmt_files" | xargs uv run --no-sync ruff format --check \
             || { echo "✗ Unformatted files in scope. Fix with: make format, then re-stage." >&2; rc=1; }
     fi
     return $rc

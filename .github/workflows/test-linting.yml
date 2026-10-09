@@ -3,6 +3,7 @@ name: LiteLLM Linting
 on:
   pull_request:
     branches:
+      - dev
       - main
       - litellm_internal_staging
       - litellm_oss_staging
@@ -113,12 +114,12 @@ jobs:
       - name: Check ruff format
         if: steps.changes.outputs.decision != 'skip'
         run: |
-          git diff --name-only --diff-filter=ACMR "$GATE_BASE_SHA" HEAD -- ':(glob)litellm/**/*.py' | grep -v '^litellm/enterprise/' > "$RUNNER_TEMP/ruff_format_files.txt" || true
+          git diff --name-only --diff-filter=ACMR "$GATE_BASE_SHA" HEAD -- ':(glob)litellm/**/*.py' > "$RUNNER_TEMP/ruff_format_files.txt" || true
           if [ ! -s "$RUNNER_TEMP/ruff_format_files.txt" ]; then
             echo "No changed litellm Python files to check with ruff format."
             exit 0
           fi
-          xargs uv run --no-sync ruff format --check --exclude '/enterprise/' < "$RUNNER_TEMP/ruff_format_files.txt"
+          xargs uv run --no-sync ruff format --check < "$RUNNER_TEMP/ruff_format_files.txt"
 
       - name: Debug - Check file state
         if: steps.changes.outputs.decision != 'skip'

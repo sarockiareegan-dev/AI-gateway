@@ -901,31 +901,8 @@ async def _save_background_health_checks_to_db(
         return False
 
 
-_PROXY_ADMIN_ROLES: Final = frozenset(
-    {
-        LitellmUserRoles.PROXY_ADMIN.value,
-        # View-only admins are operators (oncall, support); they need the
-        # routing fields (api_base, api_version) to diagnose health and tell
-        # which provider region a check is hitting. They cannot mutate config
-        # so granting them the read-only view is safe.
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
-    }
-)
-
-
 def _is_proxy_admin(user_api_key_dict: UserAPIKeyAuth) -> bool:
-    """
-    Return True if the caller has a proxy-admin role (full or view-only).
-
-    user_role on UserAPIKeyAuth can be either a LitellmUserRoles enum or its
-    string value depending on how the auth path constructed the object, so we
-    compare against the raw value rather than the enum identity.
-    """
-    role: Final = user_api_key_dict.user_role
-    if role is None:
-        return False
-    role_value: Final = role.value if hasattr(role, "value") else role
-    return role_value in _PROXY_ADMIN_ROLES
+    return user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
 
 
 def _strip_admin_only_fields_from_health_result(result: dict) -> dict:
@@ -1405,25 +1382,9 @@ async def shared_health_check_status_endpoint(
 
 
 def _read_license_data() -> dict[str, Any] | None:
-    from litellm.proxy.proxy_server import _license_check, premium_user_data
+    from litellm.proxy.proxy_server import _license_check
 
-    license_data: EnterpriseLicenseData | None = premium_user_data or _license_check.airgapped_license_data
-
-    if (
-        license_data is None
-        and getattr(_license_check, "license_str", None)
-        and getattr(_license_check, "public_key", None)
-    ):
-        try:
-            verification_result: Final = _license_check.verify_license_without_api_request(
-                public_key=_license_check.public_key,
-                license_key=_license_check.license_str,
-            )
-            if verification_result is True:
-                license_data = _license_check.airgapped_license_data
-        except Exception:
-            pass
-
+    license_data: Final[EnterpriseLicenseData | None] = _license_check.license_data
     if license_data is None:
         return None
     return cast(dict[str, Any], license_data)
@@ -1447,11 +1408,11 @@ async def health_license_endpoint(
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ):
     """Return metadata about the configured LiteLLM license without exposing the key."""
-    from litellm.proxy.proxy_server import _license_check, premium_user
+    from litellm.proxy.proxy_server import _license_check
 
     license_data: Final = _read_license_data()
-    has_license: Final = bool(getattr(_license_check, "license_str", None))
-    license_type: Final = "enterprise" if premium_user else "community"
+    has_license: Final = _license_check.has_license
+    license_type: Final = "enterprise" if _license_check.is_premium() else "community"
 
     if license_data is None:
         return {
@@ -2092,7 +2053,6 @@ async def test_model_connection(
     from litellm.proxy.proxy_server import (
         general_settings,
         llm_router,
-        premium_user,
         prisma_client,
     )
     from litellm.types.router import Deployment, LiteLLM_Params
@@ -2189,7 +2149,6 @@ async def test_model_connection(
             ),
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
-            premium_user=premium_user,
         )
         mode = mode or litellm_params.pop("mode", None)
 

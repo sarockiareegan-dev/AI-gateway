@@ -27,16 +27,25 @@ def _is_proxy_admin_request(request_kwargs: Mapping[str, object] | None) -> bool
     return getattr(user_api_key_auth, "user_role", None) == "proxy_admin"
 
 
-def get_request_team_id(request_kwargs: Mapping[str, object] | None) -> str | None:
-    """The caller's team id, from whichever metadata bucket this surface writes to."""
+def _get_request_metadata_str(request_kwargs: Mapping[str, object] | None, key: str) -> str | None:
     if request_kwargs is None:
         return None
     for bucket_name in ("metadata", "litellm_metadata"):
         bucket = request_kwargs.get(bucket_name)
-        team_id = bucket.get("user_api_key_team_id") if isinstance(bucket, Mapping) else None
-        if isinstance(team_id, str) and team_id:
-            return team_id
+        value = bucket.get(key) if isinstance(bucket, Mapping) else None
+        if isinstance(value, str) and value:
+            return value
     return None
+
+
+def get_request_team_id(request_kwargs: Mapping[str, object] | None) -> str | None:
+    """The caller's team id, from whichever metadata bucket this surface writes to."""
+    return _get_request_metadata_str(request_kwargs, "user_api_key_team_id")
+
+
+def get_request_organization_id(request_kwargs: Mapping[str, object] | None) -> str | None:
+    """The caller's organization id: the key's own, or the one its team belongs to."""
+    return _get_request_metadata_str(request_kwargs, "user_api_key_org_id")
 
 
 def resolve_model_group_alias(model_group_alias: object, model: str) -> str | None:

@@ -11,6 +11,7 @@ from litellm.integrations.custom_logger import CustomLogger
 from litellm.proxy._types import ProxyErrorTypes, UserAPIKeyAuth
 from litellm.proxy.utils import PrismaClient, ProxyLogging
 from litellm.types.guardrails import GuardrailEventHooks
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -2235,8 +2236,9 @@ def test_convert_mcp_to_llm_format_carries_key_and_team_guardrails(key_metadata,
     }
     request_obj = proxy_logging._create_mcp_request_object_from_kwargs(kwargs)
 
-    with patch(  # test-quality-ok: the key-guardrail premium gate reads this proxy_server module global and has no injection seam
-        "litellm.proxy.proxy_server.premium_user", True
+    with patch(
+        "litellm.proxy.auth.entitlements.get_entitlement_service",
+        lambda: licensed_entitlements(features=("guardrails",)),
     ):
         synthetic = proxy_logging._convert_mcp_to_llm_format(request_obj, kwargs)
 
@@ -2408,7 +2410,7 @@ def test_mcp_auth_policy_uses_original_request_model(monkeypatch, model, expecte
     )}
     registry._initialized = True
     monkeypatch.setattr(policy_registry, "_policy_registry", registry)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
     proxy_logging = ProxyLogging(user_api_key_cache=DualCache())
     kwargs = {
         "name": "execute", "arguments": {},

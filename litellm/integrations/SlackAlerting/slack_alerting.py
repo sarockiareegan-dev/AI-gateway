@@ -1211,13 +1211,13 @@ Model Info:
 
     async def _check_if_using_premium_email_feature(
         self,
-        premium_user: bool,
         email_logo_url: str | None = None,
         email_support_contact: str | None = None,
     ):
-        from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
+        from litellm.proxy._types import CommonProxyErrors
+        from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.EMAIL_BRANDING):
             if email_logo_url is not None or email_support_contact is not None:
                 raise ValueError(f"Trying to Customize Email Alerting\n {CommonProxyErrors.not_premium_user.value}")
 
@@ -1270,11 +1270,11 @@ Model Info:
                     self.alerting,
                 )
                 return False
-            from litellm.proxy.proxy_server import premium_user, prisma_client
+            from litellm.proxy.proxy_server import prisma_client
 
             email_logo_url = os.getenv("SMTP_SENDER_LOGO", os.getenv("EMAIL_LOGO_URL", None))
             email_support_contact = os.getenv("EMAIL_SUPPORT_CONTACT", None)
-            await self._check_if_using_premium_email_feature(premium_user, email_logo_url, email_support_contact)
+            await self._check_if_using_premium_email_feature(email_logo_url, email_support_contact)
             if email_logo_url is None:
                 email_logo_url = LITELLM_LOGO_URL
             if email_support_contact is None:
@@ -1360,12 +1360,11 @@ Model Info:
 
         Returns -> True if sent, False if not.
         """
-        from litellm.proxy.proxy_server import premium_user
         from litellm.proxy.utils import send_email
 
         email_logo_url = os.getenv("SMTP_SENDER_LOGO", os.getenv("EMAIL_LOGO_URL", None))
         email_support_contact = os.getenv("EMAIL_SUPPORT_CONTACT", None)
-        await self._check_if_using_premium_email_feature(premium_user, email_logo_url, email_support_contact)
+        await self._check_if_using_premium_email_feature(email_logo_url, email_support_contact)
 
         if email_logo_url is None:
             email_logo_url = LITELLM_LOGO_URL

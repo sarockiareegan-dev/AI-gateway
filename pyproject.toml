@@ -72,7 +72,6 @@ proxy = [
     "httpx2>=2.5.0,<3",
     "pydantic>=2.12.0,<3",
     "litellm-proxy-extras==0.4.100",
-    "litellm-enterprise==0.1.69",
     "RestrictedPython>=8.5,<9.0",
     "rich>=13.9.4,<14.0",
     "InquirerPy>=0.3.4,<1.0",
@@ -300,14 +299,13 @@ features = ["extension-module"]
 profile = "release"
 editable-profile = "dev"
 include = [
+    "agami/**/*.py",
     "litellm/proxy/_experimental/out/**",
     "litellm/router_strategy/complexity_router/artifacts/*.json",
     "litellm/router_strategy/complexity_router/fuse_presets.json",
     "litellm/proxy/client/cli/commands/codex_base_instructions.md",
 ]
 exclude = [
-    "litellm/proxy/enterprise",
-    "litellm/proxy/enterprise/**",
     "**/__pycache__",
     "**/__pycache__/**",
     "**/.pytest_cache",
@@ -336,10 +334,9 @@ exclude-newer = "3 days"
 
 [tool.uv.sources]
 litellm-proxy-extras = { workspace = true }
-litellm-enterprise = { workspace = true }
 
 [tool.uv.workspace]
-members = ["enterprise", "litellm-proxy-extras"]
+members = ["litellm-proxy-extras"]
 
 [tool.commitizen]
 version = "1.103.1"

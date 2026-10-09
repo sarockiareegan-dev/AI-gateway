@@ -33,7 +33,6 @@ def test_proxy_logging_init_sets_default_state(mock_callbacks_disabled):
         "internal_usage_cache_type": type(pl.internal_usage_cache).__name__,
         "alerting_is_none": pl.alerting is None,
         "alerting_threshold": pl.alerting_threshold,
-        "premium_user": pl.premium_user,
         "proxy_hook_mapping": pl.proxy_hook_mapping,
         "daily_report_started": pl.daily_report_started,
         "hanging_requests_check_started": pl.hanging_requests_check_started,
@@ -42,16 +41,10 @@ def test_proxy_logging_init_sets_default_state(mock_callbacks_disabled):
         "internal_usage_cache_type": "InternalUsageCache",
         "alerting_is_none": True,
         "alerting_threshold": 300,
-        "premium_user": False,
         "proxy_hook_mapping": {},
         "daily_report_started": False,
         "hanging_requests_check_started": False,
     }
-
-
-def test_proxy_logging_init_premium_user_flag(mock_callbacks_disabled):
-    pl = ProxyLogging(user_api_key_cache=UserApiKeyCache(), premium_user=True)
-    assert pl.premium_user is True
 
 
 def test_proxy_logging_init_missing_cache_raises():

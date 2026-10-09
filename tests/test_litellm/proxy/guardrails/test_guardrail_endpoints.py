@@ -335,17 +335,13 @@ async def test_list_guardrails_v2_masks_sensitive_data_in_config_guardrails(mock
 
 
 @pytest.mark.asyncio
-async def test_list_guardrails_v2_admin_viewer_sees_guardrails_of_teams_they_are_not_in(
+async def test_list_guardrails_v2_admin_viewer_does_not_see_guardrails_of_teams_they_are_not_in(
     mocker,
 ):
-    """
-    proxy_admin_viewer reads the same unscoped list as proxy_admin: a team-owned
-    guardrail must surface even though the viewer belongs to no teams.
-    """
     other_team_guardrail = {
         "guardrail_id": "other-team-guardrail",
         "guardrail_name": "Other Team Guardrail",
-        "litellm_params": {"guardrail": "bedrock", "mode": "pre_call"},
+        "litellm_params": {"guardrail": "bedrock", "mode": "pre_call", "api_key": "sk-viewer-must-not-see-this"},
         "guardrail_info": {"description": "owned by a team the viewer is not in"},
         "team_id": "team-viewer-is-not-in",
         "created_at": datetime.now(),
@@ -367,9 +363,9 @@ async def test_list_guardrails_v2_admin_viewer_sees_guardrails_of_teams_they_are
         "litellm.proxy.guardrails.guardrail_registry.IN_MEMORY_GUARDRAIL_HANDLER",
         mock_in_memory_handler,
     )
-    mock_get_user_team_ids = mocker.patch(
-        "litellm.proxy.guardrails.guardrail_endpoints._get_user_team_ids",
-        AsyncMock(return_value=[]),
+    mocker.patch(
+        "litellm.proxy.guardrails.guardrail_endpoints._get_caller_user_row",
+        AsyncMock(return_value=None),
     )
 
     viewer_auth = UserAPIKeyAuth(
@@ -377,64 +373,123 @@ async def test_list_guardrails_v2_admin_viewer_sees_guardrails_of_teams_they_are
     )
     response = await list_guardrails_v2(user_api_key_dict=viewer_auth)
 
-    assert [g.guardrail_id for g in response.guardrails] == ["other-team-guardrail"]
-    mock_get_user_team_ids.assert_not_called()
+    assert "other-team-guardrail" not in [g.guardrail_id for g in response.guardrails]
+    assert "sk-viewer-must-not-see-this" not in response.model_dump_json()
+
+
+def _scoped_guardrail(guardrail_id: str, team_id: str | None = None, organization_id: str | None = None) -> dict:
+    return {
+        "guardrail_id": guardrail_id,
+        "guardrail_name": guardrail_id,
+        "litellm_params": {"guardrail": "bedrock", "mode": "pre_call"},
+        "guardrail_info": {},
+        "team_id": team_id,
+        "organization_id": organization_id,
+    }
+
+
+_SCOPED_GUARDRAILS = (
+    _scoped_guardrail("proxy-wide"),
+    _scoped_guardrail("org-a", organization_id="org-a"),
+    _scoped_guardrail("org-b", organization_id="org-b"),
+    _scoped_guardrail("team-1", team_id="team-1"),
+    _scoped_guardrail("team-2-in-org-a", team_id="team-2", organization_id="org-a"),
+)
+
+
+def _member_of_org_a_and_team_1(auth: UserAPIKeyAuth):
+    from litellm.proxy._types import LiteLLM_OrganizationMembershipTable, LiteLLM_UserTable
+
+    if auth.user_id is None:
+        return None
+    return LiteLLM_UserTable(
+        user_id=auth.user_id,
+        teams=["team-1"],
+        organization_memberships=[
+            LiteLLM_OrganizationMembershipTable(
+                user_id=auth.user_id,
+                organization_id="org-a",
+                user_role=LitellmUserRoles.INTERNAL_USER.value,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+        ],
+    )
+
+
+_GUARDRAIL_READER_CASES = [
+    pytest.param(MOCK_ADMIN_USER, sorted(g["guardrail_id"] for g in _SCOPED_GUARDRAILS), id="proxy-admin"),
+    pytest.param(
+        UserAPIKeyAuth(user_id="member-1", user_role=LitellmUserRoles.INTERNAL_USER),
+        ["org-a", "team-1"],
+        id="org-and-team-member",
+    ),
+    pytest.param(
+        UserAPIKeyAuth(user_id="viewer-1", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY),
+        ["org-a", "team-1"],
+        id="org-viewer",
+    ),
+    pytest.param(UserAPIKeyAuth(team_id="team-1"), ["team-1"], id="team-key-without-user"),
+]
 
 
 @pytest.mark.asyncio
-async def test_list_guardrails_v2_masks_sensitive_data_for_admin_viewer(mocker):
-    """
-    Read parity for proxy_admin_viewer must not also hand out unmasked secrets.
-    The guardrail is team-owned so it only reaches the viewer via the admin path.
-    """
-    other_team_guardrail_with_secrets = {
-        "guardrail_id": "other-team-secret-guardrail",
-        "guardrail_name": "Other Team Guardrail with Secrets",
-        "litellm_params": {
-            "guardrail": "azure/text_moderations",
-            "mode": "pre_call",
-            "api_key": "sk-viewer-must-not-see-this",
-        },
-        "guardrail_info": {},
-        "team_id": "team-viewer-is-not-in",
-        "created_at": datetime.now(),
-        "updated_at": datetime.now(),
-    }
-
+@pytest.mark.parametrize(("caller", "expected_ids"), _GUARDRAIL_READER_CASES)
+async def test_list_guardrails_v2_shows_guardrails_only_to_their_team_or_organization(mocker, caller, expected_ids):
     mock_prisma_client = mocker.Mock()
-    mock_prisma_client.db = mocker.Mock()
-    mock_prisma_client.db.litellm_guardrailstable = mocker.Mock()
-    mock_prisma_client.db.litellm_guardrailstable.find_many = AsyncMock(
-        return_value=[other_team_guardrail_with_secrets]
-    )
-
+    mock_prisma_client.db.litellm_guardrailstable.find_many = AsyncMock(return_value=list(_SCOPED_GUARDRAILS))
     mock_in_memory_handler = mocker.Mock()
     mock_in_memory_handler.list_in_memory_guardrails.return_value = []
-
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mocker.patch(
         "litellm.proxy.guardrails.guardrail_registry.IN_MEMORY_GUARDRAIL_HANDLER",
         mock_in_memory_handler,
     )
     mocker.patch(
-        "litellm.proxy.guardrails.guardrail_endpoints._get_user_team_ids",
-        AsyncMock(return_value=[]),
+        "litellm.proxy.guardrails.guardrail_endpoints._get_caller_user_row",
+        AsyncMock(side_effect=_member_of_org_a_and_team_1),
     )
 
-    viewer_auth = UserAPIKeyAuth(
-        user_id="viewer-1", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-    )
-    response = await list_guardrails_v2(user_api_key_dict=viewer_auth)
+    response = await list_guardrails_v2(user_api_key_dict=caller)
 
-    guardrail = next(
-        g
-        for g in response.guardrails
-        if g.guardrail_id == "other-team-secret-guardrail"
+    assert sorted(g.guardrail_id for g in response.guardrails) == expected_ids
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_owner_change"),
+    [
+        pytest.param({}, {}, id="omitted-keeps-the-owner"),
+        pytest.param({"organization_id": "org-b"}, {"organization_id": "org-b"}, id="moved-to-another-org"),
+        pytest.param({"organization_id": None}, {"organization_id": None}, id="made-proxy-wide"),
+    ],
+)
+def test_update_guardrail_request_changes_the_owner_only_when_sent(body, expected_owner_change):
+    request = UpdateGuardrailRequest.model_validate(
+        {"guardrail": {"guardrail_name": "g", "litellm_params": {"guardrail": "bedrock", "mode": "pre_call"}}, **body}
     )
-    params = guardrail.litellm_params.model_dump()
-    assert params["api_key"] != "sk-viewer-must-not-see-this"
-    assert "****" in str(params["api_key"])
-    assert params["guardrail"] == "azure/text_moderations"
+
+    assert dict(request.owner_change()) == expected_owner_change
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("caller", "expected_ids"), _GUARDRAIL_READER_CASES)
+async def test_list_config_guardrails_shows_guardrails_only_to_their_team_or_organization(
+    mocker, caller, expected_ids
+):
+    from litellm.proxy.guardrails.guardrail_endpoints import list_guardrails
+
+    mocker.patch(
+        "litellm.proxy.proxy_server.proxy_config",
+        mocker.Mock(config={"guardrails": list(_SCOPED_GUARDRAILS)}),
+    )
+    mocker.patch(
+        "litellm.proxy.guardrails.guardrail_endpoints._get_caller_user_row",
+        AsyncMock(side_effect=_member_of_org_a_and_team_1),
+    )
+
+    response = await list_guardrails(user_api_key_dict=caller)
+
+    assert sorted(g.guardrail_id for g in response.guardrails) == expected_ids
 
 
 @pytest.mark.asyncio
@@ -522,12 +577,12 @@ async def test_list_guardrails_v2_without_prisma_returns_config_guardrails(
 
 
 @pytest.mark.asyncio
-async def test_list_guardrails_v2_without_prisma_non_admin_sees_unrestricted_config_guardrails(
+async def test_list_guardrails_v2_without_prisma_non_admin_does_not_see_proxy_wide_config_guardrails(
     mocker, mock_in_memory_handler
 ):
     """
-    A non-admin caller on a no-DB proxy must see config guardrails that carry
-    no team_id restriction; the team lookup must not blow up without a DB.
+    A config guardrail with no team or organization is proxy-wide, so only proxy
+    admins list it. The membership lookup must not blow up without a DB.
     """
     mocker.patch("litellm.proxy.proxy_server.prisma_client", None)
     mocker.patch(
@@ -540,7 +595,7 @@ async def test_list_guardrails_v2_without_prisma_non_admin_sees_unrestricted_con
     )
     response = await list_guardrails_v2(user_api_key_dict=non_admin_auth)
 
-    assert [g.guardrail_id for g in response.guardrails] == ["test-config-guardrail"]
+    assert response.guardrails == []
 
 
 @pytest.mark.asyncio
@@ -700,9 +755,8 @@ async def test_provider_specific_params_exposes_bedrock_streaming_flags():
 
 @pytest.mark.asyncio
 async def test_provider_specific_params_includes_hide_secrets():
-    """hide-secrets lives in the enterprise package so it is not in
-    guardrail_class_registry; the endpoint must still advertise it or the
-    Add Guardrail UI dropdown never offers it (LIT-3548)."""
+    """The Add Guardrail UI dropdown only offers providers the endpoint
+    advertises (LIT-3548)."""
     from litellm.proxy.guardrails.guardrail_endpoints import (
         get_provider_specific_params,
     )
@@ -718,8 +772,8 @@ async def test_provider_specific_params_includes_hide_secrets():
 
 @pytest.mark.asyncio
 async def test_add_guardrail_settings_restricts_hide_secrets_to_pre_call():
-    """hide-secrets only implements async_pre_call_hook, so offering the other
-    modes in the UI would create configs that boot clean and never run."""
+    """hide-secrets only masks requests, so offering the other modes in the UI
+    would create configs that boot clean and never run."""
     from litellm.proxy.guardrails.guardrail_endpoints import (
         get_guardrail_ui_settings,
     )
@@ -1078,7 +1132,7 @@ async def test_create_guardrail_endpoint(
         assert result["guardrail_name"] == "Test DB Guardrail"
 
         mock_guardrail_registry.add_guardrail_to_db.assert_called_once_with(
-            guardrail=MOCK_CREATE_REQUEST.guardrail, prisma_client=mocker.ANY
+            guardrail=MOCK_CREATE_REQUEST.guardrail, prisma_client=mocker.ANY, organization_id=None
         )
 
         mock_in_memory_handler.initialize_guardrail.assert_called_once()
@@ -1226,6 +1280,7 @@ async def test_update_guardrail_endpoint(
             guardrail_id="test-guardrail-id",
             guardrail=MOCK_UPDATE_REQUEST.guardrail,
             prisma_client=mocker.ANY,
+            owner_change={},
         )
 
         mock_in_memory_handler.sync_guardrail_from_db.assert_called_once_with(
@@ -2238,7 +2293,8 @@ async def test_get_guardrail_submission_non_admin_own_team(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_guardrail_submission_non_admin_other_team_forbidden(mocker):
+@pytest.mark.parametrize("role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
+async def test_get_guardrail_submission_non_admin_other_team_forbidden(mocker, role):
     """Non-admin caller gets 403 when fetching a submission for a team they're not in."""
     mock_prisma = mocker.Mock()
     row = mocker.Mock(
@@ -2259,44 +2315,11 @@ async def test_get_guardrail_submission_non_admin_other_team_forbidden(mocker):
         "litellm.proxy.guardrails.guardrail_endpoints._get_user_team_ids",
         AsyncMock(return_value=["team-mine"]),
     )
-    user = UserAPIKeyAuth(user_id="u1", user_role=LitellmUserRoles.INTERNAL_USER)
+    user = UserAPIKeyAuth(user_id="u1", user_role=role)
 
     with pytest.raises(HTTPException) as exc_info:
         await get_guardrail_submission("sub-1", user)
     assert exc_info.value.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_get_guardrail_submission_admin_viewer_other_team_allowed(mocker):
-    """proxy_admin_viewer reads any team's submission without the membership check."""
-    mock_prisma = mocker.Mock()
-    row = mocker.Mock(
-        guardrail_id="sub-1",
-        guardrail_name="team-guard",
-        status="pending_review",
-        team_id="team-other",
-        litellm_params={},
-        guardrail_info={},
-        submitted_at=None,
-        reviewed_at=None,
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
-    mock_prisma.db.litellm_guardrailstable.find_unique = AsyncMock(return_value=row)
-    mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma)
-    mock_get_user_team_ids = mocker.patch(
-        "litellm.proxy.guardrails.guardrail_endpoints._get_user_team_ids",
-        AsyncMock(return_value=[]),
-    )
-    user = UserAPIKeyAuth(
-        user_id="viewer-1", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-    )
-
-    result = await get_guardrail_submission("sub-1", user)
-
-    assert result.guardrail_id == "sub-1"
-    assert result.team_id == "team-other"
-    mock_get_user_team_ids.assert_not_called()
 
 
 @pytest.mark.asyncio

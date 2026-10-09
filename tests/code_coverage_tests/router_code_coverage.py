@@ -88,6 +88,9 @@ ignored_function_names = [
     "_resolve_claude_code_session_router",  # Tested through Claude Code session routing in test_router.py
     "_get_claude_code_session_router_binding",  # Tested through the two-worker session routing test in test_router.py
     "_apply_updated_routing_strategy_args",  # Tested via update_settings in test_lowest_latency.py (file lacks "router" in name)
+    "_get_org_public_name_deployment",  # Tested via get_deployment_credentials_with_provider in test_router.py
+    "_resolve_candidate_deployments",  # Tested via every get_available_deployment call in test_router.py
+    "_no_deployments_error",  # Tested via the cross-organization denial in test_route_llm_request.py (file lacks "router" in name)
 ]
 
 

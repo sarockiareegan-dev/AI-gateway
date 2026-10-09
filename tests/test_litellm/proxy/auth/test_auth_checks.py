@@ -9104,3 +9104,20 @@ async def test_team_member_budget_check_adds_temp_increase_to_live_team_default(
                 proxy_logging_obj=ProxyLogging(user_api_key_cache=None),
             )
     assert exc_info.value.max_budget == expected_cap
+
+
+@pytest.mark.parametrize(
+    ("role", "requested_user_id", "allowed"),
+    [
+        (LitellmUserRoles.PROXY_ADMIN, "someone-else", True),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, "someone-else", False),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, "caller", True),
+        (LitellmUserRoles.INTERNAL_USER, "someone-else", False),
+    ],
+)
+def test_allowed_route_check_inside_route_only_proxy_admin_queries_other_users(role, requested_user_id, allowed):
+    from litellm.proxy.auth.auth_checks import allowed_route_check_inside_route
+
+    caller: Final = UserAPIKeyAuth(user_id="caller", user_role=role)
+
+    assert allowed_route_check_inside_route(user_api_key_dict=caller, requested_user_id=requested_user_id) is allowed

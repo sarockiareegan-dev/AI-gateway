@@ -24,10 +24,19 @@ else:
     VertexBase = Any
 
 
+def _require_gcs_bucket_license() -> None:
+    from litellm.proxy._types import CommonProxyErrors
+    from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
+
+    if not is_licensed(LicenseFeature.LOGGING_INTEGRATIONS):
+        raise ValueError(
+            f"GCS Bucket logging is a premium feature. Please upgrade to use it. {CommonProxyErrors.not_premium_user.value}"
+        )
+
+
 class GCSBucketLogger(GCSBucketBase, AdditionalLoggingUtils):
     def __init__(self, bucket_name: str | None = None) -> None:
-        from litellm.proxy._types import CommonProxyErrors
-        from litellm.proxy.proxy_server import premium_user
+        _require_gcs_bucket_license()
 
         self.batch_size = int(os.getenv("GCS_BATCH_SIZE", GCS_DEFAULT_BATCH_SIZE))
         self.flush_interval = int(os.getenv("GCS_FLUSH_INTERVAL", GCS_DEFAULT_FLUSH_INTERVAL_SECONDS))
@@ -45,20 +54,9 @@ class GCSBucketLogger(GCSBucketBase, AdditionalLoggingUtils):
         asyncio.create_task(self.periodic_flush())
         AdditionalLoggingUtils.__init__(self)
 
-        if premium_user is not True:
-            raise ValueError(
-                f"GCS Bucket logging is a premium feature. Please upgrade to use it. {CommonProxyErrors.not_premium_user.value}"
-            )
-
     #### ASYNC ####
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
-        from litellm.proxy._types import CommonProxyErrors
-        from litellm.proxy.proxy_server import premium_user
-
-        if premium_user is not True:
-            raise ValueError(
-                f"GCS Bucket logging is a premium feature. Please upgrade to use it. {CommonProxyErrors.not_premium_user.value}"
-            )
+        _require_gcs_bucket_license()
         try:
             verbose_logger.debug(
                 "GCS Logger: async_log_success_event logging kwargs: %s, response_obj: %s",

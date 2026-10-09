@@ -44,8 +44,14 @@ from litellm.proxy._types import (
 from litellm.proxy.auth.login_utils import (
     LoginResult,
     authenticate_user,
+    create_ui_token_object,
     get_ui_credentials,
     is_env_credential_login_enabled,
+)
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
 )
 
 
@@ -2064,3 +2070,22 @@ class TestIsEnvCredentialLoginEnabled:
         with ExitStack() as stack:
             _patch_sso_configured(stack, configured=False)
             assert is_env_credential_login_enabled({"disable_password_login_when_sso_enabled": True}) is True
+
+
+@pytest.mark.parametrize(
+    ("service", "premium_user"),
+    [
+        (licensed_entitlements(features=("sso",)), True),
+        (unlicensed_entitlements(), False),
+    ],
+    ids=["licensed", "unlicensed"],
+)
+def test_ui_token_premium_flag_follows_the_loaded_licence(monkeypatch, service, premium_user):
+    install_entitlements(monkeypatch, service)
+    login_result: Final = LoginResult(
+        user_id="user-1", key="sk-ui", user_email=None, user_role="proxy_admin", login_method="username_password"
+    )
+
+    token: Final = create_ui_token_object(login_result=login_result, general_settings={})
+
+    assert token["premium_user"] is premium_user

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import orjson
 import pytest
-from fastapi import Request
+from fastapi import Request, UploadFile
 from fastapi.testclient import TestClient
 from starlette.datastructures import FormData
 
@@ -20,6 +20,7 @@ from litellm.proxy.common_utils.http_parsing_utils import (
     _safe_get_request_parsed_body,
     _safe_get_request_query_params,
     _safe_set_request_parsed_body,
+    check_file_size_under_limit,
     coerce_numeric_form_fields,
     get_form_data,
     get_request_body,
@@ -27,6 +28,12 @@ from litellm.proxy.common_utils.http_parsing_utils import (
     numeric_form_fields,
     populate_request_with_path_params,
     read_raw_json_body,
+)
+from litellm.types.router import Deployment, LiteLLM_Params
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
 )
 
 
@@ -1210,3 +1217,30 @@ class TestCoerceNumericFormFields:
             numeric_fields=self.numeric_fields,
         )
         assert result == {"n": 3, "temperature": None, "image": buffer}
+
+
+@pytest.mark.parametrize(
+    ("service", "allowed"),
+    [
+        (licensed_entitlements(features=("request_limits",)), True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+def test_deployment_file_size_limit_needs_the_request_limits_licence_feature(monkeypatch, service, allowed):
+    import litellm.proxy.proxy_server as proxy_server
+
+    router = MagicMock()
+    router.get_deployment_by_model_group_name.return_value = Deployment(
+        model_name="whisper",
+        litellm_params=LiteLLM_Params(model="openai/whisper-1", max_file_size_mb=1),
+    )
+    monkeypatch.setattr(proxy_server, "llm_router", router)
+    install_entitlements(monkeypatch, service)
+    upload = UploadFile(file=io.BytesIO(b"x" * 1024), size=1024)
+
+    if allowed:
+        assert check_file_size_under_limit({"model": "whisper"}, upload, ["whisper"]) is True
+        return
+    with pytest.raises(ProxyException, match="'request_limits' feature"):
+        check_file_size_under_limit({"model": "whisper"}, upload, ["whisper"])

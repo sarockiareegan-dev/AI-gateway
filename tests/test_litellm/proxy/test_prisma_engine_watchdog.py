@@ -76,22 +76,48 @@ def test_is_engine_alive_returns_true_when_pid_unknown(engine_client):
 def test_is_engine_alive_returns_false_when_process_gone(engine_client):
     """_is_engine_alive returns False when os.kill raises ProcessLookupError."""
     engine_client._engine_pid = 9999
-    with patch("os.kill", side_effect=ProcessLookupError):
+    with patch("sys.platform", "linux"), patch("os.kill", side_effect=ProcessLookupError):
         assert engine_client._is_engine_alive() is False
 
 
 def test_is_engine_alive_returns_true_on_permission_error(engine_client):
     """_is_engine_alive returns True when os.kill raises PermissionError (process exists but not ours)."""
     engine_client._engine_pid = 1234
-    with patch("os.kill", side_effect=PermissionError):
+    with patch("sys.platform", "linux"), patch("os.kill", side_effect=PermissionError):
         assert engine_client._is_engine_alive() is True
 
 
 def test_is_engine_alive_returns_true_for_running_process(engine_client):
     """_is_engine_alive returns True when os.kill succeeds (process running)."""
     engine_client._engine_pid = 1234
-    with patch("os.kill"):
+    with patch("sys.platform", "linux"), patch("os.kill"):
         assert engine_client._is_engine_alive() is True
+
+
+def test_is_engine_alive_never_signals_the_engine_on_windows(engine_client):
+    """On Windows os.kill(pid, 0) sends CTRL_C_EVENT, which killed the proxy at startup."""
+    engine_client._engine_pid = 1234
+    with patch("sys.platform", "win32"), patch("os.kill") as mock_kill:
+        assert engine_client._is_engine_alive() is True
+    mock_kill.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_start_engine_watcher_does_not_poll_with_os_kill_on_windows(engine_client):
+    with (
+        patch("sys.platform", "win32"),
+        patch.object(engine_client, "_get_engine_pid", return_value=1234),
+        patch.object(engine_client, "_try_pidfd_watch", return_value=False),
+        patch.object(engine_client, "_poll_engine_proc", new_callable=AsyncMock) as mock_poll,
+        patch("os.kill") as mock_kill,
+    ):
+        await engine_client._start_engine_watcher()
+        await asyncio.sleep(0)
+
+    assert engine_client._engine_pid == 1234
+    assert engine_client._watching_engine is False
+    mock_poll.assert_not_called()
+    mock_kill.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

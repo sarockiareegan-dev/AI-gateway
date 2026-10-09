@@ -29,6 +29,7 @@ import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.proxy._types import *
+from litellm.proxy._types import ProxyErrorDetail
 from litellm.proxy.auth.auth_checks import (
     delete_cache_key_objects,
     get_jwt_key_mapping_cache_keys_for_tokens,
@@ -52,6 +53,7 @@ from litellm.proxy.management_endpoints.common_daily_activity import (
 from litellm.proxy.management_endpoints.common_utils import (
     _is_user_team_admin,
     _user_has_admin_view,
+    org_wide_read_org_ids,
     require_caller_user_id_for_non_admin,
     validate_budget_duration,
     validate_finite_spend,
@@ -750,9 +752,6 @@ def _enforce_user_info_access(user_id: str | None, user_api_key_dict: UserAPIKey
     """
     if user_id is None:
         return
-    # Admin-view roles (PROXY_ADMIN and PROXY_ADMIN_VIEW_ONLY) bypass
-    # ownership, mirroring the `/user/info` carve-out that
-    # `RouteChecks.non_proxy_admin_allowed_routes_check` applies upstream.
     if _user_has_admin_view(user_api_key_dict):
         return
     if user_id == user_api_key_dict.user_id:
@@ -2098,11 +2097,7 @@ async def _authorize_user_list_request(
             detail={"error": "Only proxy admins and organization admins can list users."},
         )
 
-    allowed_org_ids = [
-        m.organization_id
-        for m in (caller_user.organization_memberships or [])
-        if m.user_role == LitellmUserRoles.ORG_ADMIN.value
-    ]
+    allowed_org_ids = list(org_wide_read_org_ids(user_api_key_dict.user_role, caller_user.organization_memberships))
     if not allowed_org_ids:
         raise HTTPException(
             status_code=403,
@@ -2576,18 +2571,7 @@ async def _resolve_org_filter_for_user_search(
 ) -> list[str] | None:
     """
     Return a list of org IDs to filter by, or ``None`` for no filter.
-
-    Reads the ``scope_user_search_to_org`` UI-setting flag and applies
-    role-based access rules when the flag is ON.
     """
-    from litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints import (
-        get_ui_settings_cached,
-    )
-
-    ui_settings: Final = await get_ui_settings_cached()
-    if not ui_settings.get("scope_user_search_to_org", False):
-        return None  # flag OFF — no filtering
-
     if _user_has_admin_view(user_api_key_dict):
         return None  # proxy admin — see everything
 
@@ -2627,9 +2611,7 @@ async def _resolve_org_filter_for_user_search(
 
     raise HTTPException(
         status_code=403,
-        detail={
-            "error": "scope_user_search_to_org is enabled. Only proxy admins, organization admins, or team admins can search users."
-        },
+        detail=ProxyErrorDetail(error="Only proxy admins, organization members, or team admins can search users."),
     )
 
 
@@ -2653,13 +2635,13 @@ async def _resolve_team_org_filter(
     except HTTPException:
         raise HTTPException(
             status_code=403,
-            detail={"error": f"scope_user_search_to_org is enabled but team '{team_id}' was not found."},
+            detail=ProxyErrorDetail(error=f"Team '{team_id}' was not found."),
         )
 
     if not _is_user_team_admin(user_api_key_dict, team_obj):
         raise HTTPException(
             status_code=403,
-            detail={"error": "scope_user_search_to_org is enabled. You must be an admin of this team to search users."},
+            detail=ProxyErrorDetail(error="You must be an admin of this team to search users."),
         )
 
     if team_obj.organization_id:
@@ -2667,9 +2649,7 @@ async def _resolve_team_org_filter(
 
     raise HTTPException(
         status_code=403,
-        detail={
-            "error": "scope_user_search_to_org is enabled and this team is not part of an organization. Contact your proxy admin to adjust this setting."
-        },
+        detail=ProxyErrorDetail(error="This team is not part of an organization, so its admins cannot search users."),
     )
 
 
@@ -2696,15 +2676,10 @@ async def ui_view_users(
     """
     Filter users based on partial match of user_id or email with pagination.
 
-    Behaviour depends on the ``scope_user_search_to_org`` UI-setting flag
-    (stored in the ``litellm_uisettings`` table):
-
-    * **Flag OFF (default):** any authenticated user can search all users.
-    * **Flag ON:**
-      - Proxy admins see all users.
-      - Org admins see only users in their org(s).
-      - Team admins for an org-bound team see users in that org.
-      - Others receive a 403.
+    * Proxy admins see all users.
+    * Organization members see only users in their org(s).
+    * Team admins for an org-bound team see users in that org.
+    * Others receive a 403.
     """
     from litellm.proxy.proxy_server import (
         prisma_client,
@@ -2742,7 +2717,6 @@ async def ui_view_users(
                 "mode": "insensitive",  # Case-insensitive search
             }
 
-        # Apply org filter when scope_user_search_to_org is ON and caller is not proxy admin
         if org_filter_ids is not None:
             where_conditions["organization_memberships"] = {"some": {"organization_id": {"in": org_filter_ids}}}
 
@@ -2781,6 +2755,36 @@ async def _resolve_user_email_metadata(
         return {}
     users: Final = await _user_table(prisma_client).find_many(where={"user_id": {"in": list(user_ids)}})
     return {user.user_id: {"user_email": user.user_email, "user_alias": user.user_alias} for user in users}
+
+
+async def _resolve_user_daily_activity_entity(
+    user_api_key_dict: UserAPIKeyAuth,
+    user_id: str | None,
+    prisma_client: "PrismaClient",
+) -> str | None:
+    """Admins may read any user or the global view. Everyone else reads their own spend,
+    or the spend of a user in an organization they may read in full."""
+    if _user_has_admin_view(user_api_key_dict):
+        return user_id
+
+    caller_user_id: Final = require_caller_user_id_for_non_admin(user_api_key_dict)
+    if user_id is None or user_id == caller_user_id:
+        return caller_user_id
+
+    memberships: Final = _organization_membership_table(prisma_client)
+    readable_org_ids: Final = org_wide_read_org_ids(
+        user_api_key_dict.user_role, await memberships.find_many(where={"user_id": caller_user_id})
+    )
+    shares_readable_org: Final = bool(readable_org_ids) and (
+        await memberships.find_first(where={"user_id": user_id, "organization_id": {"in": sorted(readable_org_ids)}})
+        is not None
+    )
+    if not shares_readable_org:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ProxyErrorDetail(error="Non-admin users can only view their own spend data."),
+        )
+    return user_id
 
 
 @router.get(
@@ -2863,20 +2867,7 @@ async def get_user_daily_activity(
         )
 
     try:
-        is_admin: Final = _user_has_admin_view(user_api_key_dict)
-
-        if is_admin:
-            entity_id = user_id  # None means global view, otherwise filter by user
-        else:
-            caller_user_id: Final = require_caller_user_id_for_non_admin(user_api_key_dict)
-            if user_id is None:
-                user_id = caller_user_id
-            if user_id != caller_user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={"error": "Non-admin users can only view their own spend data."},
-                )
-            entity_id = user_id
+        entity_id: Final = await _resolve_user_daily_activity_entity(user_api_key_dict, user_id, prisma_client)
 
         return await get_daily_activity(
             prisma_client=prisma_client,
@@ -2971,20 +2962,7 @@ async def get_user_daily_activity_aggregated(
         )
 
     try:
-        is_admin: Final = _user_has_admin_view(user_api_key_dict)
-
-        if is_admin:
-            entity_id = user_id  # None means global view, otherwise filter by user
-        else:
-            caller_user_id: Final = require_caller_user_id_for_non_admin(user_api_key_dict)
-            if user_id is None:
-                user_id = caller_user_id
-            if user_id != caller_user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={"error": "Non-admin users can only view their own spend data."},
-                )
-            entity_id = user_id
+        entity_id: Final = await _resolve_user_daily_activity_entity(user_api_key_dict, user_id, prisma_client)
 
         return await get_daily_activity_aggregated(
             prisma_client=prisma_client,

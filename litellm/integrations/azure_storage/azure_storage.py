@@ -106,7 +106,7 @@ class AzureBlobStorageLogger(CustomBatchLogger):
             Raises a NON Blocking verbose_logger.exception if an error occurs
         """
         try:
-            self._premium_user_check()
+            self._require_logging_licence()
             verbose_logger.debug(
                 "AzureBlobStorageLogger: Logging - Enters logging function for model %s",
                 kwargs,
@@ -129,7 +129,7 @@ class AzureBlobStorageLogger(CustomBatchLogger):
             Raises a NON Blocking verbose_logger.exception if an error occurs
         """
         try:
-            self._premium_user_check()
+            self._require_logging_licence()
             verbose_logger.debug(
                 "AzureBlobStorageLogger: Logging - Enters logging function for model %s",
                 kwargs,
@@ -316,15 +316,14 @@ class AzureBlobStorageLogger(CustomBatchLogger):
                 return True
         return False
 
-    def _premium_user_check(self):
-        """
-        Checks if the user is a premium user, raises an error if not
-        """
-        from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
+    def _require_logging_licence(self) -> None:
+        from litellm.proxy._types import CommonProxyErrors
+        from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.LOGGING_INTEGRATIONS):
             raise ValueError(
-                f"AzureBlobStorageLogger is only available for premium users. {CommonProxyErrors.not_premium_user}"
+                "AzureBlobStorageLogger needs the 'logging_integrations' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}"
             )
 
     async def get_service_client(self):

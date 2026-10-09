@@ -21,6 +21,7 @@ import respx
 from fastapi import HTTPException
 
 import litellm
+from agami.routing.org_models import EVERY_MODEL, GLOBAL_MODELS_ONLY, ModelVisibility, org_model_name
 from litellm import Router
 from litellm.caching.caching import DualCache
 from litellm.caching.redis_cache import _redis_circuit_breaker_guard
@@ -5782,6 +5783,59 @@ def test_get_credential_deployment_skips_a_paused_deployment():
 
     assert router.get_credential_deployment(model_id="paused-ocr") is None
     assert router.get_credential_deployment(model_id="paused-dep") is None
+
+
+def _org_credential_router() -> Router:
+    return Router(
+        model_list=[
+            *(
+                {
+                    "model_name": org_model_name(organization_id, "gpt-4o"),
+                    "litellm_params": {"model": "openai/gpt-4o", "api_key": f"sk-{organization_id}"},
+                    "model_info": {
+                        "id": f"{organization_id}-dep",
+                        "organization_id": organization_id,
+                        "organization_public_model_name": "gpt-4o",
+                    },
+                }
+                for organization_id in ("org-a", "org-b")
+            ),
+            {
+                "model_name": "gpt-4o",
+                "litellm_params": {"model": "openai/gpt-4o", "api_key": "sk-global"},
+                "model_info": {"id": "global-dep"},
+            },
+        ]
+    )
+
+
+@pytest.mark.parametrize("model_id", ["org-b-dep", org_model_name("org-b", "gpt-4o")])
+def test_credential_lookups_never_resolve_another_organizations_deployment(model_id):
+    router = _org_credential_router()
+    org_a: Final = ModelVisibility.for_key("org-a", is_super_admin=False)
+
+    assert router.get_credential_deployment(model_id=model_id, visibility=org_a) is None
+    assert router.get_deployment_credentials_with_provider(model_id=model_id, visibility=org_a) is None
+    assert router.get_deployment_credentials(model_id=model_id, visibility=org_a) is None
+    assert router.get_credential_deployment(model_id=model_id) is None
+    assert router.get_credential_deployment(model_id=model_id, visibility=EVERY_MODEL) is not None
+
+
+@pytest.mark.parametrize(
+    ("visibility", "api_key"),
+    [
+        (ModelVisibility.for_key("org-a", is_super_admin=False), "sk-org-a"),
+        (ModelVisibility.for_key("org-b", is_super_admin=False), "sk-org-b"),
+        (GLOBAL_MODELS_ONLY, "sk-global"),
+    ],
+)
+def test_public_model_name_resolves_the_callers_own_organization_credentials(visibility, api_key):
+    credentials: Final = _org_credential_router().get_deployment_credentials_with_provider(
+        model_id="gpt-4o", visibility=visibility
+    )
+
+    assert credentials is not None
+    assert credentials["api_key"] == api_key
 
 
 def test_get_team_public_name_deployment_only_resolves_the_owning_team():

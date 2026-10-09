@@ -944,9 +944,18 @@ async def test_list_tags_with_date_range_filters_dynamic_tags():
 
 
 @pytest.mark.asyncio
-async def test_internal_user_tag_daily_activity_is_scoped_to_their_keys():
+@pytest.mark.parametrize(
+    "role",
+    [
+        LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
+        LitellmUserRoles.ORG_ADMIN,
+        LitellmUserRoles.TEAM,
+        LitellmUserRoles.CUSTOMER,
+    ],
+)
+async def test_internal_user_tag_daily_activity_is_scoped_to_their_keys(role):
     """
-    Internal users must not receive proxy-wide tag spend rows when viewing tag
+    Non-admin callers must not receive proxy-wide tag spend rows when viewing tag
     usage daily activity.
     """
     from unittest.mock import AsyncMock, Mock
@@ -957,7 +966,7 @@ async def test_internal_user_tag_daily_activity_is_scoped_to_their_keys():
 
     mock_user_auth = UserAPIKeyAuth(
         user_id="internal-user-123",
-        user_role=LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
+        user_role=role,
     )
 
     with (

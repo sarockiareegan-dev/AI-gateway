@@ -9,6 +9,8 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from litellm._uuid import uuid
+from litellm.proxy._types import DeleteOrganizationRequest, LitellmUserRoles, UserAPIKeyAuth
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 from tests.test_litellm.proxy.management_endpoints.jwt_key_mapping_doubles import (
     CascadingJWTMappingTable,
     JWTMappingRow,
@@ -201,6 +203,46 @@ async def test_get_organization_daily_activity_non_admin_defaults_to_admin_orgs(
     assert kwargs["entity_id"] == ["orgA", "orgB"]
     assert kwargs["start_date"] == "2024-02-01"
     assert kwargs["end_date"] == "2024-02-28"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("role", "expected_org_ids"),
+    [("PROXY_ADMIN_VIEW_ONLY", ["orgA"]), ("INTERNAL_USER", [])],
+)
+async def test_get_organization_daily_activity_admin_viewer_defaults_to_its_member_orgs(
+    monkeypatch, role, expected_org_ids
+):
+    from types import SimpleNamespace
+
+    from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+    from litellm.proxy.management_endpoints import organization_endpoints
+    from litellm.proxy.management_endpoints.organization_endpoints import (
+        get_organization_daily_activity,
+    )
+
+    mock_prisma_client = AsyncMock()
+    mock_prisma_client.db.litellm_organizationtable.find_many = AsyncMock(return_value=[])
+    mock_prisma_client.db.litellm_organizationmembership.find_many = AsyncMock(
+        return_value=[SimpleNamespace(organization_id="orgA", user_role=LitellmUserRoles.INTERNAL_USER.value)]
+    )
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    get_daily_activity_mock = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(organization_endpoints, "get_daily_activity", get_daily_activity_mock)
+
+    await get_organization_daily_activity(
+        organization_ids=None,
+        start_date="2024-02-01",
+        end_date="2024-02-28",
+        model=None,
+        api_key=None,
+        page=1,
+        page_size=10,
+        exclude_organization_ids=None,
+        user_api_key_dict=UserAPIKeyAuth(user_role=LitellmUserRoles[role], user_id="caller"),
+    )
+
+    assert get_daily_activity_mock.call_args.kwargs["entity_id"] == expected_org_ids
 
 
 @pytest.mark.asyncio
@@ -531,6 +573,50 @@ async def test_organization_info_includes_user_email(monkeypatch):
 # fix routes ``update_organization``, ``organization_member_add``,
 # ``organization_member_update``, and ``organization_member_delete``
 # through the existing ``_verify_org_access`` helper.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("organization_id", "access", "allowed"),
+    [
+        ("org-member-of", "read", True),
+        ("org-member-of", "write", False),
+        ("org-other", "read", False),
+    ],
+)
+async def test_verify_org_access_lets_an_admin_viewer_only_read_its_own_orgs(organization_id, access, allowed):
+    from litellm.proxy._types import LiteLLM_UserTable, LitellmUserRoles, UserAPIKeyAuth
+    from litellm.proxy.management_endpoints.organization_endpoints import _verify_org_access
+
+    caller_user = LiteLLM_UserTable(
+        user_id="viewer",
+        organization_memberships=[
+            {
+                "user_id": "viewer",
+                "organization_id": "org-member-of",
+                "user_role": LitellmUserRoles.INTERNAL_USER.value,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+        ],
+    )
+    viewer = UserAPIKeyAuth(user_id="viewer", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY)
+
+    with (
+        patch(
+            "litellm.proxy.management_endpoints.organization_endpoints.get_user_object",
+            new_callable=AsyncMock,
+            return_value=caller_user,
+        ),
+        patch("litellm.proxy.proxy_server.user_api_key_cache"),
+        patch("litellm.proxy.proxy_server.proxy_logging_obj"),
+    ):
+        if allowed:
+            await _verify_org_access(organization_id, viewer, MagicMock(), access=access)
+            return
+        with pytest.raises(HTTPException) as exc_info:
+            await _verify_org_access(organization_id, viewer, MagicMock(), access=access)
+        assert exc_info.value.status_code == 403
 
 
 @pytest.fixture
@@ -1371,7 +1457,6 @@ async def test_new_organization_temp_budget_fields_go_to_budget_row_not_metadata
     prisma_client.db.litellm_organizationtable.create = AsyncMock(return_value={"organization_id": "org-1"})
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
     monkeypatch.setattr("litellm.proxy.proxy_server.llm_router", MagicMock())
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True, raising=False)
 
     response = await new_organization(
         data=NewOrganizationRequest(
@@ -1459,11 +1544,11 @@ def _organization_test_client() -> TestClient:
 
 
 @pytest.mark.parametrize(("method", "path"), _organization_route_targets())
-def test_organization_routes_are_blocked_without_enterprise_license(monkeypatch, method, path):
-    """Every /organization route is enterprise-only, even for a proxy admin sending a valid request."""
+def test_organization_routes_are_blocked_without_organizations_feature(monkeypatch, method, path):
+    """Every /organization route needs the organizations feature, even for a proxy admin sending a valid request."""
     import litellm.proxy.proxy_server as proxy_server
 
-    monkeypatch.setattr(proxy_server, "premium_user", False, raising=False)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
     monkeypatch.setattr(proxy_server, "prisma_client", None, raising=False)
 
     response = _organization_test_client().request(method, path, **_organization_request(method, path))
@@ -1473,12 +1558,12 @@ def test_organization_routes_are_blocked_without_enterprise_license(monkeypatch,
 
 
 @pytest.mark.parametrize(("method", "path"), _organization_route_targets())
-def test_organization_routes_reach_their_handler_with_enterprise_license(monkeypatch, method, path):
-    """The same request a license refuses above now reaches the handler, which is the code reporting the missing database."""
+def test_organization_routes_reach_their_handler_with_organizations_feature(monkeypatch, method, path):
+    """The same request refused above now reaches the handler, which is the code reporting the missing database."""
     import litellm.proxy.proxy_server as proxy_server
     from litellm.proxy._types import CommonProxyErrors
 
-    monkeypatch.setattr(proxy_server, "premium_user", True, raising=False)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("organizations",)))
     monkeypatch.setattr(proxy_server, "prisma_client", None, raising=False)
 
     response = _organization_test_client().request(method, path, **_organization_request(method, path))
@@ -1532,7 +1617,6 @@ async def test_delete_organization_evicts_the_cache_of_the_keys_it_deletes(monke
     prisma_client.db.litellm_jwtkeymapping = jwt_table
     prisma_client.db.litellm_organizationtable.delete = AsyncMock(return_value=MagicMock())
 
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True, raising=False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
     monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", cache)
     monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", None)
@@ -1545,3 +1629,24 @@ async def test_delete_organization_evicts_the_cache_of_the_keys_it_deletes(monke
     assert all(cache.get_cache(key=cache_key) is None for cache_key in doomed_cache_keys)
     assert all(cache.get_cache(key=cache_key) == {"retained": True} for cache_key in kept_cache_keys)
     assert jwt_table.rows == (kept_row,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "role", [LitellmUserRoles.ORG_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER]
+)
+async def test_only_a_proxy_admin_can_delete_an_organization(monkeypatch, role):
+    from litellm.proxy.management_endpoints.organization_endpoints import delete_organization
+
+    prisma_client: Final = AsyncMock()
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await delete_organization(
+            data=DeleteOrganizationRequest(organization_ids=["org-a"]),
+            user_api_key_dict=UserAPIKeyAuth(api_key="sk-org-a", user_role=role, organization_id="org-a"),
+        )
+
+    assert exc_info.value.status_code == 401
+    prisma_client.db.litellm_organizationtable.delete.assert_not_called()
+    prisma_client.db.litellm_teamtable.delete_many.assert_not_called()

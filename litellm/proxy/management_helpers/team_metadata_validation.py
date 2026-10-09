@@ -19,6 +19,7 @@ from fastapi import HTTPException, status
 from pydantic import BaseModel, JsonValue, TypeAdapter
 
 from litellm.proxy._types import CommonProxyErrors, UserAPIKeyAuth
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.types.proxy.management_endpoints.team_endpoints import (
     TeamMetadataFieldSchema,
 )
@@ -104,15 +105,16 @@ TEAM_METADATA_SCHEMA_REGISTRY: Final = TeamMetadataSchemaRegistry()
 async def run_team_metadata_validation(
     validator: TeamMetadataValidator,
     payload: TeamMetadataValidationPayload,
-    premium_user: bool,
     timeout_seconds: float,
     unavailable_message: str,
+    entitlements: EntitlementService | None = None,
 ) -> None:
-    if premium_user is not True:
+    if not is_licensed(LicenseFeature.TEAM_MODELS, entitlements):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={  # mutable-ok: HTTPException.detail has no immutable form
-                "error": f"custom_team_metadata_validate is an Enterprise feature. {CommonProxyErrors.not_premium_user.value}"
+                "error": "custom_team_metadata_validate needs the 'team_models' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}"
             },
         )
     if not inspect.iscoroutinefunction(validator):
@@ -166,7 +168,7 @@ async def validate_team_metadata_if_configured(
     user_api_key_dict: UserAPIKeyAuth,
     registry: TeamMetadataValidatorRegistry = TEAM_METADATA_VALIDATOR_REGISTRY,
 ) -> None:
-    from litellm.proxy.proxy_server import general_settings, premium_user
+    from litellm.proxy.proxy_server import general_settings
 
     validator: Final = registry.get()
     if validator is None:
@@ -187,7 +189,6 @@ async def validate_team_metadata_if_configured(
     await run_team_metadata_validation(
         validator=validator,
         payload=payload,
-        premium_user=premium_user,
         timeout_seconds=_read_timeout_seconds(general_settings),
         unavailable_message=_read_unavailable_message(general_settings),
     )

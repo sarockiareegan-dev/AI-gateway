@@ -37,6 +37,7 @@ from litellm.types.utils import (
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
     from litellm.llms.base_llm.guardrail_translation.base_translation import BaseTranslation
+    from litellm.proxy.auth.entitlements import LicenseFeature
 dc: Final = DualCache()
 
 
@@ -139,6 +140,40 @@ def get_session_id_from_request_data(request_data: dict[str, Any]) -> str | None
     return None
 
 
+def _guardrails_licensed() -> bool:
+    from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
+
+    return is_licensed(LicenseFeature.GUARDRAILS)
+
+
+def _raise_unless_licensed(guardrail_name: str | None, feature: "LicenseFeature") -> None:
+    from fastapi import HTTPException
+
+    from litellm.proxy._types import CommonProxyErrors, ProxyErrorDetail
+    from litellm.proxy.auth.entitlements import is_licensed
+
+    if is_licensed(feature):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=ProxyErrorDetail(
+            error=f"Guardrail '{guardrail_name}' needs the '{feature.value}' feature on the Agami license. "
+            f"{CommonProxyErrors.not_premium_user.value}"
+        ),
+    )
+
+
+def _hooks_for_request_tags(mode: Mode, data: Mapping[str, object]) -> frozenset[str]:
+    from litellm.proxy.common_utils.http_parsing_utils import get_tags_from_request_body
+
+    request_tags: Final = frozenset(get_tags_from_request_body(data))
+    matched: Final = tuple(hooks for tag, hooks in mode.tags.items() if tag in request_tags)
+    fallback: Final = () if mode.default is None else (mode.default,)
+    return frozenset(
+        hook for hooks in (matched or fallback) for hook in ((hooks,) if isinstance(hooks, str) else hooks)
+    )
+
+
 class CustomGuardrail(CustomLogger):
     # If True, during_call runs async_moderation_hook instead of the unified apply_guardrail path.
     use_native_during_call_hook: ClassVar[bool] = False
@@ -173,6 +208,7 @@ class CustomGuardrail(CustomLogger):
         run_in_parallel: bool = False,
         scan_raw_request: bool = False,
         only_scan_new_messages: bool = False,
+        required_license_feature: "LicenseFeature | None" = None,
         **kwargs,
     ):
         """
@@ -201,8 +237,11 @@ class CustomGuardrail(CustomLogger):
                 guardrails: any data this guardrail returns is discarded, matching run_in_parallel's
                 contract, since applying its mutations on top of a stale snapshot would silently
                 undo whatever later guardrails already did to the live request.
+            required_license_feature: When set, every request this guardrail would run on is refused
+                with a 403 while the Agami license lacks the feature, so a lapsed license fails closed.
         """
         self.guardrail_name = guardrail_name
+        self.required_license_feature: LicenseFeature | None = required_license_feature
         self.supported_event_hooks = supported_event_hooks
         self.event_hook: GuardrailEventHooks | list[GuardrailEventHooks] | Mode | None = event_hook
         self.default_on: bool = default_on
@@ -996,6 +1035,12 @@ class CustomGuardrail(CustomLogger):
         """
         Returns True if the guardrail should be run on the event_type
         """
+        should_run: Final = self._should_run_for_event(data, event_type)
+        if should_run and self.required_license_feature is not None:
+            _raise_unless_licensed(self.guardrail_name, self.required_license_feature)
+        return should_run
+
+    def _should_run_for_event(self, data, event_type: GuardrailEventHooks) -> bool:
         if self._suppressed_by_auto_router_compression():
             return False
 
@@ -1017,23 +1062,9 @@ class CustomGuardrail(CustomLogger):
             return False
 
         if self.default_on is True and disable_global_guardrail is not True:
-            if self._event_hook_is_event_type(event_type):
-                if isinstance(self.event_hook, Mode):
-                    try:
-                        from litellm_enterprise.integrations.custom_guardrail import (
-                            EnterpriseCustomGuardrailHelper,
-                        )
-                    except ImportError:
-                        raise ImportError(
-                            "Setting tag-based guardrails is only available in litellm-enterprise. You must be a premium user to use this feature."
-                        )
-                    result = EnterpriseCustomGuardrailHelper._should_run_if_mode_by_tag(
-                        data, self.event_hook, event_type
-                    )
-                    if result is not None:
-                        return result
-                return True
-            return False
+            if not self._event_hook_is_event_type(event_type):
+                return False
+            return self._mode_selects_event(data, event_type)
 
         if (
             self.event_hook
@@ -1045,19 +1076,18 @@ class CustomGuardrail(CustomLogger):
         if not self._event_hook_is_event_type(event_type):
             return False
 
-        if isinstance(self.event_hook, Mode):
-            try:
-                from litellm_enterprise.integrations.custom_guardrail import (
-                    EnterpriseCustomGuardrailHelper,
-                )
-            except ImportError:
-                raise ImportError(
-                    "Setting tag-based guardrails is only available in litellm-enterprise. You must be a premium user to use this feature."
-                )
-            result = EnterpriseCustomGuardrailHelper._should_run_if_mode_by_tag(data, self.event_hook, event_type)
-            if result is not None:
-                return result
-        return True
+        return self._mode_selects_event(data, event_type)
+
+    def _mode_selects_event(self, data: Mapping[str, object], event_type: GuardrailEventHooks) -> bool:
+        mode: Final = self.event_hook
+        if not isinstance(mode, Mode):
+            return True
+        selected: Final = event_type.value in _hooks_for_request_tags(mode, data)
+        if selected:
+            from litellm.proxy.auth.entitlements import LicenseFeature
+
+            _raise_unless_licensed(self.guardrail_name, LicenseFeature.GUARDRAILS)
+        return selected
 
     def _event_hook_is_event_type(self, event_type: GuardrailEventHooks) -> bool:
         """
@@ -1112,10 +1142,11 @@ class CustomGuardrail(CustomLogger):
                 # Get the configuration for this guardrail
                 guardrail_config: DynamicGuardrailParams = DynamicGuardrailParams(**guardrail[self.guardrail_name])
                 extra_body = guardrail_config.get("extra_body", {})
-                if self._validate_premium_user() is not True:
+                if not _guardrails_licensed():
                     if isinstance(extra_body, dict) and extra_body:
                         verbose_logger.warning(
-                            "Guardrail %s: ignoring dynamic extra_body keys %s because premium_user is False",
+                            "Guardrail %s: ignoring dynamic extra_body keys %s because the Agami license lacks the "
+                            "'guardrails' feature",
                             self.guardrail_name,
                             list(extra_body.keys()),
                         )
@@ -1125,19 +1156,6 @@ class CustomGuardrail(CustomLogger):
                 return extra_body
 
         return {}
-
-    def _validate_premium_user(self) -> bool:
-        """
-        Returns True if the user is a premium user
-        """
-        from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
-
-        if premium_user is not True:
-            verbose_logger.warning(
-                "Trying to use premium guardrail without premium user %s", CommonProxyErrors.not_premium_user.value
-            )
-            return False
-        return True
 
     def add_standard_logging_guardrail_information_to_request_data(
         self,

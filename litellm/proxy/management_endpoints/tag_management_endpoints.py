@@ -151,14 +151,10 @@ async def _evict_tag_cache_keys(cache_keys: Sequence[str]) -> None:
     await evict_and_broadcast(cache_keys=cache_keys, user_api_key_cache=user_api_key_cache)
 
 
-async def _get_internal_user_api_keys(
+async def _get_caller_api_keys(
     prisma_client: "PrismaClient",
     user_api_key_dict: UserAPIKeyAuth,
 ) -> list[str]:
-    user_role: Final = user_api_key_dict.user_role
-    if user_role is None or not user_role.is_internal_user_role:
-        return []
-
     user_api_keys: Final = set()
     if user_api_key_dict.api_key:
         user_api_keys.add(user_api_key_dict.api_key)
@@ -179,11 +175,10 @@ async def _get_tag_list_scope(
     prisma_client: "PrismaClient",
     user_api_key_dict: UserAPIKeyAuth,
 ) -> Mapping[str, Mapping[str, Sequence[str]]] | None:
-    user_role: Final = user_api_key_dict.user_role
-    if user_api_key_has_admin_view(user_api_key_dict) or (user_role is None or not user_role.is_internal_user_role):
+    if user_api_key_has_admin_view(user_api_key_dict):
         return None
 
-    scoped_api_keys: Final = await _get_internal_user_api_keys(
+    scoped_api_keys: Final = await _get_caller_api_keys(
         prisma_client=prisma_client,
         user_api_key_dict=user_api_key_dict,
     )
@@ -195,11 +190,10 @@ async def _get_tag_daily_activity_api_key_filter(
     user_api_key_dict: UserAPIKeyAuth,
     requested_api_key: str | None,
 ) -> str | list[str] | None:
-    user_role: Final = user_api_key_dict.user_role
-    if user_api_key_has_admin_view(user_api_key_dict) or (user_role is None or not user_role.is_internal_user_role):
+    if user_api_key_has_admin_view(user_api_key_dict):
         return requested_api_key
 
-    scoped_api_keys: Final = await _get_internal_user_api_keys(
+    scoped_api_keys: Final = await _get_caller_api_keys(
         prisma_client=prisma_client,
         user_api_key_dict=user_api_key_dict,
     )

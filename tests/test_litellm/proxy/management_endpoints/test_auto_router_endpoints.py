@@ -25,6 +25,7 @@ from litellm.types.management_endpoints.auto_router_endpoints import (
     AutoRouterRoutingTestRequest,
 )
 from litellm.types.utils import Choices, Message, ModelResponse
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 ROUTING_HTTP_REQUEST: Final = Request({"type": "http", "method": "POST", "path": "/auto_router/test_routing", "headers": []})
 
@@ -1782,7 +1783,7 @@ async def test_start_shadow_eval_writes_the_model_scope_on_every_leg_and_echoes_
 
     listed = _shadow_prisma(legs=[_leg_record(models=("cheap",)), _leg_record(id="leg-0", group_id="job-0")])
     monkeypatch.setattr(proxy_server, "prisma_client", listed)
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
     assert {job.job_id: job.models for job in jobs} == {"job-1": ("cheap",), "job-0": ()}
 
 
@@ -2035,11 +2036,11 @@ async def test_list_shadow_eval_jobs_rejects_a_lone_filter_half(monkeypatch: pyt
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
     with pytest.raises(HTTPException) as id_only:
-        await list_shadow_eval_jobs(VIEWER, target_type=None, target_id="key-hash", limit=50)
+        await list_shadow_eval_jobs(ADMIN, target_type=None, target_id="key-hash", limit=50)
     assert id_only.value.status_code == 400
 
     with pytest.raises(HTTPException) as type_only:
-        await list_shadow_eval_jobs(VIEWER, target_type="key", target_id=None, limit=50)
+        await list_shadow_eval_jobs(ADMIN, target_type="key", target_id=None, limit=50)
     assert type_only.value.status_code == 400
     prisma.db.query_raw.assert_not_called()
 
@@ -2141,7 +2142,7 @@ async def test_get_shadow_eval_job_pools_counts_and_slices_results_per_key(monke
     prisma.db.litellm_shadowevalattempt.find_first = AsyncMock(return_value=MagicMock(error="judge call failed: boom"))
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    response = await get_shadow_eval_job("job-1", VIEWER)
+    response = await get_shadow_eval_job("job-1", ADMIN)
 
     assert response.job_id == "job-1"
     assert response.status == "running"
@@ -2204,7 +2205,7 @@ async def test_get_shadow_eval_job_slices_results_per_router(monkeypatch: pytest
     )
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    response = await get_shadow_eval_job("job-1", VIEWER)
+    response = await get_shadow_eval_job("job-1", ADMIN)
 
     assert response.router_names == ("my-router", "alt-router")
     assert response.router_name == "my-router"
@@ -2228,7 +2229,7 @@ async def test_job_responses_resolve_router_names_with_legacy_fallback(monkeypat
     prisma = _shadow_prisma(legs=[_leg_record(router_names=())])
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    response = await get_shadow_eval_job("job-1", VIEWER)
+    response = await get_shadow_eval_job("job-1", ADMIN)
 
     assert response.router_names == ("my-router",)
     assert response.router_name == "my-router"
@@ -2241,12 +2242,16 @@ async def test_get_shadow_eval_job_404s_and_gates_on_role(monkeypatch: pytest.Mo
     monkeypatch.setattr(proxy_server, "prisma_client", _shadow_prisma())
 
     with pytest.raises(HTTPException) as missing:
-        await get_shadow_eval_job("nope", VIEWER)
+        await get_shadow_eval_job("nope", ADMIN)
     assert missing.value.status_code == 404
 
-    with pytest.raises(HTTPException) as forbidden:
-        await get_shadow_eval_job("job-1", NON_ADMIN)
-    assert forbidden.value.status_code == 403
+    for caller in (NON_ADMIN, VIEWER):
+        with pytest.raises(HTTPException) as forbidden:
+            await get_shadow_eval_job("job-1", caller)
+        assert forbidden.value.status_code == 403
+    with pytest.raises(HTTPException) as viewer_list:
+        await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    assert viewer_list.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -2281,7 +2286,7 @@ async def test_list_shadow_eval_jobs_collapses_legs_into_jobs_newest_first(monke
     )
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
 
     assert [(job.job_id, job.status) for job in jobs] == [
         ("job-1", "running"),
@@ -2321,7 +2326,7 @@ async def test_list_shadow_eval_jobs_filters_to_jobs_containing_the_key(monkeypa
     )
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type="key", target_id="key-hash-2", limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type="key", target_id="key-hash-2", limit=50)
 
     assert [job.job_id for job in jobs] == ["job-1", "job-2"]
     assert [target.target_id for target in jobs[0].targets] == ["key-hash", "key-hash-2"]
@@ -2360,7 +2365,7 @@ async def test_job_status_runs_until_every_key_stops_and_completed_outranks_stop
     )
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
 
     assert [job.status for job in jobs] == [expected]
 
@@ -2389,7 +2394,7 @@ async def test_list_reads_completed_once_every_key_spends_its_budget(monkeypatch
     ]
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
 
     by_id = {job.job_id: job for job in jobs}
     assert by_id["job-1"].status == "completed"
@@ -2409,11 +2414,11 @@ async def test_recorded_operator_stop_outranks_budget_arithmetic(monkeypatch: py
     prisma.attempt_rows = [{"job_id": "leg-1", "attempt_count": 6, "spend": 0.0}]
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
     assert jobs[0].status == "stopped"
     assert jobs[0].stopped_by == "admin"
 
-    detail = await get_shadow_eval_job("job-1", VIEWER)
+    detail = await get_shadow_eval_job("job-1", ADMIN)
     assert detail.status == "stopped"
 
 
@@ -2429,7 +2434,7 @@ async def test_backfilled_legacy_stop_never_reads_as_completion(monkeypatch: pyt
     prisma.attempt_rows = [{"job_id": "leg-1", "attempt_count": 6, "spend": 0.0}]
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
     assert jobs[0].status == "stopped"
 
 
@@ -2518,7 +2523,7 @@ async def test_verdicts_keep_same_id_targets_of_different_kinds_distinct(monkeyp
     )
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    response = await get_shadow_eval_job("job-1", VIEWER)
+    response = await get_shadow_eval_job("job-1", ADMIN)
 
     verdicts_by_target = {(t.target_type, t.target_id): t.verdicts for t in response.targets}
     assert verdicts_by_target[("team", "dev-alice")].turn_count == 6
@@ -2564,7 +2569,7 @@ async def test_list_reads_completed_once_every_key_spends_its_dollar_budget(monk
     ]
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
 
     by_id = {job.job_id: job for job in jobs}
     assert by_id["job-1"].status == "completed"
@@ -2599,7 +2604,7 @@ async def test_legacy_jobs_without_a_dollar_budget_stay_turn_gated(monkeypatch: 
     prisma.attempt_rows = [{"job_id": "leg-1", "attempt_count": 40, "spend": 250.0}]
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
 
     assert jobs[0].status == "running"
     assert jobs[0].targets[0].max_budget is None
@@ -2617,7 +2622,7 @@ async def test_shadow_eval_responses_name_every_shadowed_key(monkeypatch: pytest
     monkeypatch.setattr(proxy_server, "llm_router", _shadow_router())
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    jobs = await list_shadow_eval_jobs(VIEWER, target_type=None, target_id=None, limit=50)
+    jobs = await list_shadow_eval_jobs(ADMIN, target_type=None, target_id=None, limit=50)
     assert [(target.target_alias, target.key_name) for target in jobs[0].targets] == [
         (None, None),
         ("prod-alpha", "sk-...lpha"),
@@ -2625,7 +2630,7 @@ async def test_shadow_eval_responses_name_every_shadowed_key(monkeypatch: pytest
     batched_where = prisma.db.litellm_verificationtoken.find_many.call_args.kwargs["where"]
     assert batched_where == {"token": {"in": ["deleted-key-hash", "key-hash"]}}
 
-    detail = await get_shadow_eval_job("job-1", VIEWER)
+    detail = await get_shadow_eval_job("job-1", ADMIN)
     assert [target.target_alias for target in detail.targets] == [None, "prod-alpha"]
 
 
@@ -2752,7 +2757,7 @@ async def test_routing_test_never_confirms_models_the_caller_cannot_use(monkeypa
             }
         )
 
-    monkeypatch.setattr(proxy_server, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("team_models", "auto_router")))
     monkeypatch.setattr(proxy_server, "llm_router", _router())
 
     team_admin: Final = UserAPIKeyAuth(
@@ -2799,7 +2804,7 @@ async def test_validate_config_gates_like_the_write_it_rehearses(monkeypatch: py
     prisma: Final = MagicMock()
     prisma.db.litellm_teamtable.find_unique = AsyncMock(return_value=team_row)
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
-    monkeypatch.setattr(proxy_server, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("team_models", "auto_router")))
 
     team_admin: Final = UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER, api_key="sk-team", user_id="team-admin"
@@ -2834,7 +2839,7 @@ def _configure_member_preview(
     prisma.db.litellm_teamtable.find_unique = AsyncMock(return_value=team)
     prisma.db.litellm_teammembership.find_unique = AsyncMock(return_value=None)
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
-    monkeypatch.setattr(proxy_server, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("team_models", "auto_router")))
     return UserAPIKeyAuth(
         user_role=LitellmUserRoles.INTERNAL_USER,
         user_id="preview-member",
@@ -3166,7 +3171,7 @@ async def test_get_shadow_eval_job_sums_funnel_rows_across_legs(monkeypatch: pyt
     prisma.funnel_rows = [{"legs_with_rows": 2, "not_sampled": 30, "unjudgeable": 5, "shed": 2, "withheld": 3}]
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    response = await get_shadow_eval_job("job-1", VIEWER)
+    response = await get_shadow_eval_job("job-1", ADMIN)
 
     assert response.results.not_sampled_count == 30
     assert response.results.unjudgeable_count == 5
@@ -3201,7 +3206,7 @@ async def test_partially_seeded_funnel_reads_as_unknown_coverage(monkeypatch: py
     prisma.funnel_rows = [{"legs_with_rows": 1, "not_sampled": 30, "unjudgeable": 5, "shed": 2, "withheld": 0}]
     monkeypatch.setattr(proxy_server, "prisma_client", prisma)
 
-    response = await get_shadow_eval_job("job-1", VIEWER)
+    response = await get_shadow_eval_job("job-1", ADMIN)
 
     assert response.results.not_sampled_count is None
     assert response.results.unjudgeable_count is None

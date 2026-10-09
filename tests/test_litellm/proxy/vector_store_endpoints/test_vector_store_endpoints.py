@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException, Request
 
 import litellm
+from agami.routing.org_models import GLOBAL_MODELS_ONLY
 from litellm.integrations.vector_store_integrations.vector_store_pre_call_hook import (
     LiteLLM_ManagedVectorStore,
 )
@@ -302,7 +303,7 @@ async def test_vector_store_file_list_resolves_credentials_from_model_query_para
     assert result["model"] == "openai/gpt-4o-mini"
     assert "custom_llm_provider" not in result
     llm_router.get_deployment_credentials_with_provider.assert_called_once_with(
-        model_id="team-openai"
+        model_id="team-openai", visibility=GLOBAL_MODELS_ONLY
     )
 
 
@@ -336,7 +337,7 @@ async def test_vector_store_file_list_registry_routed_model_skips_key_model_gran
     assert result["api_key"] == "sk-team-openai"
     assert result["model"] == "openai/gpt-4o-mini"
     llm_router.get_deployment_credentials_with_provider.assert_called_once_with(
-        model_id="team-openai"
+        model_id="team-openai", visibility=GLOBAL_MODELS_ONLY
     )
 
 
@@ -369,7 +370,7 @@ async def test_vector_store_file_list_resolves_single_openai_team_deployment():
     assert result["model"] == "openai/gpt-4o-mini"
     assert "custom_llm_provider" not in result
     llm_router.get_deployment_credentials_with_provider.assert_called_once_with(
-        model_id="team-openai", team_id=None
+        model_id="team-openai", team_id=None, visibility=GLOBAL_MODELS_ONLY
     )
 
 

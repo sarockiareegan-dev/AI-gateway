@@ -12,10 +12,14 @@ from litellm._uuid import uuid
 
 verbose_logger.setLevel(logging.DEBUG)
 
-# Minimal setup for module-level instantiation
-import litellm.proxy.proxy_server
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
-litellm.proxy.proxy_server.premium_user = True
+
+@pytest.fixture(autouse=True)
+def _licensed_for_secret_managers(monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("secret_managers",)))
+
+
 
 from litellm.secret_managers.hashicorp_secret_manager import HashicorpSecretManager
 

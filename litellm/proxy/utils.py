@@ -57,6 +57,7 @@ from litellm.constants import (
 )
 from litellm.proxy._types import (
     CommonProxyErrors,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     SpendLogsMetadata,
@@ -73,25 +74,6 @@ from litellm.types.proxy.model_listing import ModelInfoResponse
 from litellm.types.utils import CallTypes, CallTypesLiteral, ModelInfo, Usage
 
 try:
-    from litellm_enterprise.enterprise_callbacks.send_emails.base_email import (
-        BaseEmailLogger,
-    )
-    from litellm_enterprise.enterprise_callbacks.send_emails.resend_email import (
-        ResendEmailLogger,
-    )
-    from litellm_enterprise.enterprise_callbacks.send_emails.sendgrid_email import (
-        SendGridEmailLogger,
-    )
-    from litellm_enterprise.enterprise_callbacks.send_emails.smtp_email import (
-        SMTPEmailLogger,
-    )
-except ImportError:
-    BaseEmailLogger = None
-    SendGridEmailLogger = None
-    SMTPEmailLogger = None
-    ResendEmailLogger = None
-
-try:
     import backoff
 except ImportError:
     raise ImportError("backoff is not installed. Please install it via 'pip install backoff'")
@@ -102,6 +84,7 @@ from pydantic import TypeAdapter
 import litellm
 import litellm.litellm_core_utils
 import litellm.litellm_core_utils.litellm_logging
+from agami.routing.org_models import ModelVisibility, org_model_names
 from litellm import (
     EmbeddingResponse,
     ImageResponse,
@@ -143,9 +126,11 @@ from litellm.proxy._types import (
     AlertType,
     CallInfo,
     LiteLLM_VerificationTokenView,
+    LitellmUserRoles,
     Member,
     UserAPIKeyAuth,
 )
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.route_checks import RouteChecks
 from litellm.proxy.common_utils.callback_utils import add_guardrail_to_applied_guardrails_header
 from litellm.proxy.common_utils.config_sync_pubsub import publish_config_param_change
@@ -296,33 +281,6 @@ def print_verbose(print_statement: object):
     verbose_proxy_logger.debug("%s\n%s", print_statement, traceback.format_exc())
     if litellm.set_verbose:
         print(f"LiteLLM Proxy: {_redact_string(str(print_statement))}")  # noqa: T201
-
-
-def _get_email_logger_class():
-    """
-    Determine which email logger class to use based on environment variables.
-    Priority: SendGrid > Resend > SMTP > BaseEmailLogger (fallback)
-
-    Returns:
-        The email logger class to use, or None if BaseEmailLogger is not available
-    """
-    if BaseEmailLogger is None:
-        return None
-
-    # Check for SendGrid API key
-    if SendGridEmailLogger is not None and os.getenv("SENDGRID_API_KEY"):
-        return SendGridEmailLogger
-
-    # Check for Resend API key
-    if ResendEmailLogger is not None and os.getenv("RESEND_API_KEY"):
-        return ResendEmailLogger
-
-    # Check for SMTP configuration
-    if SMTPEmailLogger is not None and os.getenv("SMTP_HOST"):
-        return SMTPEmailLogger
-
-    # Fallback to BaseEmailLogger (though it won't actually send emails)
-    return BaseEmailLogger
 
 
 class InternalUsageCache:
@@ -1043,7 +1001,6 @@ class ProxyLogging:
     def __init__(
         self,
         user_api_key_cache: UserApiKeyCache,
-        premium_user: bool = False,
     ):
         ## INITIALIZE  LITELLM CALLBACKS ##
         self.call_details: dict = {}
@@ -1063,14 +1020,6 @@ class ProxyLogging:
             internal_usage_cache=self.internal_usage_cache.dual_cache,
         )
         self.email_logging_instance: Any | None = None
-        if BaseEmailLogger is not None:
-            email_logger_class: Final = _get_email_logger_class()
-            if email_logger_class is not None:
-                # All email logger classes now accept internal_usage_cache
-                self.email_logging_instance = email_logger_class(
-                    internal_usage_cache=self.internal_usage_cache.dual_cache,
-                )
-        self.premium_user = premium_user
         self.service_logging_obj = ServiceLogging()
         self.db_spend_update_writer = DBSpendUpdateWriter()
         self.proxy_hook_mapping: dict[str, CustomLogger] = {}
@@ -5577,7 +5526,7 @@ class PrismaClient:
         return 0
 
     def _is_engine_alive(self) -> bool:
-        if self._engine_pid <= 0:
+        if self._engine_pid <= 0 or sys.platform == "win32":
             return True
         try:
             os.kill(self._engine_pid, 0)
@@ -5861,7 +5810,7 @@ class PrismaClient:
         1. os.waitpid() in a dedicated thread, works with all event loops.
         2. pidfd_open kernel fd registered with asyncio.
         3. os.kill(pid, 0) polling (1s), last-resort fallback when neither
-           waitpid thread nor pidfd are available.
+           waitpid thread nor pidfd are available. Skipped on Windows.
 
         """
         if self._watching_engine or self._engine_pidfd >= 0 or self._engine_wait_thread is not None:
@@ -5883,6 +5832,12 @@ class PrismaClient:
         elif pidfd_ok:
             verbose_proxy_logger.info(
                 "Watching engine PID %s via pidfd.",
+                pid,
+            )
+        elif sys.platform == "win32":
+            verbose_proxy_logger.info(
+                "Not polling engine PID %s: os.kill(pid, 0) sends CTRL_C_EVENT on Windows. "
+                "The DB health watchdog still detects engine death.",
                 pid,
             )
         else:
@@ -7845,24 +7800,15 @@ def handle_exception_on_proxy(e: Exception, litellm_call_id: str | None = None) 
     )
 
 
-def _premium_user_check(feature: str | None = None):
-    """
-    Raises an HTTPException if the user is not a premium user
-    """
-    from litellm.proxy.proxy_server import premium_user
-
-    if feature:
-        detail_msg = f"This feature is only available for LiteLLM Enterprise users: {feature}. {CommonProxyErrors.not_premium_user.value}"
-    else:
-        detail_msg = (
-            f"This feature is only available for LiteLLM Enterprise users. {CommonProxyErrors.not_premium_user.value}"
-        )
-
-    if not premium_user:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": detail_msg},
-        )
+def require_license_feature(license_feature: LicenseFeature, feature_name: str | None = None) -> None:
+    if is_licensed(license_feature):
+        return
+    detail_msg: Final = (
+        f"{feature_name} is a premium feature. {CommonProxyErrors.not_premium_user.value}"
+        if feature_name
+        else CommonProxyErrors.not_premium_user.value
+    )
+    raise HTTPException(status_code=403, detail=ProxyErrorDetail(error=detail_msg))
 
 
 def is_known_model(model: str | None, llm_router: Router | None) -> bool:
@@ -8224,7 +8170,11 @@ async def get_available_models_for_user(
         team_id=effective_team_id,
     )
 
-    return all_models
+    if llm_router is None:
+        return all_models
+    return ModelVisibility.for_key(
+        user_api_key_dict.org_id, user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
+    ).visible_model_names(all_models, org_model_names(llm_router.model_list))
 
 
 def _safe_get_model_info(model: str, get_model_info: Callable[[str], ModelInfo]) -> ModelInfo | None:

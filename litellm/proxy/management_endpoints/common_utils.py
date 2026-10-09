@@ -1,7 +1,7 @@
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Optional, Union
+from typing import TYPE_CHECKING, Any, Final, Optional, Protocol, Union
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
@@ -45,6 +45,7 @@ from litellm._logging import verbose_proxy_logger
 from litellm.caching import DualCache
 from litellm.proxy._types import (
     CommonProxyErrors,
+    KeyManagementRoutes,
     KeyRequestBase,
     LiteLLM_ManagementEndpoint_MetadataFields,
     LiteLLM_ManagementEndpoint_MetadataFields_Premium,
@@ -54,14 +55,15 @@ from litellm.proxy._types import (
     LiteLLM_UserTable,
     LitellmUserRoles,
     NewProjectRequest,
+    ProxyErrorDetail,
     UpdateProjectRequest,
     UserAPIKeyAuth,
 )
 from litellm.proxy._types import (  # noqa: F401  re-exported
     user_api_key_has_admin_view as _user_has_admin_view,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.common_utils.timezone_utils import get_budget_reset_time
-from litellm.proxy.utils import _premium_user_check
 from litellm.repositories.team_repository import TeamRepository
 from litellm.types.utils import BudgetConfig
 
@@ -70,18 +72,49 @@ if TYPE_CHECKING:
     from litellm.proxy.utils import PrismaClient, ProxyLogging
 
 
+PREMIUM_METADATA_FIELD_LICENCES: Final = MappingProxyType(
+    {
+        "disable_global_guardrails": LicenseFeature.GUARDRAILS,
+        "guardrails": LicenseFeature.GUARDRAILS,
+        "policies": LicenseFeature.GUARDRAILS,
+        "tags": LicenseFeature.ADVANCED_KEYS,
+        "team_member_key_duration": LicenseFeature.ADVANCED_KEYS,
+        "prompts": LicenseFeature.ADVANCED_KEYS,
+        "logging": LicenseFeature.LOGGING_INTEGRATIONS,
+        "secret_manager_settings": LicenseFeature.SECRET_MANAGERS,
+        "allowed_passthrough_routes": LicenseFeature.ACCESS_CONTROL,
+    }
+)
+
+
+def require_metadata_field_licence(
+    field_name: str, value: object, entitlements: EntitlementService | None = None
+) -> None:
+    feature: Final = PREMIUM_METADATA_FIELD_LICENCES.get(field_name)
+    if feature is None or not value or is_licensed(feature, entitlements):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=ProxyErrorDetail(
+            error=f"{field_name} needs the '{feature.value}' feature on the Agami license. "
+            f"{CommonProxyErrors.not_premium_user.value}"
+        ),
+    )
+
+
 def validate_team_model_max_budget(
     model_max_budget: Mapping[str, BudgetConfig] | None,
-    premium_user: bool,
+    entitlements: EntitlementService | None = None,
 ) -> None:
     """Reject a team `model_max_budget` the limiter could not enforce (no duration, bad cap, tpm/rpm limits)."""
     if not model_max_budget:
         return
-    if premium_user is not True:
+    if not is_licensed(LicenseFeature.BUDGETS, entitlements):
         raise HTTPException(
             status_code=403,
             detail={
-                "error": f"Setting model_max_budget on a team is an enterprise feature. {CommonProxyErrors.not_premium_user.value}"
+                "error": "Setting model_max_budget on a team needs the 'budgets' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}"
             },
         )
     for model_name, budget_config in model_max_budget.items():
@@ -181,16 +214,31 @@ def _is_user_team_admin(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_Tea
     return False
 
 
-async def _is_user_org_admin_for_team(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_TeamTable) -> bool:
-    """
-    Check if user is an org admin for the team's organization.
+class _OrgMembership(Protocol):
+    @property
+    def organization_id(self) -> str | None: ...
 
-    Returns True if:
-    - The team belongs to an organization, AND
-    - The user has org_admin role in that organization
+    @property
+    def user_role(self) -> str | None: ...
+
+
+def org_wide_read_org_ids(user_role: str | None, memberships: Iterable[_OrgMembership] | None) -> tuple[str, ...]:
+    """Organizations whose teams, users and spend the caller may read in full.
+
+    An org admin reads the orgs it administers. A proxy_admin_viewer is a read-only
+    org admin of every org it belongs to, and of no other org.
     """
-    if not team_obj.organization_id or not user_api_key_dict.user_id:
-        return False
+    reads_every_membership: Final = user_role == LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value
+    return tuple(
+        m.organization_id
+        for m in memberships or ()
+        if m.organization_id is not None and (reads_every_membership or m.user_role == LitellmUserRoles.ORG_ADMIN.value)
+    )
+
+
+async def get_caller_user(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTable | None:
+    if not user_api_key_dict.user_id:
+        return None
 
     from litellm.proxy.auth.auth_checks import get_user_object
     from litellm.proxy.proxy_server import (
@@ -199,21 +247,57 @@ async def _is_user_org_admin_for_team(user_api_key_dict: UserAPIKeyAuth, team_ob
         user_api_key_cache,
     )
 
-    caller_user: Final = await get_user_object(
+    return await get_user_object(
         user_id=user_api_key_dict.user_id,
         prisma_client=prisma_client,
         user_api_key_cache=user_api_key_cache,
         user_id_upsert=False,
         proxy_logging_obj=proxy_logging_obj,
     )
+
+
+async def caller_org_wide_read_org_ids(user_api_key_dict: UserAPIKeyAuth) -> frozenset[str]:
+    try:
+        caller_user: Final = await get_caller_user(user_api_key_dict)
+    except ValueError:
+        return frozenset()
+    if caller_user is None:
+        return frozenset()
+    return frozenset(org_wide_read_org_ids(user_api_key_dict.user_role, caller_user.organization_memberships))
+
+
+async def _is_user_org_admin_for_team(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_TeamTable) -> bool:
+    """
+    Check if user is an org admin for the team's organization.
+
+    Returns True if:
+    - The team belongs to an organization, AND
+    - The user has org_admin role in that organization
+    """
+    if not team_obj.organization_id:
+        return False
+
+    caller_user: Final = await get_caller_user(user_api_key_dict)
     if caller_user is None:
         return False
 
-    for m in caller_user.organization_memberships or []:
-        if m.organization_id == team_obj.organization_id and m.user_role == LitellmUserRoles.ORG_ADMIN.value:
-            return True
+    return any(
+        m.organization_id == team_obj.organization_id and m.user_role == LitellmUserRoles.ORG_ADMIN.value
+        for m in caller_user.organization_memberships or ()
+    )
 
-    return False
+
+async def _can_read_team_org_wide(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_TeamTable) -> bool:
+    if not team_obj.organization_id:
+        return False
+
+    caller_user: Final = await get_caller_user(user_api_key_dict)
+    if caller_user is None:
+        return False
+
+    return team_obj.organization_id in org_wide_read_org_ids(
+        user_api_key_dict.user_role, caller_user.organization_memberships
+    )
 
 
 def _team_member_has_permission(
@@ -230,6 +314,13 @@ def _team_member_has_permission(
         if member.user_id is not None and member.user_id == user_api_key_dict.user_id:
             return True
     return False
+
+
+def can_see_every_team_key(user_api_key_dict: UserAPIKeyAuth, team_obj: LiteLLM_TeamTable) -> bool:
+    """Plain members only see their own keys unless the team granted them /key/list."""
+    return _is_user_team_admin(user_api_key_dict=user_api_key_dict, team_obj=team_obj) or _team_member_has_permission(
+        user_api_key_dict=user_api_key_dict, team_obj=team_obj, permission=KeyManagementRoutes.KEY_LIST.value
+    )
 
 
 async def _user_has_admin_privileges(
@@ -460,8 +551,7 @@ def _set_object_metadata_field(
         field_name: Name of the metadata field to set
         value: Value to set for the field
     """
-    if field_name in LiteLLM_ManagementEndpoint_MetadataFields_Premium and value:
-        _premium_user_check(field_name)
+    require_metadata_field_licence(field_name, value)
 
     object_data.metadata = object_data.metadata or {}
     object_data.metadata[field_name] = value
@@ -655,13 +745,11 @@ def _update_metadata_field(updated_kv: dict, field_name: str) -> None:
         updated_kv: The key-value dict being used for the update
         field_name: Name of the metadata field being updated
     """
-    if field_name in LiteLLM_ManagementEndpoint_MetadataFields_Premium:
-        # The UI sends falsy defaults (False, [], {}) even when the user has not
-        # enabled any enterprise feature (see #20304, #30285); require a license
-        # only for a truthy value. The falsy value is still persisted below so a
-        # previously-set field can be cleared.
-        if updated_kv.get(field_name):
-            _premium_user_check()
+    # The UI sends falsy defaults (False, [], {}) even when the user has not
+    # enabled any enterprise feature (see #20304, #30285); require a license
+    # only for a truthy value. The falsy value is still persisted below so a
+    # previously-set field can be cleared.
+    require_metadata_field_licence(field_name, updated_kv.get(field_name))
 
     if field_name in updated_kv and updated_kv[field_name] is not None:
         # remove field from updated_kv

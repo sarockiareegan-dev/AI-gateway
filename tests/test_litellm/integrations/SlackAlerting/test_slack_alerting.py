@@ -460,3 +460,27 @@ async def test_update_values_repeated_alerting_reload_keeps_single_periodic_flus
                 await t
             except asyncio.CancelledError:
                 pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("features", "allowed"), [(("email_branding",), True), (("*",), True), (("sso",), False)])
+async def test_custom_email_branding_requires_the_email_branding_feature(monkeypatch, features, allowed):
+    from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    slack_alerting: Final = SlackAlerting()
+
+    if allowed:
+        await slack_alerting._check_if_using_premium_email_feature("https://logo.example/x.png", None)
+        return
+    with pytest.raises(ValueError, match="Customize Email Alerting"):
+        await slack_alerting._check_if_using_premium_email_feature("https://logo.example/x.png", None)
+
+
+@pytest.mark.asyncio
+async def test_default_email_branding_needs_no_license(monkeypatch):
+    from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, unlicensed_entitlements
+
+    install_entitlements(monkeypatch, unlicensed_entitlements())
+
+    await SlackAlerting()._check_if_using_premium_email_feature(None, None)

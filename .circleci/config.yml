@@ -239,16 +239,6 @@ commands:
             done
             echo "cost center validation service did not become ready" >&2
             exit 1
-  setup_litellm_enterprise_pip:
-    steps:
-      - run:
-          name: "Install local version of litellm-enterprise"
-          command: |
-            # litellm-enterprise is a uv workspace member and is already installed
-            # by the main `uv sync --all-groups --all-extras`.  Do NOT run
-            # `uv sync --package litellm-enterprise` here — that overwrites the
-            # shared .venv and strips out dev/test deps (pytest, prisma, etc.).
-            uv run --no-sync python -c "import litellm_enterprise; print('litellm-enterprise OK:', litellm_enterprise.__file__)"
   setup_litellm_test_deps:
     steps:
       - checkout
@@ -262,7 +252,6 @@ commands:
           name: Install Dependencies
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
-      - setup_litellm_enterprise_pip
       - save_cache:
           paths:
             - ~/.cache/uv
@@ -407,7 +396,6 @@ jobs:
           name: Install Dependencies
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
-      - setup_litellm_enterprise_pip
       - save_cache:
           paths:
             - ~/.cache/uv
@@ -433,7 +421,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise \
+                --cov=./litellm \
                 --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=20 \
@@ -481,7 +469,6 @@ jobs:
           name: Install Dependencies
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
-      - setup_litellm_enterprise_pip
       - save_cache:
           paths:
             - ~/.cache/uv
@@ -507,7 +494,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise \
+                --cov=./litellm \
                 --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=20 \
@@ -556,7 +543,6 @@ jobs:
           name: Install Dependencies
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
-      - setup_litellm_enterprise_pip
       - save_cache:
           paths:
             - ~/.cache/uv
@@ -634,7 +620,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -v \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 2"
@@ -681,7 +667,6 @@ jobs:
           key: v1-uv-cache-{{ checksum "uv.lock" }}
       - start_fake_openai_endpoint
       # Run pytest and generate JUnit XML report
-      - setup_litellm_enterprise_pip
       - run:
           name: Run tests
           command: |
@@ -731,7 +716,6 @@ jobs:
             - ~/.cache/uv
           key: v1-uv-cache-{{ checksum "uv.lock" }}
       # Run pytest and generate JUnit XML report
-      - setup_litellm_enterprise_pip
       - run:
           name: Run tests
           command: |
@@ -741,7 +725,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -v \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 4"
@@ -776,7 +760,6 @@ jobs:
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
       # Run pytest and generate JUnit XML report
-      - setup_litellm_enterprise_pip
       - run:
           name: Run tests
           command: |
@@ -868,7 +851,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=20 \
                 -n 4 \
@@ -913,7 +896,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv -s \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5"
           no_output_timeout: 15m
@@ -957,7 +940,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 2 \
@@ -1003,7 +986,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv -s \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 --retries 3 --retry-delay 5"
@@ -1092,7 +1075,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 4"
@@ -1136,7 +1119,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 4"
@@ -1180,7 +1163,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv -s \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 2"
@@ -1224,7 +1207,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv -s \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 2"
@@ -1269,7 +1252,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
                 -n 4"
@@ -1337,7 +1320,6 @@ jobs:
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
       # Run pytest and generate JUnit XML report
-      - setup_litellm_enterprise_pip
       - run:
           name: Run tests
           command: |
@@ -1348,7 +1330,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 -n 4 \
                 --junitxml=test-results/junit.xml \
                 --durations=5 \
@@ -1393,7 +1375,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv -s \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5"
           no_output_timeout: 15m
@@ -1447,7 +1429,7 @@ jobs:
               --verbose \
               --command="tr ' ' '\\n' | awk '/\\.py/ {print; next} {sub(/\\.[A-Z][^.]*$/, \"\"); gsub(/\\./, \"/\"); print \$0 \".py\"}' | xargs uv run --no-sync python -m pytest \
                 -vv -s \
-                --cov=./litellm --cov=./enterprise/litellm_enterprise --cov-report=xml \
+                --cov=./litellm --cov-report=xml \
                 --junitxml=test-results/junit.xml \
                 --durations=5 -n 2 \
                 --reruns 2 --reruns-delay 1"
@@ -1481,7 +1463,6 @@ jobs:
           name: Install Dependencies
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
-      - setup_litellm_enterprise_pip
       - run:
           name: Run tests
           command: |
@@ -1533,7 +1514,6 @@ jobs:
           name: Install Dependencies
           command: |
             uv sync --frozen --all-groups --all-extras --python 3.12
-      - setup_litellm_enterprise_pip
       - wait_for_service:
           url: tcp://localhost:5432
           timeout: "60"

@@ -18,6 +18,7 @@ from litellm.proxy.guardrails.guardrail_hooks.llm_as_a_judge import (
 )
 from litellm.types.guardrails import GuardrailEventHooks, Mode
 from litellm.types.utils import LLM_AS_A_JUDGE_GUARDRAIL_CALL_ORIGIN
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -151,18 +152,18 @@ def test_initialize_guardrail_invalid_on_failure():
     ids=["scalar", "list", "tagged", "missing"],
 )
 def test_initialize_guardrail_preserves_every_mode_shape(
+    monkeypatch: pytest.MonkeyPatch,
     mode: str | list[str] | Mode | None,
     runs_pre_call: bool,
     runs_post_call: bool,
 ):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
     lp: Final = _make_litellm_params(mode=mode)
     instance: Final = initialize_guardrail(lp, _make_guardrail_dict())
     request_data: Final[dict[str, object]] = {"metadata": {"guardrails": ["g"], "tags": ["judge"]}}
-    premium: Final = patch("litellm.proxy.proxy_server.premium_user", True)  # test-quality-ok: no seam for Mode tags
     try:
-        with premium:
-            assert instance.should_run_guardrail(request_data, GuardrailEventHooks.pre_call) is runs_pre_call
-            assert instance.should_run_guardrail(request_data, GuardrailEventHooks.post_call) is runs_post_call
+        assert instance.should_run_guardrail(request_data, GuardrailEventHooks.pre_call) is runs_pre_call
+        assert instance.should_run_guardrail(request_data, GuardrailEventHooks.post_call) is runs_post_call
     finally:
         litellm.logging_callback_manager.remove_callback_from_all_lists(instance)
 

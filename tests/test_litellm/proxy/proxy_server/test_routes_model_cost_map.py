@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 
 from litellm.litellm_core_utils.get_model_cost_map import get_model_cost_map_provenance
 
@@ -473,40 +474,11 @@ def test_get_model_cost_map_source_happy(client, auth_as, monkeypatch):
     }
 
 
-def test_get_model_cost_map_source_admin_view_only_allowed(
-    client, auth_as, monkeypatch
-):
-    """PROXY_ADMIN_VIEW_ONLY can read source info — pins the read-only ACL."""
+@pytest.mark.parametrize("role", ["INTERNAL_USER", "PROXY_ADMIN_VIEW_ONLY"])
+def test_get_model_cost_map_source_not_admin_forbidden(client, auth_as, role):
     from litellm.proxy._types import LitellmUserRoles
 
-    fake_info = {
-        "source": "local",
-        "url": None,
-        "is_env_forced": True,
-        "fallback_reason": None,
-    }
-    monkeypatch.setattr(
-        "litellm.litellm_core_utils.get_model_cost_map.get_model_cost_map_source_info",
-        lambda: fake_info,
-    )
-    monkeypatch.setattr("litellm.model_cost", {"a": 1}, raising=False)
-
-    with auth_as(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY):
-        response = client.get("/model/cost_map/source")
-    assert response.status_code == 200
-    assert normalize(response.json()) == {
-        "source": "local",
-        "url": None,
-        "is_env_forced": True,
-        "fallback_reason": None,
-        "model_count": 1,
-    }
-
-
-def test_get_model_cost_map_source_not_admin_forbidden(client, auth_as):
-    from litellm.proxy._types import LitellmUserRoles
-
-    with auth_as(LitellmUserRoles.INTERNAL_USER):
+    with auth_as(LitellmUserRoles[role]):
         response = client.get("/model/cost_map/source")
     assert response.status_code == 403
     assert "Admin role required" in response.json().get("detail", "")

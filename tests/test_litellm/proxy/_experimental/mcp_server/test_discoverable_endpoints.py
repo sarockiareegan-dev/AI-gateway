@@ -12,6 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 from litellm.types.mcp import MCPAuth
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, jwt_licence
 
 if TYPE_CHECKING:
     import httpx
@@ -11137,7 +11138,7 @@ def test_discovery_advertises_the_exchange_grant_only_where_the_gateway_can_serv
     monkeypatch.setattr("litellm.proxy.proxy_server.jwt_handler", handler)
     monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {"enable_jwt_auth": jwt_auth_enabled})
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", object())
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    install_entitlements(monkeypatch, jwt_licence(True)())
     exchange_grant = ["urn:ietf:params:oauth:grant-type:token-exchange"] if exchange_servable else []
     expected = ["authorization_code", "refresh_token", *exchange_grant]
 
@@ -11513,7 +11514,7 @@ def jwt_oauth_identity(monkeypatch: pytest.MonkeyPatch) -> tuple["JWTHandler", "
     monkeypatch.setenv("JWT_AUDIENCE", "litellm-proxy")
     monkeypatch.setattr(proxy_server, "jwt_handler", handler)
     monkeypatch.setattr(proxy_server, "general_settings", {"enable_jwt_auth": True})
-    monkeypatch.setattr(proxy_server, "premium_user", True)
+    install_entitlements(monkeypatch, jwt_licence(True)())
     monkeypatch.setattr(proxy_server, "user_api_key_cache", cache)
     monkeypatch.setattr(proxy_server, "prisma_client", MagicMock())
     return handler, signing_key
@@ -11706,7 +11707,7 @@ async def test_oauth_jwt_identity_rejects_untrusted_or_inactive_owner(
     if rejection == "disabled":
         monkeypatch.setattr(proxy_server, "general_settings", {"enable_jwt_auth": False})
     if rejection == "not_premium":
-        monkeypatch.setattr(proxy_server, "premium_user", False)
+        install_entitlements(monkeypatch, jwt_licence(False)())
     if rejection == "missing_database":
         monkeypatch.setattr(proxy_server, "prisma_client", None)
     if rejection == "scim_inactive":

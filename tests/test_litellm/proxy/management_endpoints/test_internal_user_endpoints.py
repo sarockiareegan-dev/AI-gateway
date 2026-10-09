@@ -57,12 +57,6 @@ async def test_ui_view_users_with_null_email(mocker, caplog):
 
     mock_prisma_client.db.litellm_usertable.find_many = mock_find_many
 
-    # Flag OFF by default
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={},
-    )
-
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
 
     # Proxy admin: no org filter, no get_user_object call
@@ -95,11 +89,6 @@ async def test_ui_view_users_proxy_admin_no_org_filter(mocker):
 
     mock_prisma_client.db.litellm_usertable.find_many = mock_find_many
 
-    # Flag OFF by default
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={},
-    )
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
 
     await ui_view_users(
@@ -117,7 +106,7 @@ async def test_ui_view_users_proxy_admin_no_org_filter(mocker):
 @pytest.mark.asyncio
 async def test_ui_view_users_org_admin_filtered_by_org(mocker):
     """
-    Org admin with scope_user_search_to_org ON: find_many is called with
+    Org admin: find_many is called with
     organization_memberships filter so only users in the caller's org(s) are returned.
     """
     from litellm.proxy._types import LiteLLM_OrganizationMembershipTable
@@ -134,12 +123,6 @@ async def test_ui_view_users_org_admin_filtered_by_org(mocker):
         return []
 
     mock_prisma_client.db.litellm_usertable.find_many = mock_find_many
-
-    # Flag ON
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={"scope_user_search_to_org": True},
-    )
 
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mocker.patch("litellm.proxy.proxy_server.user_api_key_cache", mocker.MagicMock())
@@ -177,19 +160,53 @@ async def test_ui_view_users_org_admin_filtered_by_org(mocker):
 
 
 @pytest.mark.asyncio
+async def test_user_list_scopes_an_admin_viewer_to_the_orgs_it_belongs_to(mocker):
+    from litellm.proxy._types import LiteLLM_OrganizationMembershipTable, LiteLLM_UserTable
+    from litellm.proxy.management_endpoints.internal_user_endpoints import _authorize_user_list_request
+
+    caller_user = LiteLLM_UserTable(
+        user_id="caller",
+        organization_memberships=[
+            LiteLLM_OrganizationMembershipTable(
+                user_id="caller",
+                organization_id="org-member-of",
+                user_role=LitellmUserRoles.INTERNAL_USER.value,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+        ],
+    )
+    mocker.patch(
+        "litellm.proxy.management_endpoints.internal_user_endpoints.get_user_object",
+        mocker.AsyncMock(return_value=caller_user),
+    )
+
+    async def authorize(role, organization_ids=None):
+        return await _authorize_user_list_request(
+            user_api_key_dict=UserAPIKeyAuth(user_id="caller", user_role=role),
+            organization_ids=organization_ids,
+            prisma_client=mocker.MagicMock(),
+            user_api_key_cache=mocker.MagicMock(),
+            proxy_logging_obj=mocker.MagicMock(),
+        )
+
+    assert await authorize(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY) == "org-member-of"
+    with pytest.raises(HTTPException) as other_org:
+        await authorize(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, organization_ids="org-other")
+    assert other_org.value.status_code == 403
+    with pytest.raises(HTTPException) as plain_member:
+        await authorize(LitellmUserRoles.INTERNAL_USER)
+    assert plain_member.value.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_ui_view_users_non_org_admin_returns_403(mocker):
     """
-    Flag ON, caller is not proxy admin and not org admin, no team_id: endpoint returns 403.
+    caller is not proxy admin and not org admin, no team_id: endpoint returns 403.
     """
     from fastapi import HTTPException
 
     mock_prisma_client = mocker.MagicMock()
-
-    # Flag ON
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={"scope_user_search_to_org": True},
-    )
 
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mocker.patch("litellm.proxy.proxy_server.user_api_key_cache", mocker.MagicMock())
@@ -218,32 +235,29 @@ async def test_ui_view_users_non_org_admin_returns_403(mocker):
         )
 
     assert exc_info.value.status_code == 403
-    assert "scope_user_search_to_org is enabled" in str(exc_info.value.detail)
+    mock_prisma_client.db.litellm_usertable.find_many.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_ui_view_users_flag_off_internal_user_can_search(mocker):
-    """
-    Flag OFF (default): any authenticated user can search all users without org filtering.
-    """
+async def test_ui_view_users_scopes_org_members_even_with_a_stored_unscoped_setting(mocker):
     mock_prisma_client = mocker.MagicMock()
-
-    async def mock_find_many(*args, **kwargs):
-        where = kwargs.get("where") or {}
-        assert "organization_memberships" not in where
-        return []
-
-    mock_prisma_client.db.litellm_usertable.find_many = mock_find_many
-
-    # Flag OFF
+    mock_prisma_client.db.litellm_usertable.find_many = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={},
+        return_value={"scope_user_search_to_org": False},
     )
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    mocker.patch("litellm.proxy.proxy_server.user_api_key_cache", mocker.MagicMock())
+    mocker.patch("litellm.proxy.proxy_server.proxy_logging_obj", mocker.MagicMock())
+    mocker.patch(
+        "litellm.proxy.management_endpoints.internal_user_endpoints.get_user_object",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(organization_memberships=[mocker.MagicMock(organization_id="org-a")])
+        ),
+    )
 
-    response = await ui_view_users(
-        user_api_key_dict=UserAPIKeyAuth(user_id="internal_user", user_role=None),
+    await ui_view_users(
+        user_api_key_dict=UserAPIKeyAuth(user_id="member", user_role=LitellmUserRoles.INTERNAL_USER),
         user_id=None,
         user_email="foo",
         team_id=None,
@@ -251,13 +265,14 @@ async def test_ui_view_users_flag_off_internal_user_can_search(mocker):
         page_size=50,
     )
 
-    assert response == []
+    where = mock_prisma_client.db.litellm_usertable.find_many.call_args.kwargs["where"]
+    assert where["organization_memberships"] == {"some": {"organization_id": {"in": ["org-a"]}}}
 
 
 @pytest.mark.asyncio
 async def test_ui_view_users_flag_on_team_admin_org_team(mocker):
     """
-    Flag ON, team admin for org-bound team: org filter is applied using team's org.
+    team admin for org-bound team: org filter is applied using team's org.
     """
     from litellm.proxy._types import LiteLLM_TeamTableCachedObj
 
@@ -274,12 +289,6 @@ async def test_ui_view_users_flag_on_team_admin_org_team(mocker):
         return []
 
     mock_prisma_client.db.litellm_usertable.find_many = mock_find_many
-
-    # Flag ON
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={"scope_user_search_to_org": True},
-    )
 
     # Mock get_team_object
     team_obj = LiteLLM_TeamTableCachedObj(
@@ -328,7 +337,7 @@ async def test_ui_view_users_flag_on_team_admin_org_team(mocker):
 @pytest.mark.asyncio
 async def test_ui_view_users_flag_on_team_admin_non_org_team_403(mocker):
     """
-    Flag ON, team admin for non-org team: returns 403.
+    team admin for non-org team: returns 403.
     """
     from fastapi import HTTPException
 
@@ -336,12 +345,6 @@ async def test_ui_view_users_flag_on_team_admin_non_org_team_403(mocker):
 
     mock_prisma_client = mocker.MagicMock()
     tid = "team-no-org"
-
-    # Flag ON
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={"scope_user_search_to_org": True},
-    )
 
     # Mock get_team_object — team has no organization_id
     team_obj = LiteLLM_TeamTableCachedObj(
@@ -392,7 +395,7 @@ async def test_ui_view_users_flag_on_team_admin_non_org_team_403(mocker):
 @pytest.mark.asyncio
 async def test_ui_view_users_flag_on_team_admin_org_member_no_team_id(mocker):
     """
-    Flag ON, team admin who is an org member (not org admin), no team_id param:
+    team admin who is an org member (not org admin), no team_id param:
     should succeed and filter by the user's org membership.
     """
     mock_prisma_client = mocker.MagicMock()
@@ -407,11 +410,6 @@ async def test_ui_view_users_flag_on_team_admin_org_member_no_team_id(mocker):
         return []
 
     mock_prisma_client.db.litellm_usertable.find_many = mock_find_many
-
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={"scope_user_search_to_org": True},
-    )
 
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mocker.patch("litellm.proxy.proxy_server.user_api_key_cache", mocker.MagicMock())
@@ -450,7 +448,7 @@ async def test_ui_view_users_flag_on_team_admin_not_in_org_resolves_via_key_team
     mocker,
 ):
     """
-    Flag ON, team admin NOT in any org, no team_id query param but
+    team admin NOT in any org, no team_id query param but
     user_api_key_dict.team_id is set: resolves org via the key's team.
     """
     from litellm.proxy._types import LiteLLM_TeamTableCachedObj
@@ -468,11 +466,6 @@ async def test_ui_view_users_flag_on_team_admin_not_in_org_resolves_via_key_team
         return []
 
     mock_prisma_client.db.litellm_usertable.find_many = mock_find_many
-
-    mocker.patch(
-        "litellm.proxy.ui_crud_endpoints.proxy_setting_endpoints.get_ui_settings_cached",
-        return_value={"scope_user_search_to_org": True},
-    )
 
     team_obj = LiteLLM_TeamTableCachedObj(
         team_id=tid,
@@ -880,7 +873,7 @@ async def test_new_user_license_gate_counts_only_billable_users(mocker):
     SCIM-deactivated rows). Deactivated users that push the raw total over
     max_users must not block creation, while active users over the limit must.
     """
-    from litellm.proxy.auth.litellm_license import LicenseCheck
+    from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 
     async def _noop(*args, **kwargs):
         return None
@@ -894,9 +887,7 @@ async def test_new_user_license_gate_counts_only_billable_users(mocker):
         _noop,
     )
 
-    license_check = LicenseCheck()
-    license_check.airgapped_license_data = {"max_users": 2}  # type: ignore
-    mocker.patch("litellm.proxy.proxy_server._license_check", license_check)
+    mocker.patch("litellm.proxy.proxy_server._license_check", licensed_entitlements(max_users=2))
 
     key_gen = mocker.patch(
         "litellm.proxy.management_endpoints.internal_user_endpoints.generate_key_helper_fn",
@@ -1404,12 +1395,10 @@ async def test_user_info_nonexistent_user(mocker):
 
 
 @pytest.mark.asyncio
-async def test_user_info_no_user_id_view_only_admin_gets_proxy_admin_payload(mocker):
-    """PROXY_ADMIN_VIEW_ONLY must take the proxy-admin branch; otherwise /user/info
-    silently narrows to the viewer's own row instead of the whole tenant."""
+async def test_user_info_no_user_id_view_only_admin_does_not_get_proxy_admin_payload(mocker):
     from fastapi import Request
 
-    from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth, UserInfoResponse
+    from litellm.proxy._types import LitellmUserRoles, ProxyException, UserAPIKeyAuth, UserInfoResponse
     from litellm.proxy.management_endpoints.internal_user_endpoints import user_info
 
     mock_prisma_client = mocker.MagicMock()
@@ -1428,12 +1417,10 @@ async def test_user_info_no_user_id_view_only_admin_gets_proxy_admin_payload(moc
     )
     mock_request = mocker.MagicMock(spec=Request)
 
-    response = await user_info(
-        user_id=None, user_api_key_dict=viewer, request=mock_request
-    )
+    with pytest.raises(ProxyException, match="User viewer not found"):
+        await user_info(user_id=None, user_api_key_dict=viewer, request=mock_request)
 
-    mock_get_user_info_for_proxy_admin.assert_awaited_once_with(user_api_key_dict=viewer)
-    assert response is admin_payload
+    mock_get_user_info_for_proxy_admin.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -2306,8 +2293,7 @@ async def test_get_user_daily_activity_non_admin_cannot_view_other_users(monkeyp
         get_user_daily_activity,
     )
 
-    # Mock the prisma client so the DB-not-connected check passes
-    mock_prisma_client = MagicMock()
+    mock_prisma_client = _prisma_with_org_memberships([])
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
 
     # Non-admin caller
@@ -2358,6 +2344,85 @@ async def test_get_user_daily_activity_non_admin_cannot_view_other_users(monkeyp
         mock_get_daily.assert_called_once()
         call_kwargs = mock_get_daily.call_args
         assert call_kwargs.kwargs["entity_id"] == "regular-user-123"
+
+
+def _prisma_with_org_memberships(memberships):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    rows = [SimpleNamespace(user_id=u, organization_id=o, user_role=r) for u, o, r in memberships]
+
+    async def find_many(where):
+        return [row for row in rows if row.user_id == where["user_id"]]
+
+    async def find_first(where):
+        org_ids = where["organization_id"]["in"]
+        return next(
+            (row for row in rows if row.user_id == where["user_id"] and row.organization_id in org_ids),
+            None,
+        )
+
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_organizationmembership.find_many = AsyncMock(side_effect=find_many)
+    prisma_client.db.litellm_organizationmembership.find_first = AsyncMock(side_effect=find_first)
+    return prisma_client
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("caller_role", "caller_org_role", "target_org", "allowed"),
+    [
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, "org-a", True),
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, "org-b", False),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER, "org-a", True),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER, "org-b", False),
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.INTERNAL_USER, "org-a", False),
+    ],
+)
+async def test_get_user_daily_activity_reads_other_users_only_in_org_wide_readable_orgs(
+    monkeypatch, caller_role, caller_org_role, target_org, allowed
+):
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fastapi import HTTPException
+
+    from litellm.proxy.management_endpoints.internal_user_endpoints import (
+        get_user_daily_activity,
+    )
+
+    prisma_client = _prisma_with_org_memberships(
+        [("caller", "org-a", caller_org_role.value), ("target", target_org, LitellmUserRoles.INTERNAL_USER.value)]
+    )
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
+
+    with patch(
+        "litellm.proxy.management_endpoints.internal_user_endpoints.get_daily_activity",
+        new_callable=AsyncMock,
+        return_value=MagicMock(),
+    ) as mock_get_daily:
+
+        async def call():
+            return await get_user_daily_activity(
+                start_date="2025-01-01",
+                end_date="2025-01-31",
+                model=None,
+                api_key=None,
+                user_id="target",
+                page=1,
+                page_size=50,
+                timezone=None,
+                user_api_key_dict=UserAPIKeyAuth(user_id="caller", user_role=caller_role),
+            )
+
+        if allowed:
+            await call()
+            assert mock_get_daily.call_args.kwargs["entity_id"] == "target"
+            return
+
+        with pytest.raises(HTTPException) as exc_info:
+            await call()
+        assert exc_info.value.status_code == 403
+        mock_get_daily.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2542,7 +2607,7 @@ async def test_get_user_daily_activity_aggregated_non_admin_cannot_view_other_us
         get_user_daily_activity_aggregated,
     )
 
-    mock_prisma_client = MagicMock()
+    mock_prisma_client = _prisma_with_org_memberships([])
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
 
     non_admin_key_dict = UserAPIKeyAuth(
@@ -3637,9 +3702,9 @@ def test_enforce_user_info_access_admin_bypass():
     _enforce_user_info_access(user_id="someone_else", user_api_key_dict=admin)
 
 
-def test_enforce_user_info_access_view_only_admin_can_read_other_users():
-    """PROXY_ADMIN_VIEW_ONLY has read parity with PROXY_ADMIN, so the ownership
-    re-check must wave it through for another user's id."""
+def test_enforce_user_info_access_view_only_admin_cannot_read_other_users():
+    from fastapi import HTTPException
+
     from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
     from litellm.proxy.management_endpoints.internal_user_endpoints import (
         _enforce_user_info_access,
@@ -3649,7 +3714,9 @@ def test_enforce_user_info_access_view_only_admin_can_read_other_users():
         user_id="viewer",
         user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
     )
-    _enforce_user_info_access(user_id="someone_else", user_api_key_dict=viewer)
+    with pytest.raises(HTTPException) as exc_info:
+        _enforce_user_info_access(user_id="someone_else", user_api_key_dict=viewer)
+    assert exc_info.value.status_code == 403
 
 
 def test_enforce_user_info_access_view_only_admin_can_read_own():
@@ -4482,6 +4549,7 @@ async def test_user_new_persists_model_max_budget(
     an existing user's budgets.
     """
     from litellm.proxy.management_endpoints import key_management_endpoints
+    from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
     captured = {}
 
@@ -4507,9 +4575,7 @@ async def test_user_new_persists_model_max_budget(
     import litellm.proxy.proxy_server as proxy_server
 
     monkeypatch.setattr(proxy_server, "prisma_client", _FakePrisma(), raising=False)
-    # model_max_budget is an enterprise feature; without this the call is rejected
-    # before it ever reaches the write this test is about.
-    monkeypatch.setattr(proxy_server, "premium_user", True, raising=False)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
 
     await key_management_endpoints.generate_key_helper_fn(
         request_type="user",

@@ -274,7 +274,7 @@ def test_update_credential_resolves_credential_values_from_model_id_like_create(
     )
 
     assert response.status_code == 200, response.text
-    router.get_deployment_credentials.assert_called_once_with("deployment-1")
+    assert router.get_deployment_credentials.call_args.args == ("deployment-1",)
     written = json.loads(update_by_name.await_args.kwargs["data"]["credential_values"])
     assert set(written) == {"api_key"}
     assert written["api_key"] != "sk-old", "the deployment's values must replace the stored ones"

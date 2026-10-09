@@ -639,7 +639,8 @@ async def test_get_customer_daily_activity_with_end_user_aliases(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_customer_daily_activity_non_admin_is_rejected(monkeypatch):
+@pytest.mark.parametrize("role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
+async def test_get_customer_daily_activity_non_admin_is_rejected(monkeypatch, role):
     """
     Security regression: any non-admin caller must receive 401 from
     /customer/daily/activity and /end_user/daily/activity.
@@ -667,7 +668,7 @@ async def test_get_customer_daily_activity_non_admin_is_rejected(monkeypatch):
 
     non_admin_key = UserAPIKeyAuth(
         user_id="regular-user-abc",
-        user_role=LitellmUserRoles.INTERNAL_USER,
+        user_role=role,
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -848,6 +849,16 @@ def test_char_list_body(mock_prisma_client, mock_user_api_key_auth):
     response = client.get("/customer/list", headers={"Authorization": "Bearer k"})
     assert response.status_code == 200
     assert response.json() == [_EXPECTED_CUSTOMER]
+
+
+def test_customer_list_refuses_proxy_admin_viewer(mock_prisma_client, mock_user_api_key_auth):
+    mock_prisma_client.db.litellm_endusertable.find_many = AsyncMock(return_value=[_row(_FULL_DB_ROW)])
+    app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_id="viewer", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
+    )
+    response = client.get("/customer/list", headers={"Authorization": "Bearer k"})
+    assert response.status_code == 401
+    mock_prisma_client.db.litellm_endusertable.find_many.assert_not_awaited()
 
 
 def test_char_new_body(mock_prisma_client, mock_user_api_key_auth):

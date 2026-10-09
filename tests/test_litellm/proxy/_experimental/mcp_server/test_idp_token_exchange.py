@@ -17,6 +17,7 @@ from litellm.proxy._experimental.mcp_server.idp_token_exchange import (
 )
 from litellm.proxy._types import JWTIssuerConfig, LiteLLM_JWTAuth, ProxyException
 from litellm.proxy.auth.handle_jwt import JWKSUnreachableError, JWTHandler, jwks_unavailable_exception
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, jwt_licence
 
 IDP_JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1MSJ9.idp-signature"
 REQUEST_HEADERS = {"x-litellm-team-id": "team-b", "user-agent": "lite/0.1"}
@@ -137,7 +138,7 @@ def _running_jwt_handler(litellm_jwtauth):
 
 
 @pytest.mark.parametrize(
-    "general_settings, prisma_client, premium_user, litellm_jwtauth, expected",
+    "general_settings, prisma_client, licensed, litellm_jwtauth, expected",
     [
         ({"enable_jwt_auth": True}, object(), True, LiteLLM_JWTAuth(), True),
         ({"enable_jwt_auth": True}, object(), True, None, True),
@@ -149,11 +150,11 @@ def _running_jwt_handler(litellm_jwtauth):
     ],
 )
 def test_availability_is_read_from_the_running_proxy(
-    monkeypatch, general_settings, prisma_client, premium_user, litellm_jwtauth, expected
+    monkeypatch, general_settings, prisma_client, licensed, litellm_jwtauth, expected
 ):
     monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", general_settings)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", prisma_client)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", premium_user)
+    install_entitlements(monkeypatch, jwt_licence(licensed)())
     monkeypatch.setattr("litellm.proxy.proxy_server.jwt_handler", _running_jwt_handler(litellm_jwtauth))
     assert token_exchange_available() is expected
 

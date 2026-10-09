@@ -24,10 +24,10 @@ if TYPE_CHECKING:
 
     from litellm.proxy.utils import PrismaClient
 
-import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.litellm_core_utils.duration_parser import duration_in_seconds
 from litellm.proxy._types import *
+from litellm.proxy._types import ProxyErrorDetail
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.user_api_key_cache import (
     end_user_cache_key,
@@ -213,38 +213,10 @@ async def unblock_user(data: BlockUsers):
     }'
     ```
     """
-    try:
-        from enterprise.enterprise_hooks.blocked_user_list import (
-            _ENTERPRISE_BlockedUserList,
-        )
-    except ImportError:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "Blocked user check was never set. This call has no effect."
-                + CommonProxyErrors.missing_enterprise_package_docker.value
-            },
-        )
-
-    if (
-        not any(isinstance(x, _ENTERPRISE_BlockedUserList) for x in litellm.callbacks)
-        or litellm.blocked_user_list is None
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "Blocked user check was never set. This call has no effect."},
-        )
-
-    if isinstance(litellm.blocked_user_list, list):
-        for id in data.user_ids:
-            litellm.blocked_user_list.remove(id)
-    else:
-        raise HTTPException(
-            status_code=500,
-            detail={"error": "`blocked_user_list` must be set as a list. Filepaths can't be updated."},
-        )
-
-    return {"blocked_users": litellm.blocked_user_list}
+    raise HTTPException(
+        status_code=400,
+        detail=ProxyErrorDetail(error="Blocked user check was never set. This call has no effect."),
+    )
 
 
 def new_budget_request(data: NewCustomerRequest) -> BudgetNewRequest | None:
@@ -834,10 +806,7 @@ async def list_end_user(
     try:
         from litellm.proxy.proxy_server import prisma_client
 
-        if (
-            user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN
-            and user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-        ):
+        if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
             raise HTTPException(
                 status_code=401,
                 detail={"error": f"Admin-only endpoint. Your user role={user_api_key_dict.user_role}"},
@@ -888,10 +857,7 @@ async def get_customer_daily_activity(
     """
     Get daily activity for specific organizations or all accessible organizations.
     """
-    if (
-        user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN
-        and user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-    ):
+    if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
         raise HTTPException(
             status_code=401,
             detail={"error": f"Admin-only endpoint. Your user role={user_api_key_dict.user_role}"},

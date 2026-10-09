@@ -490,11 +490,7 @@ def test_config_field_info_field_not_in_db(client, auth_as, mock_prisma, monkeyp
     assert "is not set" in response.json().get("detail", {}).get("error", "")
 
 
-def test_config_field_info_redacts_nested_secret_for_view_only_admin(client, auth_as, mock_prisma, monkeypatch):
-    """A view-only admin reading a structured field must not receive nested
-    credentials. database_args carries aws_web_identity_token (a DynamoDB
-    role-assumption credential); it must come back redacted while non-secret
-    siblings like region_name stay visible."""
+def test_config_field_info_refuses_nested_secret_to_view_only_admin(client, auth_as, mock_prisma, monkeypatch):
     from litellm.proxy import proxy_server as ps
     from litellm.proxy._types import LitellmUserRoles
 
@@ -513,11 +509,8 @@ def test_config_field_info_redacts_nested_secret_for_view_only_admin(client, aut
 
     with auth_as(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY):
         response = client.get("/config/field/info", params={"field_name": "database_args"})
-    assert response.status_code == 200
-    value = response.json()["field_value"]
-    assert value["aws_web_identity_token"] == "REDACTED"
-    assert value["region_name"] == "us-east-1"
-    assert value["user_table_name"] == "LiteLLM_UserTable"
+    assert response.status_code in (400, 401, 403)
+    assert "sk-super-secret-token" not in response.text
 
 
 def test_config_field_info_full_admin_sees_nested_secret(client, auth_as, mock_prisma, monkeypatch):
@@ -546,10 +539,7 @@ def test_config_field_info_full_admin_sees_nested_secret(client, auth_as, mock_p
     assert value["region_name"] == "us-east-1"
 
 
-def test_config_field_info_redacts_top_level_scalar_for_view_only(client, auth_as, mock_prisma, monkeypatch):
-    """The top-level scalar branch must also redact for a view-only admin.
-    database_url carries DB credentials and is not caught by the name masker,
-    so it is in the explicit secret set."""
+def test_config_field_info_refuses_top_level_scalar_to_view_only(client, auth_as, mock_prisma, monkeypatch):
     from litellm.proxy import proxy_server as ps
     from litellm.proxy._types import LitellmUserRoles
 
@@ -562,8 +552,8 @@ def test_config_field_info_redacts_top_level_scalar_for_view_only(client, auth_a
 
     with auth_as(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY):
         response = client.get("/config/field/info", params={"field_name": "database_url"})
-    assert response.status_code == 200
-    assert response.json()["field_value"] == "REDACTED"
+    assert response.status_code in (400, 401, 403)
+    assert "p4ss" not in response.text
 
 
 def test_redact_general_setting_value_recurses_list_of_dicts():
@@ -607,10 +597,7 @@ def test_redact_secret_values_in_obj_fails_closed_at_max_depth():
     assert admin_out is nested
 
 
-def test_config_list_redacts_pass_through_secret_for_view_only(client, auth_as, mock_prisma, monkeypatch):
-    """/config/list must not leak pass_through_endpoints upstream credentials
-    to a view-only admin. pass_through_endpoints is a known secret-bearing
-    field, so a non-admin gets it redacted; a full admin still sees it."""
+def test_config_list_hides_pass_through_secret_from_view_only(client, auth_as, mock_prisma, monkeypatch):
     from litellm.proxy import proxy_server as ps
     from litellm.proxy._types import LitellmUserRoles
 
@@ -638,9 +625,8 @@ def test_config_list_redacts_pass_through_secret_for_view_only(client, auth_as, 
 
     with auth_as(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY):
         view_resp = client.get("/config/list", params={"config_type": "general_settings"})
-    assert view_resp.status_code == 200
+    assert view_resp.status_code in (400, 401, 403)
     assert "sk-UPSTREAM-SECRET" not in view_resp.text
-    assert _pass_through_value(view_resp.json()) == "REDACTED"
 
     with auth_as(LitellmUserRoles.PROXY_ADMIN):
         admin_resp = client.get("/config/list", params={"config_type": "general_settings"})
@@ -1508,8 +1494,6 @@ def test_get_config_callbacks_excludes_internal_runtime_callbacks(client, auth_a
     )
     monkeypatch.setattr(ps, "proxy_config", fake_proxy_config)
 
-    from litellm_enterprise.proxy.hooks.managed_files import _PROXY_LiteLLMManagedFiles
-
     import litellm
     from litellm._service_logger import ServiceLogging
     from litellm.integrations.custom_guardrail import CustomGuardrail
@@ -1547,7 +1531,6 @@ def test_get_config_callbacks_excludes_internal_runtime_callbacks(client, auth_a
         "callbacks",
         [
             _PROXY_CacheControlCheck(),
-            _PROXY_LiteLLMManagedFiles(internal_usage_cache=MagicMock(), prisma_client=MagicMock()),
             ServiceLogging(),
             VectorStorePreCallHook(),
             _InventoryTestGuardrail(guardrail_name="inventory-test-guardrail"),

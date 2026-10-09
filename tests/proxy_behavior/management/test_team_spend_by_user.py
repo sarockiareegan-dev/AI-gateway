@@ -9,6 +9,8 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 # /team/daily/activity, so the membership matrix must hold here too. team_ids
 # is mandatory on this route (a per-user rollup with no team is meaningless),
 # so the bare query is 400 for everyone instead of defaulting to own teams.
+# Org admins read every team in their own organization.
+_ORG_ADMINS = {"alpha": Actor.ORG_ADMIN, "beta": Actor.ORG_B_ADMIN}
 _MEMBERS = {
     "alpha": {
         Actor.TEAM_ADMIN,
@@ -24,7 +26,7 @@ _MEMBERS = {
 def _expected(actor: Actor, team: str) -> int:
     if team == "none":
         return 400
-    if actor == Actor.PROXY_ADMIN:
+    if actor in (Actor.PROXY_ADMIN, _ORG_ADMINS.get(team)):
         return 200
     return 200 if actor in _MEMBERS.get(team, set()) else 404
 

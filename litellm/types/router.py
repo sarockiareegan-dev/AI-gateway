@@ -184,6 +184,9 @@ class ModelInfo(MirroredPricingParams):
     team_public_model_name: str | None = None
     member_auto_router: bool = False
 
+    organization_id: str | None = None
+    organization_public_model_name: str | None = None
+
     # admin-toggled pause flag; mirrors LiteLLM_ProxyModelTable.blocked
     blocked: bool | None = None
 
@@ -223,6 +226,12 @@ class ModelInfo(MirroredPricingParams):
         elif isinstance(id, int):
             id = str(id)
         super().__init__(id=id, **params)
+
+    @model_validator(mode="after")
+    def _validate_single_owner(self) -> "ModelInfo":
+        if self.team_id is not None and self.organization_id is not None:
+            raise ValueError("A model is owned by a team or an organization, not both")
+        return self
 
     @model_validator(mode="after")
     def _validate_ptu_bounds(self) -> "ModelInfo":

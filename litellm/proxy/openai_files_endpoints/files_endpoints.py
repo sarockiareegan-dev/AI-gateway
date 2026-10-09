@@ -26,6 +26,7 @@ from pydantic import TypeAdapter
 from typing_extensions import ReadOnly
 
 import litellm
+from agami.routing.org_models import ModelVisibility
 from litellm import CreateFileRequest, get_secret_str
 from litellm._logging import verbose_proxy_logger
 from litellm.litellm_core_utils.cloud_storage_security import (
@@ -36,6 +37,7 @@ from litellm.llms.base_llm.files.litellm_db_storage_backend import LITELLM_DB_ST
 from litellm.llms.base_llm.files.transformation import BaseFileEndpoints
 from litellm.llms.base_llm.managed_resources.isolation import build_list_page
 from litellm.proxy._types import *
+from litellm.proxy.auth.agami_access import key_model_visibility
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.batches_endpoints.litellm_executed_batches import (
     litellm_executed_provider_of,
@@ -106,8 +108,12 @@ from litellm.types.llms.openai import (
 router: Final = APIRouter()
 
 
-def _names_a_litellm_executed_provider(llm_router: Router, candidate: str, team_id: str | None) -> bool:
-    credentials: Final = llm_router.get_deployment_credentials_with_provider(model_id=candidate, team_id=team_id)
+def _names_a_litellm_executed_provider(
+    llm_router: Router, candidate: str, team_id: str | None, visibility: ModelVisibility
+) -> bool:
+    credentials: Final = llm_router.get_deployment_credentials_with_provider(
+        model_id=candidate, team_id=team_id, visibility=visibility
+    )
     return credentials is not None and litellm_executed_provider_of(credentials) is not None
 
 
@@ -123,17 +129,21 @@ async def _litellm_executed_batch_input_model(
         return None
     candidates: Final = (model,) if model is not None else tuple(target_model_names_list)
     team_id: Final = user_api_key_dict.team_id
+    visibility: Final = key_model_visibility(user_api_key_dict)
     await asyncio.gather(
         *(
             authorize_model_for_key(model_id=candidate, llm_router=llm_router, user_api_key_dict=user_api_key_dict)
             for candidate in candidates
-            if _names_a_litellm_executed_provider(llm_router, candidate, team_id)
+            if _names_a_litellm_executed_provider(llm_router, candidate, team_id, visibility)
         )
     )
     if explicit_storage is not None:
         return None
     providers: Final = await asyncio.gather(
-        *(resolve_litellm_executed_provider(llm_router, candidate, team_id) for candidate in candidates)
+        *(
+            resolve_litellm_executed_provider(llm_router, candidate, team_id, visibility=visibility)
+            for candidate in candidates
+        )
     )
     executed: Final = tuple(
         candidate for candidate, provider in zip(candidates, providers, strict=True) if provider is not None
@@ -958,7 +968,12 @@ async def get_file_content(
 
             model: Final = cast(str | None, data.get("model"))
             if model:
-                add_internal_model_credentials(data=data, llm_router=llm_router, model_id=model)
+                add_internal_model_credentials(
+                    data=data,
+                    llm_router=llm_router,
+                    model_id=model,
+                    visibility=key_model_visibility(user_api_key_dict),
+                )
                 response = await llm_router.afile_content(
                     **{
                         "model": model,
