@@ -3,6 +3,7 @@ name: Code Quality Checks
 on:
   pull_request:
     branches:
+      - dev
       - main
       - litellm_internal_staging
       - litellm_oss_staging

@@ -7,6 +7,7 @@ on:
       - ".github/workflows/test-terraform-provider.yml"
   pull_request:
     branches:
+      - dev
       - main
       - litellm_internal_staging
       - litellm_oss_staging
