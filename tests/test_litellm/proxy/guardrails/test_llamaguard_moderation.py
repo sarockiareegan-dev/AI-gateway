@@ -98,6 +98,20 @@ async def test_a_reply_without_a_verdict_fails_closed(verdict: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_failing_guard_model_fails_closed_without_leaking_the_provider_error() -> None:
+    async def decommissioned(model: str, messages: list[AllMessageValues], team_id: str | None) -> ModelResponse:
+        raise litellm.BadRequestError(message="model_decommissioned", model=model, llm_provider="groq")
+
+    litellm.callbacks = [LlamaGuardModeration(model="groq/llama-guard", categories=None, complete=decommissioned)]
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _during_call([{"role": "user", "content": "hello"}])
+
+    assert exc_info.value.status_code == 502
+    assert "model_decommissioned" not in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_custom_categories_replace_the_conversation_with_the_policy_prompt() -> None:
     fake: Final = _install("safe", categories="S1: Pirate talk.\nS2: Spoilers.")
 

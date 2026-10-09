@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Final, Literal, Optional
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.litellm_core_utils.prompt_templates.common_utils import convert_content_list_to_str
 from litellm.proxy.auth.entitlements import LicenseFeature
@@ -122,5 +123,10 @@ class LlamaGuardModeration(CustomGuardrail):
         team_id: Final = (
             _CallerMetadata.model_validate(metadata).user_api_key_team_id if isinstance(metadata, dict) else None
         )
-        raise_on_unsafe_verdict(await self.complete(self.model, messages, team_id))
+        try:
+            reply: Final = await self.complete(self.model, messages, team_id)
+        except Exception as e:
+            verbose_proxy_logger.exception("Llama Guard call to %s failed", self.model)
+            raise HTTPException(status_code=502, detail={"error": "Llama Guard check failed"}) from e
+        raise_on_unsafe_verdict(reply)
         return inputs
