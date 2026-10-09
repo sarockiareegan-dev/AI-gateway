@@ -106,7 +106,7 @@ def build_openai_moderation_guardrail(
 
 def _read_text_file(setting: str, value: object) -> str:
     if not isinstance(value, str):
-        raise ValueError(f"Set litellm_settings.{setting} to the path of a text file")
+        raise TypeError(f"Set litellm_settings.{setting} to the path of a text file")
     text: Final = Path(value).read_text(encoding="utf-8")
     if not text.strip():
         raise ValueError(f"litellm_settings.{setting} points to an empty file")

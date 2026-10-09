@@ -355,26 +355,36 @@ def test_external_moderations_register_when_licensed(
 
 @pytest.mark.usefixtures("guardrails_licence")
 @pytest.mark.parametrize(
-    ("callback", "litellm_settings", "error"),
+    ("callback", "litellm_settings", "error_type", "error"),
     [
-        ("llamaguard_moderations", {}, "llamaguard_model_name"),
-        ("llamaguard_moderations", {"llamaguard_model_name": "  "}, "llamaguard_model_name"),
+        ("llamaguard_moderations", {}, ValueError, "llamaguard_model_name"),
+        ("llamaguard_moderations", {"llamaguard_model_name": "  "}, ValueError, "llamaguard_model_name"),
         (
             "llamaguard_moderations",
             {"llamaguard_model_name": "m", "llamaguard_unsafe_content_categories": 3},
+            TypeError,
             "llamaguard_unsafe_content_categories",
         ),
-        ("llmguard_moderations", {}, "LLM_GUARD_API_BASE"),
-        ("google_text_moderation", {"google_moderation_confidence_threshold": 1.5}, "less than or equal to 1"),
+        ("llmguard_moderations", {}, ValueError, "LLM_GUARD_API_BASE"),
+        (
+            "google_text_moderation",
+            {"google_moderation_confidence_threshold": 1.5},
+            ValueError,
+            "less than or equal to 1",
+        ),
     ],
     ids=["no-model", "blank-model", "categories-not-a-path", "no-llm-guard-server", "threshold-out-of-range"],
 )
 def test_external_moderations_reject_bad_settings_at_startup(
-    monkeypatch: pytest.MonkeyPatch, callback: str, litellm_settings: dict[str, object], error: str
+    monkeypatch: pytest.MonkeyPatch,
+    callback: str,
+    litellm_settings: dict[str, object],
+    error_type: type[Exception],
+    error: str,
 ) -> None:
     monkeypatch.delenv("LLM_GUARD_API_BASE", raising=False)
 
-    with pytest.raises(ValueError, match=error):
+    with pytest.raises(error_type, match=error):
         _register(callback, litellm_settings)
 
     assert litellm.callbacks == []

@@ -151,6 +151,7 @@ from litellm.types.proxy.ui_sso import ParsedOpenIDResult
 
 if TYPE_CHECKING:
     from fastapi_sso.sso.base import OpenID
+    from fastapi_sso.sso.base import OpenID as SSOOpenID
 else:
     from typing import Any as OpenID
 
@@ -1002,14 +1003,14 @@ async def _raise_if_sso_exceeds_free_user_limit(
 
 @runtime_checkable
 class CustomUISSOSignInHandler(Protocol):
-    async def handle_custom_ui_sso_sign_in(self, request: Request) -> OpenID: ...
+    async def handle_custom_ui_sso_sign_in(self, request: Request) -> "SSOOpenID": ...
 
 
 class _CompleteSignIn(Protocol):
     async def __call__(
         self,
         *,
-        result: OpenID,
+        result: "SSOOpenID",
         request: Request,
         ui_access_mode: dict | None,
         jwt_handler: JWTHandler | None,

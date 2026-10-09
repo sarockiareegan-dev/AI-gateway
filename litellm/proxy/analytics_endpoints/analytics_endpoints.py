@@ -33,11 +33,11 @@ def _parse_date(value: str, param_name: str) -> datetime:
 async def get_global_activity(
     start_date: Annotated[str, fastapi.Query(description="Time from which to start viewing spend")],
     end_date: Annotated[str, fastapi.Query(description="Time till which to view spend")],
+    user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
     key_aliases: Annotated[
         list[str] | None, fastapi.Query(description="Only include spend from these key aliases")
     ] = None,
     models: Annotated[list[str] | None, fastapi.Query(description="Only include spend for these models")] = None,
-    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ) -> CacheActivityResponse:
     """
     Cache activity for the Admin UI cache dashboard, aggregated per call_type:

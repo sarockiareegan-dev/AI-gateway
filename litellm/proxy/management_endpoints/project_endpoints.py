@@ -5,7 +5,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Literal, Protocol
+from typing import TYPE_CHECKING, Annotated, Final, Literal, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from litellm.proxy.utils import PrismaClient
 
 router: Final = APIRouter()
+AuthDep = Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)]
 
 ProjectAccess = Literal["none", "read", "write"]
 
@@ -216,7 +217,7 @@ async def _caller_user(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTable |
         return None
 
 
-async def get_caller_scope(user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth)) -> CallerScope:
+async def get_caller_scope(user_api_key_dict: AuthDep) -> CallerScope:
     from litellm.proxy import proxy_server
 
     general_settings: Final = _untyped(proxy_server).general_settings or {}
@@ -235,6 +236,10 @@ async def get_caller_scope(user_api_key_dict: UserAPIKeyAuth = Depends(user_api_
     )
 
 
+ScopeDep = Annotated[CallerScope, Depends(get_caller_scope)]
+StoreDep = Annotated[ProjectStore, Depends(get_project_store)]
+
+
 def _actor(user_api_key_dict: UserAPIKeyAuth) -> str:
     from litellm.proxy.proxy_server import litellm_proxy_admin_name
 
@@ -248,9 +253,9 @@ def _require_projects_licence() -> None:
 @router.post("/project/new", tags=["project management"], response_model=LiteLLM_ProjectTable)
 async def new_project(
     data: NewProjectRequest,
-    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
-    scope: CallerScope = Depends(get_caller_scope),
-    store: ProjectStore = Depends(get_project_store),
+    user_api_key_dict: AuthDep,
+    scope: ScopeDep,
+    store: StoreDep,
 ) -> LiteLLM_ProjectTable:
     """Create a project inside a team. Budget fields create a budget for the project unless budget_id is given."""
     _require_projects_licence()
@@ -290,9 +295,9 @@ async def new_project(
 @router.post("/project/update", tags=["project management"], response_model=LiteLLM_ProjectTable)
 async def update_project(
     data: UpdateProjectRequest,
-    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
-    scope: CallerScope = Depends(get_caller_scope),
-    store: ProjectStore = Depends(get_project_store),
+    user_api_key_dict: AuthDep,
+    scope: ScopeDep,
+    store: StoreDep,
 ) -> LiteLLM_ProjectTable:
     """Update a project. Metadata keys are merged; budget fields update the project's budget or create one."""
     _require_projects_licence()
@@ -333,8 +338,8 @@ async def update_project(
 @router.delete("/project/delete", tags=["project management"])
 async def delete_project(
     data: DeleteProjectRequest,
-    scope: CallerScope = Depends(get_caller_scope),
-    store: ProjectStore = Depends(get_project_store),
+    scope: ScopeDep,
+    store: StoreDep,
 ) -> dict[str, list[str]]:
     """Delete projects. Refused while any key is still attached to one of them."""
     _require_projects_licence()
@@ -356,9 +361,9 @@ async def delete_project(
 
 @router.get("/project/info", tags=["project management"], response_model=LiteLLM_ProjectTable)
 async def project_info(
-    project_id: str = Query(...),
-    scope: CallerScope = Depends(get_caller_scope),
-    store: ProjectStore = Depends(get_project_store),
+    project_id: Annotated[str, Query()],
+    scope: ScopeDep,
+    store: StoreDep,
 ) -> LiteLLM_ProjectTable:
     _require_projects_licence()
     project, _, _ = await _readable(store, scope, project_id)
@@ -367,8 +372,8 @@ async def project_info(
 
 @router.get("/project/list", tags=["project management"], response_model=list[LiteLLM_ProjectTable])
 async def list_projects(
-    scope: CallerScope = Depends(get_caller_scope),
-    store: ProjectStore = Depends(get_project_store),
+    scope: ScopeDep,
+    store: StoreDep,
 ) -> list[LiteLLM_ProjectTable]:
     """Projects of every team the caller belongs to or reads through its organizations; all projects for admins."""
     _require_projects_licence()

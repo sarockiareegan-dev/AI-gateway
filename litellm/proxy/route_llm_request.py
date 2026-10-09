@@ -1,9 +1,10 @@
 import asyncio
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Final, Literal, cast
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 import httpx
 from fastapi import HTTPException, status
+from pydantic import TypeAdapter
 
 import litellm
 from agami.routing.org_models import ModelVisibility, org_model_name
@@ -28,6 +29,7 @@ GATED_MOCK_PARAM_NAMES: Final[tuple[str, ...]] = (
 )
 
 MOCK_TESTING_CONFIG_KEY: Final = "dangerously_allow_mock_testing_request_params"
+_REQUEST_BODY: Final[TypeAdapter[dict[str, object]]] = TypeAdapter(dict[str, object])
 
 if TYPE_CHECKING:
     from litellm.router import Router as _Router
@@ -569,9 +571,7 @@ async def _route_request_single_attempt(  # noqa: ANN202  # returns unawaited pr
             # If a model is provided, get its credentials from the router
             model: Final = data.get("model")
             if model and llm_router:
-                request_data: Final = cast(  # cast-ok: the request body is a JSON object keyed by strings
-                    "Mapping[str, object]", data
-                )
+                request_data: Final = _REQUEST_BODY.validate_python(data)
                 visibility: Final = (
                     key_model_visibility(user_api_key_dict)
                     if user_api_key_dict is not None
