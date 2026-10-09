@@ -36,16 +36,13 @@ test_paths:
     paths:
       - tests/e2e
   - reason: >-
-      The documentation and code-quality workflows execute four files in this directory by name as
-      scripts and pytest never collects the directory, so these six run nowhere; listed individually
-      so a seventh cannot inherit the exemption
+      The documentation and code-quality workflows execute files in this directory by name as
+      scripts and pytest never collects the directory, so these three run nowhere; listed individually
+      so a fourth cannot inherit the exemption
     paths:
-      - tests/documentation_tests/test_exception_types.py
-      - tests/documentation_tests/test_general_setting_keys.py
       - tests/documentation_tests/test_optional_params.py
       - tests/documentation_tests/test_readme_providers.py
       - tests/documentation_tests/test_requests_lib_usage.py
-      - tests/documentation_tests/test_standard_logging_payload.py
   - reason: >-
       Named like a test but shaped like a benchmark: it fetches live image URLs, times aiohttp
       against httpx, prints the ratio, and asserts nothing, so pytest cannot collect it (its
