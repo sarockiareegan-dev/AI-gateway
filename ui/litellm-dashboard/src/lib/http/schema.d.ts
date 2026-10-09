@@ -11774,6 +11774,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/project/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project
+         * @description Delete projects. Refused while any key is still attached to one of them.
+         */
+        delete: operations["delete_project_project_delete_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Info */
+        get: operations["project_info_project_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Projects
+         * @description Projects of every team the caller belongs to or reads through its organizations; all projects for admins.
+         */
+        get: operations["list_projects_project_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project/new": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * New Project
+         * @description Create a project inside a team. Budget fields create a budget for the project unless budget_id is given.
+         */
+        post: operations["new_project_project_new_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Project
+         * @description Update a project. Metadata keys are merged; budget fields update the project's budget or create one.
+         */
+        post: operations["update_project_project_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/prompts": {
         parameters: {
             query?: never;
@@ -14125,9 +14222,8 @@ export interface paths {
          * Spend Key Fn
          * @description View keys created, ordered by spend.
          *
-         *     - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every key in
-         *       the database.
-         *     - All other callers (INTERNAL_USER / INTERNAL_USER_VIEW_ONLY, etc.) are
+         *     - PROXY_ADMIN sees every key in the database.
+         *     - All other callers (PROXY_ADMIN_VIEW_ONLY, INTERNAL_USER, etc.) are
          *       scoped to keys they own (``user_id == caller``). A caller with no
          *       ``user_id`` has no scope and receives an empty list rather than the
          *       full table.
@@ -14349,8 +14445,8 @@ export interface paths {
          * Spend User Fn
          * @description View users created, ordered by spend.
          *
-         *     - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every user, or
-         *       a specific user when ``user_id`` is supplied.
+         *     - PROXY_ADMIN sees every user, or a specific user when ``user_id`` is
+         *       supplied.
          *     - All other callers may only read their own row. If they supply a
          *       ``user_id`` query parameter that does not match their authenticated
          *       ``user_id`` the request is rejected with HTTP 403; supplying their
@@ -27408,6 +27504,8 @@ export interface components {
         /** CreateGuardrailRequest */
         CreateGuardrailRequest: {
             guardrail: components["schemas"]["Guardrail"];
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /** CreateJWTKeyMappingRequest */
         CreateJWTKeyMappingRequest: {
@@ -27799,6 +27897,14 @@ export interface components {
         DeleteOrganizationRequest: {
             /** Organization Ids */
             organization_ids: string[];
+        };
+        /**
+         * DeleteProjectRequest
+         * @description Request model for DELETE /project/delete
+         */
+        DeleteProjectRequest: {
+            /** Project Ids */
+            project_ids: string[];
         };
         /**
          * DeleteSkillResponse
@@ -30754,6 +30860,65 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * LiteLLM_ProjectTable
+         * @description Database model representation for project
+         */
+        LiteLLM_ProjectTable: {
+            /**
+             * Blocked
+             * @default false
+             */
+            blocked: boolean;
+            /** Budget Id */
+            budget_id?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /** Description */
+            description?: string | null;
+            litellm_budget_table?: components["schemas"]["LiteLLM_BudgetTable"] | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Rpm Limit */
+            model_rpm_limit?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Spend */
+            model_spend?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Tpm Limit */
+            model_tpm_limit?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
+            object_permission?: components["schemas"]["LiteLLM_ObjectPermissionTable"] | null;
+            /** Object Permission Id */
+            object_permission_id?: string | null;
+            /** Project Alias */
+            project_alias?: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Spend
+             * @default 0
+             */
+            spend: number;
+            /** Team Id */
+            team_id?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Updated By */
+            updated_by?: string | null;
+        };
         /** LiteLLM_ProxyModelTable */
         LiteLLM_ProxyModelTable: {
             /**
@@ -32213,7 +32378,7 @@ export interface components {
          * LitellmUserRoles
          * @description Admin Roles:
          *     PROXY_ADMIN: admin over the platform
-         *     PROXY_ADMIN_VIEW_ONLY: can login, view all own keys, view all spend
+         *     PROXY_ADMIN_VIEW_ONLY: can login, read-only view of the organizations they belong to
          *     ORG_ADMIN: admin over a specific organization, can create teams, users only within their organization
          *
          *     Internal User Roles:
@@ -33407,6 +33572,83 @@ export interface components {
             updated_by: string;
             /** Users */
             users?: components["schemas"]["LiteLLM_UserTable"][] | null;
+        };
+        /**
+         * NewProjectRequest
+         * @description Request model for POST /project/new
+         */
+        NewProjectRequest: {
+            /** Allowed Models */
+            allowed_models?: string[] | null;
+            /**
+             * Blocked
+             * @default false
+             */
+            blocked: boolean;
+            /** Budget Duration */
+            budget_duration?: string | null;
+            /** Budget Id */
+            budget_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Guardrails */
+            guardrails?: string[] | null;
+            /** Max Budget */
+            max_budget?: number | null;
+            /** Max Parallel Requests */
+            max_parallel_requests?: number | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Itpm Limit */
+            model_itpm_limit?: {
+                [key: string]: number;
+            } | null;
+            /** Model Max Budget */
+            model_max_budget?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Otpm Limit */
+            model_otpm_limit?: {
+                [key: string]: number;
+            } | null;
+            /** Model Rpm Limit */
+            model_rpm_limit?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Tpm Limit */
+            model_tpm_limit?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
+            object_permission?: components["schemas"]["LiteLLM_ObjectPermissionBase"] | null;
+            /** Policies */
+            policies?: string[] | null;
+            /** Project Alias */
+            project_alias?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Rpm Limit */
+            rpm_limit?: number | null;
+            /** Soft Budget */
+            soft_budget?: number | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Team Id */
+            team_id: string;
+            /** Temp Budget Expiry */
+            temp_budget_expiry?: string | null;
+            /** Temp Budget Increase */
+            temp_budget_increase?: number | null;
+            /** Tpd Limit */
+            tpd_limit?: number | null;
+            /** Tpm Limit */
+            tpm_limit?: number | null;
         };
         /** NewTeamRequest */
         NewTeamRequest: {
@@ -38887,6 +39129,8 @@ export interface components {
         /** UpdateGuardrailRequest */
         UpdateGuardrailRequest: {
             guardrail: components["schemas"]["Guardrail"];
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /** UpdateJWTKeyMappingRequest */
         UpdateJWTKeyMappingRequest: {
@@ -39250,6 +39494,77 @@ export interface components {
              * @description Semantic version; cleared if omitted
              */
             version?: string | null;
+        };
+        /**
+         * UpdateProjectRequest
+         * @description Request model for POST /project/update
+         */
+        UpdateProjectRequest: {
+            /** Allowed Models */
+            allowed_models?: string[] | null;
+            /** Blocked */
+            blocked?: boolean | null;
+            /** Budget Duration */
+            budget_duration?: string | null;
+            /** Budget Id */
+            budget_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Guardrails */
+            guardrails?: string[] | null;
+            /** Max Budget */
+            max_budget?: number | null;
+            /** Max Parallel Requests */
+            max_parallel_requests?: number | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Itpm Limit */
+            model_itpm_limit?: {
+                [key: string]: number;
+            } | null;
+            /** Model Max Budget */
+            model_max_budget?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Otpm Limit */
+            model_otpm_limit?: {
+                [key: string]: number;
+            } | null;
+            /** Model Rpm Limit */
+            model_rpm_limit?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model Tpm Limit */
+            model_tpm_limit?: {
+                [key: string]: unknown;
+            } | null;
+            /** Models */
+            models?: string[] | null;
+            object_permission?: components["schemas"]["LiteLLM_ObjectPermissionBase"] | null;
+            /** Policies */
+            policies?: string[] | null;
+            /** Project Alias */
+            project_alias?: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Rpm Limit */
+            rpm_limit?: number | null;
+            /** Soft Budget */
+            soft_budget?: number | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Team Id */
+            team_id?: string | null;
+            /** Temp Budget Expiry */
+            temp_budget_expiry?: string | null;
+            /** Temp Budget Increase */
+            temp_budget_increase?: number | null;
+            /** Tpd Limit */
+            tpd_limit?: number | null;
+            /** Tpm Limit */
+            tpm_limit?: number | null;
         };
         /**
          * UpdatePublicModelGroupsRequest
@@ -56552,6 +56867,158 @@ export interface operations {
             };
         };
     };
+    delete_project_project_delete_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string[];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_info_project_info_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteLLM_ProjectTable"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_projects_project_list_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteLLM_ProjectTable"][];
+                };
+            };
+        };
+    };
+    new_project_project_new_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteLLM_ProjectTable"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_project_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteLLM_ProjectTable"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_prompt_prompts_post: {
         parameters: {
             query?: never;
@@ -57885,9 +58352,7 @@ export interface operations {
     };
     get_scim_base_scim_v2_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -57903,15 +58368,6 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_groups_scim_v2_Groups_get: {
@@ -57920,7 +58376,6 @@ export interface operations {
                 startIndex?: number;
                 count?: number;
                 filter?: string | null;
-                feature?: string | null;
             };
             header?: never;
             path?: never;
@@ -57950,9 +58405,7 @@ export interface operations {
     };
     create_group_scim_v2_Groups_post: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -57985,9 +58438,7 @@ export interface operations {
     };
     get_group_scim_v2_Groups__group_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -58018,9 +58469,7 @@ export interface operations {
     };
     update_group_scim_v2_Groups__group_id__put: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -58055,9 +58504,7 @@ export interface operations {
     };
     delete_group_scim_v2_Groups__group_id__delete: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -58086,9 +58533,7 @@ export interface operations {
     };
     patch_group_scim_v2_Groups__group_id__patch: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -58123,9 +58568,7 @@ export interface operations {
     };
     get_resource_types_scim_v2_ResourceTypes_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -58141,22 +58584,11 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_resource_type_scim_v2_ResourceTypes__resource_type_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 resource_type_id: string;
@@ -58187,9 +58619,7 @@ export interface operations {
     };
     get_schemas_scim_v2_Schemas_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -58205,22 +58635,11 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_schema_scim_v2_Schemas__schema_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 schema_id: string;
@@ -58251,9 +58670,7 @@ export interface operations {
     };
     get_service_provider_config_scim_v2_ServiceProviderConfig_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -58269,15 +58686,6 @@ export interface operations {
                     "application/json": components["schemas"]["SCIMServiceProviderConfig"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_users_scim_v2_Users_get: {
@@ -58286,7 +58694,6 @@ export interface operations {
                 startIndex?: number;
                 count?: number;
                 filter?: string | null;
-                feature?: string | null;
             };
             header?: never;
             path?: never;
@@ -58316,9 +58723,7 @@ export interface operations {
     };
     create_user_scim_v2_Users_post: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -58351,9 +58756,7 @@ export interface operations {
     };
     get_user_scim_v2_Users__user_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -58384,9 +58787,7 @@ export interface operations {
     };
     update_user_scim_v2_Users__user_id__put: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -58421,9 +58822,7 @@ export interface operations {
     };
     delete_user_scim_v2_Users__user_id__delete: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -58452,9 +58851,7 @@ export interface operations {
     };
     patch_user_scim_v2_Users__user_id__patch: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -58489,9 +58886,7 @@ export interface operations {
     };
     list_placeholders_scim_v2_placeholders_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -58507,22 +58902,11 @@ export interface operations {
                     "application/json": components["schemas"]["SCIMPlaceholder"][];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     merge_placeholder_scim_v2_placeholders__user_id__merge_post: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
