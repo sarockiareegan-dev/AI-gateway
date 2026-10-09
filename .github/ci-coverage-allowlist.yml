@@ -26,6 +26,11 @@ test_paths:
       - tests/local_testing/test_disk_cache_unit_tests.py
       - tests/local_testing/test_gcs_cache_unit_tests.py
   - reason: >-
+      Tests for the optional Rust extension, whose workflow was dropped because Agami removes the
+      extension. The tests are deleted together with litellm-rust/ and litellm/rust_bridge/
+    paths:
+      - tests/test_litellm_rust
+  - reason: >-
       The end-to-end suite runs against a deployed proxy from its own in-cluster rig rather than
       from a pull request; it needs a live gateway and provider credentials no PR job holds
     paths:
