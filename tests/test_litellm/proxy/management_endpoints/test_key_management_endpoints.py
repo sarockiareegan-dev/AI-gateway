@@ -15711,9 +15711,11 @@ async def test_ghsa_q775_ui_session_token_team_key_exempt_from_budget_ceiling():
         team_id=UI_SESSION_TOKEN_TEAM_ID,
         max_budget=0.25,
     )
+    prisma_client = AsyncMock()
+    prisma_client.insert_data.return_value = MagicMock(token="hashed-team-key")
 
     with (
-        patch("litellm.proxy.proxy_server.prisma_client", AsyncMock()),
+        patch("litellm.proxy.proxy_server.prisma_client", prisma_client),
         patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
         patch("litellm.proxy.proxy_server.llm_router", None),
         patch("litellm.proxy.proxy_server.litellm_proxy_admin_name", "default_user_id"),
