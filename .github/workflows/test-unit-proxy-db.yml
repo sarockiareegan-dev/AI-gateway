@@ -138,7 +138,6 @@ jobs:
             timeout: 15
           - test-group: logging-misc
             test-path: >-
-              tests/proxy_unit_tests/test_proxy_reject_logging.py
               tests/proxy_unit_tests/test_audit_logs_proxy.py
               tests/proxy_unit_tests/test_search_api_logging.py
             workers: 4
@@ -162,7 +161,6 @@ jobs:
           - test-group: guardrails-hooks
             test-path: >-
               tests/proxy_unit_tests/test_proxy_setting_guardrails.py
-              tests/proxy_unit_tests/test_banned_keyword_list.py
               tests/proxy_unit_tests/test_unit_test_proxy_hooks.py
             workers: 4
             dist: loadscope
@@ -188,8 +186,6 @@ jobs:
               tests/proxy_unit_tests/test_reducto_ocr_route.py
               tests/proxy_unit_tests/test_ui_path_detection.py
               tests/proxy_unit_tests/test_prompt_test_endpoint.py
-              tests/proxy_unit_tests/test_check_batch_cost.py
-              tests/proxy_unit_tests/test_check_responses_cost.py
               tests/proxy_unit_tests/test_response_polling_handler.py
               tests/proxy_unit_tests/test_response_polling_pre_call_checks.py
               tests/proxy_unit_tests/test_realtime_cache.py

@@ -37,6 +37,13 @@ from litellm.proxy.management_endpoints.team_endpoints import new_team
 from litellm.proxy.proxy_server import chat_completion
 from typing import Literal, Optional
 from litellm.proxy._types import ProxyException
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
+
+@pytest.fixture(autouse=True)
+def jwt_auth_licence(monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("jwt_auth",)))
+
 
 public_key = {
     "kty": "RSA",

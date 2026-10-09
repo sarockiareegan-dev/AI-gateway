@@ -543,7 +543,7 @@ def test_get_api_key_from_custom_header_different_casing():
     "user_role, auth_user_id, requested_user_id, expected_result",
     [
         (LitellmUserRoles.PROXY_ADMIN, "1234", None, True),
-        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, None, "1234", True),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, None, "1234", False),
         (LitellmUserRoles.TEAM, "1234", None, False),
         (LitellmUserRoles.TEAM, None, None, False),
         (LitellmUserRoles.TEAM, "1234", "1234", True),
@@ -1060,6 +1060,9 @@ async def test_jwt_non_admin_team_route_access(monkeypatch):
     """
     Test that a non-admin JWT user cannot access team management routes
     """
+    from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("jwt_auth",)))
     from fastapi import Request, HTTPException
     from starlette.datastructures import URL
     from unittest.mock import patch
