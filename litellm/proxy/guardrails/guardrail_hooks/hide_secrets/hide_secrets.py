@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING, Final, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from litellm.integrations.custom_guardrail import CustomGuardrail
+from litellm.integrations.custom_guardrail import (
+    CustomGuardrail,
+    log_guardrail_information,  # pyright: ignore[reportUnknownVariableType] # untyped decorator shared by every guardrail hook
+)
 from litellm.proxy.auth.entitlements import LicenseFeature
 from litellm.types.guardrails import GuardrailEventHooks, Mode
 from litellm.types.proxy.guardrails.guardrail_hooks.hide_secrets import HideSecretsGuardrailConfigModel
@@ -99,6 +102,7 @@ class HideSecretsGuardrail(CustomGuardrail):
     def get_supported_event_hooks(cls) -> list[GuardrailEventHooks]:
         return [GuardrailEventHooks.pre_call]
 
+    @log_guardrail_information
     async def apply_guardrail(
         self,
         inputs: GenericGuardrailAPIInputs,
