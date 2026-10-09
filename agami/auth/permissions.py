@@ -1,4 +1,4 @@
-from enum import StrEnum
+from agami._compat import StrEnum
 
 
 class ResourceType(StrEnum):

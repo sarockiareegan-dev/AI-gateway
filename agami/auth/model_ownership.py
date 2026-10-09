@@ -1,8 +1,9 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Final, TypeAlias, assert_never
+from typing import Final, TypeAlias
 
 from fastapi import HTTPException, status
+from typing_extensions import assert_never
 
 from agami.auth.context import Actor, Resource
 from agami.auth.permissions import Action, ResourceType

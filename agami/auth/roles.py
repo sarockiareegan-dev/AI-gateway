@@ -1,8 +1,8 @@
 from collections.abc import Mapping
-from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
+from agami._compat import StrEnum
 from agami.auth.permissions import Action, ResourceType
 
 

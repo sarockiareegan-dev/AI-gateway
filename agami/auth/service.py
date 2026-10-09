@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Final, TypeAlias, assert_never
+from typing import Final, TypeAlias
 
 from fastapi import HTTPException, status
+from typing_extensions import assert_never
 
+from agami._compat import StrEnum
 from agami.auth.context import Actor, Resource
 from agami.auth.permissions import Action
 from agami.auth.roles import PERMISSION_MATRIX, Grant, TenantRole
