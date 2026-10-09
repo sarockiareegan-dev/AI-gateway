@@ -51,6 +51,7 @@ from litellm.proxy._types import (
     LitellmDataForBackendLLMCall,
     LiteLLMRoutes,
     LitellmUserRoles,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     SpecialHeaders,
@@ -2901,10 +2902,10 @@ def _enforced_params_check(
     if enforced_params and not is_licensed(LicenseFeature.ENFORCED_PARAMS, entitlements):
         raise HTTPException(
             status_code=403,
-            detail={
-                "error": "Enforced params need the 'enforced_params' feature on the Agami license. "
+            detail=ProxyErrorDetail(
+                error="Enforced params need the 'enforced_params' feature on the Agami license. "
                 f"Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
-            },
+            ),
         )
 
     for enforced_param in enforced_params:

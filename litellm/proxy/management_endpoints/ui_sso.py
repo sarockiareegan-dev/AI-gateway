@@ -83,6 +83,7 @@ from litellm.proxy._types import (
     NewTeamRequest,
     NewUserRequest,
     NewUserResponse,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     SSOUserDefinedValues,
@@ -1036,7 +1037,7 @@ async def _sign_in_with_custom_ui_sso_handler(
     try:
         require_trusted_proxy_request(request=request, general_settings=general_settings, feature_name="Custom UI SSO")
     except ValueError as untrusted:
-        raise HTTPException(status_code=403, detail={"error": str(untrusted)}) from untrusted
+        raise HTTPException(status_code=403, detail=ProxyErrorDetail(error=str(untrusted))) from untrusted
     result: Final = await handler.handle_custom_ui_sso_sign_in(request)
     finish: Final = complete_sign_in or SSOAuthenticationHandler.get_redirect_response_from_openid
     return await finish(

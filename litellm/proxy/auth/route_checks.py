@@ -799,7 +799,7 @@ class RouteChecks:
             )
 
         if route == "/user/update":
-            disallowed_params: Final = sorted(set(request_data or {}) - {"user_email", "password"})
+            disallowed_params: Final = sorted(frozenset(request_data or ()) - frozenset(("user_email", "password")))
             if disallowed_params:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,

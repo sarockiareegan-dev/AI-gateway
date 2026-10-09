@@ -32,6 +32,7 @@ from typing_extensions import ReadOnly, TypedDict
 from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.proxy._types import *
+from litellm.proxy._types import ProxyErrorDetail
 from litellm.proxy.auth.auth_checks import (
     can_user_call_model,
     delete_cache_key_objects,
@@ -99,7 +100,9 @@ async def _enterprise_license_required(
     if not is_licensed(LicenseFeature.ORGANIZATIONS):
         raise HTTPException(
             status_code=403,
-            detail={"error": f"Organizations are a premium feature. {CommonProxyErrors.not_premium_user.value}"},
+            detail=ProxyErrorDetail(
+                error=f"Organizations are a premium feature. {CommonProxyErrors.not_premium_user.value}"
+            ),
         )
 
 

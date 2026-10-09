@@ -6452,16 +6452,16 @@ async def _resolve_team_daily_activity_scope(
 
         readable_org_ids = org_wide_read_org_ids(user_api_key_dict.user_role, user_info.organization_memberships)
         org_team_ids: Final = (
-            [
+            tuple(
                 t.team_id
                 for t in await _team_db(prisma_client).find_many(
-                    where={"organization_id": {"in": list(readable_org_ids)}}
+                    where={"organization_id": {"in": sorted(readable_org_ids)}}
                 )
-            ]
+            )
             if readable_org_ids
-            else []
+            else ()
         )
-        visible_team_ids: Final = list(dict.fromkeys([*user_info.teams, *org_team_ids]))
+        visible_team_ids: Final = list(dict.fromkeys((*user_info.teams, *org_team_ids)))
 
         if team_ids_list is None:
             team_ids_list = visible_team_ids

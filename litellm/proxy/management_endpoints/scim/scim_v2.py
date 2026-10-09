@@ -39,6 +39,7 @@ from litellm.proxy._types import (
     NewTeamRequest,
     NewUserRequest,
     NewUserResponse,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     TeamMemberAddRequest,
@@ -264,10 +265,10 @@ def require_scim_licence() -> None:
         return
     raise HTTPException(
         status_code=403,
-        detail={
-            "error": "SCIM provisioning needs the 'sso' feature on the Agami license. "
+        detail=ProxyErrorDetail(
+            error="SCIM provisioning needs the 'sso' feature on the Agami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
-        },
+        ),
     )
 
 

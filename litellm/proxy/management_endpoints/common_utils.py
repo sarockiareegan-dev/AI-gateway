@@ -55,6 +55,7 @@ from litellm.proxy._types import (
     LiteLLM_UserTable,
     LitellmUserRoles,
     NewProjectRequest,
+    ProxyErrorDetail,
     UpdateProjectRequest,
     UserAPIKeyAuth,
 )
@@ -94,10 +95,10 @@ def require_metadata_field_licence(
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail={
-            "error": f"{field_name} needs the '{feature.value}' feature on the Agami license. "
+        detail=ProxyErrorDetail(
+            error=f"{field_name} needs the '{feature.value}' feature on the Agami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
-        },
+        ),
     )
 
 
@@ -282,7 +283,7 @@ async def _is_user_org_admin_for_team(user_api_key_dict: UserAPIKeyAuth, team_ob
 
     return any(
         m.organization_id == team_obj.organization_id and m.user_role == LitellmUserRoles.ORG_ADMIN.value
-        for m in caller_user.organization_memberships or []
+        for m in caller_user.organization_memberships or ()
     )
 
 

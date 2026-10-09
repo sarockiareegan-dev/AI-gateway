@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.litellm_core_utils.prompt_templates.common_utils import convert_content_list_to_str
+from litellm.proxy._types import ProxyErrorDetail
 from litellm.proxy.auth.entitlements import LicenseFeature
 from litellm.types.guardrails import GuardrailEventHooks
 from litellm.types.llms.openai import AllMessageValues, ChatCompletionAssistantMessage, ChatCompletionUserMessage
@@ -47,12 +48,12 @@ def _message(turn: Turn) -> AllMessageValues:
 
 
 def conversation_turns(inputs: GenericGuardrailAPIInputs) -> tuple[Turn, ...]:
-    structured: Final = inputs.get("structured_messages") or []
+    structured: Final = inputs.get("structured_messages") or ()
     raw: Final = tuple(
         _turn("user" if message["role"] == "user" else "assistant", convert_content_list_to_str(message))
         for message in structured
         if message["role"] in ("user", "assistant")
-    ) or tuple(_turn("user", text) for text in inputs.get("texts") or [])
+    ) or tuple(_turn("user", text) for text in inputs.get("texts") or ())
     return tuple(
         _turn(role, "\n".join(text for _, text in turns))
         for role, turns in groupby((turn for turn in raw if turn[1].strip()), key=_role)
@@ -80,7 +81,7 @@ def custom_categories_prompt(categories: str, turns: tuple[Turn, ...]) -> str:
 def raise_on_unsafe_verdict(reply: ModelResponse) -> None:
     choice: Final = reply.choices[0] if reply.choices else None
     content: Final = choice.message.content if isinstance(choice, Choices) else None
-    lines: Final = [line.strip() for line in (content or "").splitlines() if line.strip()]
+    lines: Final = tuple(line.strip() for line in (content or "").splitlines() if line.strip())
     verdict: Final = lines[0].lower() if lines else ""
     if verdict == "safe":
         return
@@ -89,7 +90,9 @@ def raise_on_unsafe_verdict(reply: ModelResponse) -> None:
             status_code=400,
             detail={"error": "Violated content safety policy", "categories": lines[1] if len(lines) > 1 else ""},
         )
-    raise HTTPException(status_code=502, detail={"error": "Llama Guard returned no safe or unsafe verdict"})
+    raise HTTPException(
+        status_code=502, detail=ProxyErrorDetail(error="Llama Guard returned no safe or unsafe verdict")
+    )
 
 
 class LlamaGuardModeration(CustomGuardrail):
@@ -127,6 +130,6 @@ class LlamaGuardModeration(CustomGuardrail):
             reply: Final = await self.complete(self.model, messages, team_id)
         except Exception as e:
             verbose_proxy_logger.exception("Llama Guard call to %s failed", self.model)
-            raise HTTPException(status_code=502, detail={"error": "Llama Guard check failed"}) from e
+            raise HTTPException(status_code=502, detail=ProxyErrorDetail(error="Llama Guard check failed")) from e
         raise_on_unsafe_verdict(reply)
         return inputs

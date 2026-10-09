@@ -59,7 +59,7 @@ class GoogleTextModeration(CustomGuardrail):
         input_type: Literal["request", "response"],
         logging_obj: Optional["LiteLLMLoggingObj"] = None,
     ) -> GenericGuardrailAPIInputs:
-        text: Final = "\n".join(inputs.get("texts") or [])
+        text: Final = "\n".join(inputs.get("texts") or ())
         if not text.strip():
             return inputs
         token, project = await self.access_token()

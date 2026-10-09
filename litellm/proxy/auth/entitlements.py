@@ -23,12 +23,20 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from litellm._logging import verbose_proxy_logger
 
 if TYPE_CHECKING:
+    from jwt.types import Options
+
     from litellm.proxy._types import EnterpriseLicenseData
 
 LICENSE_ENV_VAR: Final = "AGAMI_LICENSE"
 LICENSE_CONFIG_KEY: Final = "agami_license"
 LICENSE_ISSUER: Final = "agami"
 LICENSE_ALGORITHM: Final = "EdDSA"
+_DECODE_OPTIONS: Final[Options] = {
+    "require": ["exp", "iss", "sub", "jti"],
+    "verify_exp": False,
+    "verify_iat": False,
+    "verify_nbf": False,
+}
 LICENSE_ALL_FEATURES: Final = "*"
 AUTO_ROUTER_LICENSE_FEATURE: Final = "auto_router"
 AUTO_ROUTER_LICENSE_REMEDY: Final = "An Agami license with the 'auto_router' feature lifts the limit."
@@ -84,14 +92,16 @@ class Entitlements:
         return feature in self.features or LICENSE_ALL_FEATURES in self.features
 
     def as_license_data(self) -> EnterpriseLicenseData:
-        claims: Final[EnterpriseLicenseData] = {
+        users: Final[EnterpriseLicenseData] = {"max_users": self.max_users} if self.max_users is not None else {}
+        teams: Final[EnterpriseLicenseData] = {"max_teams": self.max_teams} if self.max_teams is not None else {}
+        license_data: Final[EnterpriseLicenseData] = {
             "expiration_date": self.expires_at.date().isoformat(),
             "user_id": self.customer,
             "allowed_features": sorted(self.features),
+            **users,
+            **teams,
         }
-        user_limit: Final[EnterpriseLicenseData] = {"max_users": self.max_users} if self.max_users is not None else {}
-        team_limit: Final[EnterpriseLicenseData] = {"max_teams": self.max_teams} if self.max_teams is not None else {}
-        return {**claims, **user_limit, **team_limit}
+        return license_data
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,14 +136,9 @@ def verify_license(token: str | None, public_key: Ed25519PublicKey | None, now: 
         raw_claims: Final = jwt.decode(
             token,
             key=public_key,
-            algorithms=[LICENSE_ALGORITHM],
+            algorithms=(LICENSE_ALGORITHM,),
             issuer=LICENSE_ISSUER,
-            options={
-                "require": ["exp", "iss", "sub", "jti"],
-                "verify_exp": False,
-                "verify_iat": False,
-                "verify_nbf": False,
-            },
+            options=_DECODE_OPTIONS,
         )
         claims: Final = _LicenseClaims.model_validate(raw_claims)
     except (jwt.PyJWTError, ValidationError) as e:

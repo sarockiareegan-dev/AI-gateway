@@ -4102,6 +4102,10 @@ class ModelAccessDeniedProxyException(ProxyException):
         return self.internal_message.replace("\r", "").replace("\n", "")
 
 
+class ProxyErrorDetail(TypedDict):
+    error: ReadOnly[str]
+
+
 class CommonProxyErrors(str, enum.Enum):
     db_not_connected_error = (
         "DB not connected. This endpoint needs a database; set DATABASE_URL to a "

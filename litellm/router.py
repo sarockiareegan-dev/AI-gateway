@@ -12555,7 +12555,9 @@ class Router:
             if not deployment_usable_by(deployments, organization_id, is_super_admin):
                 raise self._no_deployments_error(model)
             return resolved_model, deployments
-        usable: Final = [d for d in deployments if deployment_usable_by(d, organization_id, is_super_admin)]
+        usable: Final = [  # mutable-ok: the routing strategies downstream take the deployments as a list
+            d for d in deployments if deployment_usable_by(d, organization_id, is_super_admin)
+        ]
         if deployments and not usable:
             raise self._no_deployments_error(model)
         return resolved_model, usable

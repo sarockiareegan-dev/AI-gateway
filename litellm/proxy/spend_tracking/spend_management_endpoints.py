@@ -35,7 +35,7 @@ from litellm.constants import (
 )
 from litellm.litellm_core_utils.classifier_logging import classifier_audit_fields, classifier_input_snapshot
 from litellm.proxy._types import *
-from litellm.proxy._types import ProviderBudgetResponse, ProviderBudgetResponseObject
+from litellm.proxy._types import ProviderBudgetResponse, ProviderBudgetResponseObject, ProxyErrorDetail
 from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 
@@ -565,7 +565,7 @@ async def view_spend_tags(
         if not _is_admin_view_safe(user_api_key_dict=user_api_key_dict):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail={"error": "Only proxy admins can view proxy-wide tag spend."},
+                detail=ProxyErrorDetail(error="Only proxy admins can view proxy-wide tag spend."),
             )
 
         # run the following SQL query on prisma
@@ -2688,9 +2688,9 @@ async def ui_view_spend_logs(
             else:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail={
-                        "error": "Viewing spend logs needs a key that belongs to a user, or a team_id you can view."
-                    },
+                    detail=ProxyErrorDetail(
+                        error="Viewing spend logs needs a key that belongs to a user, or a team_id you can view."
+                    ),
                 )
         # Calculate skip value for pagination
         skip: Final = (page - 1) * page_size
@@ -3411,7 +3411,9 @@ async def view_spend_logs(
         if user_api_key_dict.user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail={"error": "Viewing spend logs needs a key that belongs to a user, or a proxy admin key."},
+                detail=ProxyErrorDetail(
+                    error="Viewing spend logs needs a key that belongs to a user, or a proxy admin key."
+                ),
             )
         user_id = user_api_key_dict.user_id
 

@@ -57,6 +57,7 @@ from litellm.constants import (
 )
 from litellm.proxy._types import (
     CommonProxyErrors,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     SpendLogsMetadata,
@@ -7807,7 +7808,7 @@ def require_license_feature(license_feature: LicenseFeature, feature_name: str |
         if feature_name
         else CommonProxyErrors.not_premium_user.value
     )
-    raise HTTPException(status_code=403, detail={"error": detail_msg})
+    raise HTTPException(status_code=403, detail=ProxyErrorDetail(error=detail_msg))
 
 
 def is_known_model(model: str | None, llm_router: Router | None) -> bool:

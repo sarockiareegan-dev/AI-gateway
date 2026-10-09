@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 from litellm._logging import verbose_proxy_logger
 from litellm.litellm_core_utils.duration_parser import duration_in_seconds
 from litellm.proxy._types import *
+from litellm.proxy._types import ProxyErrorDetail
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.user_api_key_cache import (
     end_user_cache_key,
@@ -214,7 +215,7 @@ async def unblock_user(data: BlockUsers):
     """
     raise HTTPException(
         status_code=400,
-        detail={"error": "Blocked user check was never set. This call has no effect."},
+        detail=ProxyErrorDetail(error="Blocked user check was never set. This call has no effect."),
     )
 
 

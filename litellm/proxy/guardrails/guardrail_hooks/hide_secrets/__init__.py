@@ -16,7 +16,7 @@ def _event_hook(mode: str | list[str] | Mode) -> GuardrailEventHooks | list[Guar
     if isinstance(mode, str):
         return GuardrailEventHooks(mode)
     if isinstance(mode, list):
-        return [GuardrailEventHooks(hook) for hook in mode]
+        return [GuardrailEventHooks(hook) for hook in mode]  # mutable-ok: CustomGuardrail contract expects a list
     return mode
 
 
@@ -39,10 +39,10 @@ def initialize_guardrail(
     return callback
 
 
-guardrail_initializer_registry: Final = {
+guardrail_initializer_registry: Final = {  # mutable-ok: registry auto-discovery requires a dict instance
     SupportedGuardrailIntegrations.HIDE_SECRETS.value: initialize_guardrail,
 }
 
-guardrail_class_registry: Final = {
+guardrail_class_registry: Final = {  # mutable-ok: registry auto-discovery requires a dict instance
     SupportedGuardrailIntegrations.HIDE_SECRETS.value: HideSecretsGuardrail,
 }

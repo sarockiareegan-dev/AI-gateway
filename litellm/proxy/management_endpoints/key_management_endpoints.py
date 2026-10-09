@@ -51,7 +51,7 @@ from litellm.proxy._experimental.mcp_server.outbound_credentials.sso_assertion_s
     rotate_sso_identity_assertions_master_key,
 )
 from litellm.proxy._types import *
-from litellm.proxy._types import Litellm_EntityType, LiteLLM_VerificationToken, hash_token
+from litellm.proxy._types import Litellm_EntityType, LiteLLM_VerificationToken, ProxyErrorDetail, hash_token
 from litellm.proxy.auth.auth_checks import (
     _delete_cache_key_object,
     can_team_access_model,
@@ -4376,10 +4376,10 @@ def _check_model_access_group(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "Setting a model access group on a wildcard model needs the 'advanced_keys' feature on the "
+            detail=ProxyErrorDetail(
+                error="Setting a model access group on a wildcard model needs the 'advanced_keys' feature on the "
                 f"Agami license. {CommonProxyErrors.not_premium_user.value}"
-            },
+            ),
         )
     return True
 
@@ -4638,9 +4638,9 @@ async def generate_key_helper_fn(
             if "get_spend_routes" in saved_token["permissions"] and not is_licensed(LicenseFeature.ADVANCED_KEYS):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail={
-                        "error": "get_spend_routes permission needs the 'advanced_keys' feature on the Agami license"
-                    },
+                    detail=ProxyErrorDetail(
+                        error="get_spend_routes permission needs the 'advanced_keys' feature on the Agami license"
+                    ),
                 )
 
             saved_token["permissions"] = json.loads(saved_token["permissions"])
@@ -5692,10 +5692,10 @@ async def regenerate_key_fn(
         if not is_master_key_regeneration and not is_licensed(LicenseFeature.ADVANCED_KEYS):
             raise HTTPException(
                 status_code=403,
-                detail={
-                    "error": "Regenerating virtual keys needs the 'advanced_keys' feature on the Agami license. "
+                detail=ProxyErrorDetail(
+                    error="Regenerating virtual keys needs the 'advanced_keys' feature on the Agami license. "
                     f"{CommonProxyErrors.not_premium_user.value}"
-                },
+                ),
             )
 
         # Check if key exists, raise exception if key is not in the DB
@@ -6488,7 +6488,7 @@ async def list_keys(
                 admin_team_ids = list({*admin_team_ids, *list_permission_team_ids})
             org_team_ids: Final = await _org_team_ids(prisma_client, readable_org_ids)
             if org_team_ids:
-                admin_team_ids = list({*admin_team_ids, *org_team_ids})
+                admin_team_ids = sorted(frozenset((*admin_team_ids, *org_team_ids)))
         else:
             admin_team_ids = None
 
@@ -6856,7 +6856,7 @@ def _build_key_filter_conditions(
     if admin_team_ids:
         or_conditions.append({"team_id": {"in": admin_team_ids}})
     if admin_org_ids:
-        or_conditions.append({"organization_id": {"in": list(admin_org_ids)}})
+        or_conditions.append({"organization_id": {"in": sorted(admin_org_ids)}})
 
     # Add condition for member team service accounts (members only see keys with user_id=NULL)
     if member_team_ids:
@@ -7691,10 +7691,10 @@ def validate_model_max_budget(model_max_budget: dict | None, entitlements: Entit
     if not is_licensed(LicenseFeature.BUDGETS, entitlements):
         raise HTTPException(
             status_code=403,
-            detail={
-                "error": "Setting model_max_budget needs the 'budgets' feature on the Agami license. "
+            detail=ProxyErrorDetail(
+                error="Setting model_max_budget needs the 'budgets' feature on the Agami license. "
                 f"{CommonProxyErrors.not_premium_user.value}"
-            },
+            ),
         )
     try:
         if model_max_budget is not None:

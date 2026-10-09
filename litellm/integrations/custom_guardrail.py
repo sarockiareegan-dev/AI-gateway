@@ -149,17 +149,17 @@ def _guardrails_licensed() -> bool:
 def _raise_unless_licensed(guardrail_name: str | None, feature: "LicenseFeature") -> None:
     from fastapi import HTTPException
 
-    from litellm.proxy._types import CommonProxyErrors
+    from litellm.proxy._types import CommonProxyErrors, ProxyErrorDetail
     from litellm.proxy.auth.entitlements import is_licensed
 
     if is_licensed(feature):
         return
     raise HTTPException(
         status_code=403,
-        detail={
-            "error": f"Guardrail '{guardrail_name}' needs the '{feature.value}' feature on the Agami license. "
+        detail=ProxyErrorDetail(
+            error=f"Guardrail '{guardrail_name}' needs the '{feature.value}' feature on the Agami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
-        },
+        ),
     )
 
 

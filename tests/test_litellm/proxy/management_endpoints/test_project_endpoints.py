@@ -1,4 +1,6 @@
+import json
 from collections.abc import Iterator, Mapping
+from types import MappingProxyType
 from typing import Final
 
 import pytest
@@ -11,6 +13,7 @@ from litellm.proxy.management_endpoints.project_endpoints import (
     CallerScope,
     get_caller_scope,
     get_project_store,
+    prisma_data,
     project_access,
     router,
 )
@@ -429,3 +432,14 @@ def test_list_returns_only_projects_in_the_callers_scope(
     response: Final = harness.as_caller(scope).client.get("/project/list")
     assert response.status_code == 200
     assert {p["project_id"] for p in response.json()} == visible
+
+
+def test_prisma_data_is_a_real_dict_with_json_encoded_mappings():
+    nested: Final = MappingProxyType({"tags": ("a",), "inner": MappingProxyType({"k": 1})})
+    data: Final = prisma_data(MappingProxyType({"metadata": nested, "models": ["m"], "description": None}))
+
+    assert type(data) is dict
+    assert set(data) == {"metadata", "models"}
+    assert data["models"] == ["m"]
+    assert isinstance(data["metadata"], str)
+    assert json.loads(data["metadata"]) == {"tags": ["a"], "inner": {"k": 1}}

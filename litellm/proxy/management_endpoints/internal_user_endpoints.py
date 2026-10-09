@@ -29,6 +29,7 @@ import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.proxy._types import *
+from litellm.proxy._types import ProxyErrorDetail
 from litellm.proxy.auth.auth_checks import (
     delete_cache_key_objects,
     get_jwt_key_mapping_cache_keys_for_tokens,
@@ -2610,7 +2611,7 @@ async def _resolve_org_filter_for_user_search(
 
     raise HTTPException(
         status_code=403,
-        detail={"error": "Only proxy admins, organization members, or team admins can search users."},
+        detail=ProxyErrorDetail(error="Only proxy admins, organization members, or team admins can search users."),
     )
 
 
@@ -2634,13 +2635,13 @@ async def _resolve_team_org_filter(
     except HTTPException:
         raise HTTPException(
             status_code=403,
-            detail={"error": f"Team '{team_id}' was not found."},
+            detail=ProxyErrorDetail(error=f"Team '{team_id}' was not found."),
         )
 
     if not _is_user_team_admin(user_api_key_dict, team_obj):
         raise HTTPException(
             status_code=403,
-            detail={"error": "You must be an admin of this team to search users."},
+            detail=ProxyErrorDetail(error="You must be an admin of this team to search users."),
         )
 
     if team_obj.organization_id:
@@ -2648,7 +2649,7 @@ async def _resolve_team_org_filter(
 
     raise HTTPException(
         status_code=403,
-        detail={"error": "This team is not part of an organization, so its admins cannot search users."},
+        detail=ProxyErrorDetail(error="This team is not part of an organization, so its admins cannot search users."),
     )
 
 
@@ -2775,13 +2776,13 @@ async def _resolve_user_daily_activity_entity(
         user_api_key_dict.user_role, await memberships.find_many(where={"user_id": caller_user_id})
     )
     shares_readable_org: Final = bool(readable_org_ids) and (
-        await memberships.find_first(where={"user_id": user_id, "organization_id": {"in": list(readable_org_ids)}})
+        await memberships.find_first(where={"user_id": user_id, "organization_id": {"in": sorted(readable_org_ids)}})
         is not None
     )
     if not shares_readable_org:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "Non-admin users can only view their own spend data."},
+            detail=ProxyErrorDetail(error="Non-admin users can only view their own spend data."),
         )
     return user_id
 

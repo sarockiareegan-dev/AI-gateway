@@ -51,6 +51,7 @@ from litellm.proxy._types import (
     LitellmUserRoles,
     ModelInfoDelete,
     PrismaCompatibleUpdateDBModel,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     ReconcileOutcome,
@@ -1899,10 +1900,10 @@ def _require_team_models_licence(entitlements: EntitlementService | None) -> Non
         return
     raise HTTPException(
         status_code=403,
-        detail={
-            "error": "Team-scoped models need the 'team_models' feature on the Agami license. "
+        detail=ProxyErrorDetail(
+            error="Team-scoped models need the 'team_models' feature on the Agami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
-        },
+        ),
     )
 
 

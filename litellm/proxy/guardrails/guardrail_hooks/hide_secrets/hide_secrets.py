@@ -2,6 +2,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import reduce
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
@@ -44,11 +45,13 @@ def load_secret_patterns(detect_secrets_config: Mapping[str, object] | None) -> 
     from detect_secrets.core.plugins.util import get_mapping_from_secret_type_to_class
     from detect_secrets.plugins.base import RegexBasedDetector
 
-    detectors: Final = {
-        detector.__name__: (secret_type, detector)
-        for secret_type, detector in get_mapping_from_secret_type_to_class().items()
-        if issubclass(detector, RegexBasedDetector)
-    }
+    detectors: Final = MappingProxyType(
+        {
+            detector.__name__: (secret_type, detector)
+            for secret_type, detector in get_mapping_from_secret_type_to_class().items()
+            if issubclass(detector, RegexBasedDetector)
+        }
+    )
     names: Final = (
         tuple(sorted(detectors.keys() - NOT_SECRETS))
         if detect_secrets_config is None
@@ -100,7 +103,7 @@ class HideSecretsGuardrail(CustomGuardrail):
 
     @classmethod
     def get_supported_event_hooks(cls) -> list[GuardrailEventHooks]:
-        return [GuardrailEventHooks.pre_call]
+        return [GuardrailEventHooks.pre_call]  # mutable-ok: CustomGuardrail contract expects a list
 
     @log_guardrail_information
     async def apply_guardrail(

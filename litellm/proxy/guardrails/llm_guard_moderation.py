@@ -70,7 +70,7 @@ class LLMGuardModeration(CustomGuardrail):
         input_type: Literal["request", "response"],
         logging_obj: Optional["LiteLLMLoggingObj"] = None,
     ) -> GenericGuardrailAPIInputs:
-        prompt: Final = "\n".join(inputs.get("texts") or [])
+        prompt: Final = "\n".join(inputs.get("texts") or ())
         if not prompt.strip() or not self._applies_to(request_data):
             return inputs
         response: Final = await self.http.post(

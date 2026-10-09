@@ -7,7 +7,7 @@ from pydantic import Field, TypeAdapter
 
 from litellm.caching.caching import DualCache
 from litellm.integrations.custom_guardrail import CustomGuardrail
-from litellm.proxy._types import CommonProxyErrors, UserAPIKeyAuth
+from litellm.proxy._types import CommonProxyErrors, ProxyErrorDetail, UserAPIKeyAuth
 from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.guardrails.google_text_moderation import DEFAULT_CONFIDENCE_THRESHOLD, GoogleTextModeration
 from litellm.proxy.guardrails.guardrail_hooks.hide_secrets.hide_secrets import (
@@ -76,7 +76,7 @@ class BlockedUserGuardrail(CustomGuardrail):
         blocked: Final = next((user for user in candidates if user is not None and user in self.blocked_users), None)
         if blocked is None:
             return data
-        raise HTTPException(status_code=403, detail={"error": f"End user '{blocked}' is blocked"})
+        raise HTTPException(status_code=403, detail=ProxyErrorDetail(error=f"End user '{blocked}' is blocked"))
 
 
 def build_blocked_user_guardrail(litellm_settings: Mapping[str, object], fallback: object) -> BlockedUserGuardrail:

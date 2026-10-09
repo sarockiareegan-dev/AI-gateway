@@ -463,7 +463,7 @@ class KeyManagementEventHooks:
     def _is_email_sending_enabled() -> bool:
         from litellm.proxy.proxy_server import general_settings
 
-        return "email" in general_settings.get("alerting", [])
+        return "email" in general_settings.get("alerting", ())
 
     @staticmethod
     async def _send_key_created_email(response: dict):
