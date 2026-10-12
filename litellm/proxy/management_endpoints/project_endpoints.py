@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Final, Literal, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from litellm.proxy._types import (
     CommonProxyErrors,
@@ -69,6 +69,7 @@ METADATA_LIST_FIELDS: Final = ("tags", "guardrails", "policies")
 ALL_PROXY_MODELS: Final = "all-proxy-models"
 ProjectRequest = NewProjectRequest | UpdateProjectRequest
 _NOTHING: Final[Mapping[str, object]] = MappingProxyType({})
+_SETTINGS: Final = TypeAdapter[dict[str, object] | None](dict[str, object] | None)
 
 
 class _UntypedFields(BaseModel):
@@ -76,7 +77,6 @@ class _UntypedFields(BaseModel):
 
     metadata: dict[str, object] | None = None
     model_max_budget: dict[str, object] | None = None
-    general_settings: dict[str, object] | None = None
 
 
 def _untyped(source: object) -> _UntypedFields:
@@ -228,10 +228,16 @@ async def _caller_user(user_api_key_dict: UserAPIKeyAuth) -> LiteLLM_UserTable |
         return None
 
 
-async def get_caller_scope(user_api_key_dict: AuthDep) -> CallerScope:
+def get_general_settings() -> Mapping[str, object]:
     from litellm.proxy import proxy_server
 
-    general_settings: Final = _untyped(proxy_server).general_settings or _NOTHING
+    return _SETTINGS.validate_python(getattr(proxy_server, "general_settings", None)) or _NOTHING
+
+
+async def get_caller_scope(
+    user_api_key_dict: AuthDep,
+    general_settings: Annotated[Mapping[str, object], Depends(get_general_settings)],
+) -> CallerScope:
     user: Final = await _caller_user(user_api_key_dict)
     memberships: Final = user.organization_memberships if user is not None else None
     key_team_ids: Final = (user_api_key_dict.team_id,) if user_api_key_dict.team_id else ()

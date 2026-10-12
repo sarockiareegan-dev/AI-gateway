@@ -7,7 +7,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from litellm.proxy._types import LiteLLM_BudgetTable, LiteLLM_ProjectTable, LiteLLM_TeamTable, Member, UserAPIKeyAuth
+from litellm.proxy._types import (
+    LiteLLM_BudgetTable,
+    LiteLLM_ProjectTable,
+    LiteLLM_TeamTable,
+    LitellmUserRoles,
+    Member,
+    UserAPIKeyAuth,
+)
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.management_endpoints.project_endpoints import (
     CallerScope,
@@ -432,6 +439,34 @@ def test_list_returns_only_projects_in_the_callers_scope(
     response: Final = harness.as_caller(scope).client.get("/project/list")
     assert response.status_code == 200
     assert {p["project_id"] for p in response.json()} == visible
+
+
+def test_proxy_admin_lists_projects_through_the_real_caller_scope(harness: Harness) -> None:
+    harness.seed("pa", team_id="team-a")
+    app: Final = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_project_store] = lambda: harness.store
+    app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_id="root", user_role=LitellmUserRoles.PROXY_ADMIN
+    )
+
+    response: Final = TestClient(app).get("/project/list")
+
+    assert response.status_code == 200
+    assert [p["project_id"] for p in response.json()] == ["pa"]
+
+
+@pytest.mark.parametrize(("fields", "expected"), [(["projects"], True), (["max_budget"], False)])
+@pytest.mark.asyncio
+async def test_caller_scope_reads_team_admin_permissions_from_general_settings(
+    fields: list[str], expected: bool
+) -> None:
+    scope: Final = await get_caller_scope(
+        UserAPIKeyAuth(user_id="root", user_role=LitellmUserRoles.PROXY_ADMIN),
+        MappingProxyType({"team_admin_editable_team_fields": fields}),
+    )
+
+    assert scope.team_admins_manage_projects is expected
 
 
 def test_prisma_data_is_a_real_dict_with_json_encoded_mappings():
