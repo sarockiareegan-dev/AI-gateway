@@ -4,11 +4,6 @@ ignoreUntil = 2027-01-12
 reason = "diskcache has no fixed release published (5.6.3 is latest as of 2026-10-12); remove this entry once one exists"
 
 [[IgnoredVulns]]
-id = "PYSEC-2026-2447"
-ignoreUntil = 2027-01-12
-reason = "alias of GHSA-w8v5-vhqr-4h9v; diskcache has no fixed release published (5.6.3 is latest as of 2026-10-12)"
-
-[[IgnoredVulns]]
 id = "GHSA-vfj7-8cjw-p6xm"
 ignoreUntil = 2027-01-12
 reason = "braces has no fixed release published (3.0.3 is latest as of 2026-10-12) and it is only pulled in by UI build tooling; remove this entry once one exists"
