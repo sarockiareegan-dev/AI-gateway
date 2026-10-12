@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
 from litellm._uuid import uuid
 
 # Set up environment variables for testing
@@ -47,7 +49,7 @@ async def test_cyberark_write_secret_rejects_yaml_injection():
     Regression test: async_write_secret must reject a secret_name that is not
     safe to embed in the Conjur policy body, before any HTTP call is made.
     """
-    with patch("litellm.proxy.proxy_server.premium_user", True):
+    with patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()):
         malicious_secret_name = "foo\n- !grant\n  role: !!admin\n  member: attacker"
 
         mock_sync_client = MagicMock()
@@ -92,7 +94,7 @@ def test_cyberark_ensure_variable_exists_escapes_yaml_metacharacters(secret_name
     denylist-check it) so the policy body always parses back to exactly one
     '!variable' scalar node holding the untouched secret_name.
     """
-    with patch("litellm.proxy.proxy_server.premium_user", True):
+    with patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()):
         captured = {}
 
         def _capture_post(url, headers=None, content=None):
@@ -122,7 +124,7 @@ async def test_cyberark_write_and_read_secret():
     """
     Test writing a secret to CyberArk Conjur and reading it back using mocked HTTP requests.
     """
-    with patch("litellm.proxy.proxy_server.premium_user", True):
+    with patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()):
         # Generate unique secret name and value
         secret_name = f"test-secret-{uuid.uuid4()}"
         secret_value = f"test-value-{uuid.uuid4()}"
@@ -187,7 +189,7 @@ async def test_cyberark_rotate_secret():
     2. Rotate to new value (like sk-12359)
     3. Verify reading the secret returns the NEW value
     """
-    with patch("litellm.proxy.proxy_server.premium_user", True):
+    with patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()):
         # Simulate initial virtual key creation
         secret_alias = f"test-rotation-key-{uuid.uuid4()}"
         initial_key_value = f"sk-initial-{uuid.uuid4()}"
@@ -297,7 +299,7 @@ async def test_cyberark_rotate_secret_with_new_alias():
     3. Verify alias-v2 has the new value
     4. Verify alias-v1 still exists with old value (CyberArk doesn't delete)
     """
-    with patch("litellm.proxy.proxy_server.premium_user", True):
+    with patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()):
         # Simulate key rotation with alias change
         base_alias = f"test-alias-change-{uuid.uuid4()}"
         old_alias = f"{base_alias}-v1"

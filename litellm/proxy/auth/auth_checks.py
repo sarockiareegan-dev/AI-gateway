@@ -1327,10 +1327,7 @@ def allowed_route_check_inside_route(
     requested_user_id: str | None,
 ) -> bool:
     ret_val = True
-    if (
-        user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN
-        and user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-    ):
+    if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
         ret_val = False
     if requested_user_id is not None and user_api_key_dict.user_id is not None:
         if user_api_key_dict.user_id == requested_user_id:

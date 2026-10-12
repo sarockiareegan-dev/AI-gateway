@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import datetime, timezone
 from itertools import chain, count
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, Optional, Protocol, TypeAlias, cast
 
 from pydantic import ValidationError
@@ -55,7 +56,6 @@ from .guardrail_hooks.llm_as_a_judge import (
 )
 from .guardrail_initializers import (
     initialize_bedrock,
-    initialize_hide_secrets,
     initialize_lakera,
     initialize_lakera_v2,
     initialize_presidio,
@@ -82,7 +82,6 @@ guardrail_initializer_registry: Final = {
     SupportedGuardrailIntegrations.LAKERA.value: initialize_lakera,
     SupportedGuardrailIntegrations.LAKERA_V2.value: initialize_lakera_v2,
     SupportedGuardrailIntegrations.PRESIDIO.value: initialize_presidio,
-    SupportedGuardrailIntegrations.HIDE_SECRETS.value: initialize_hide_secrets,
     SupportedGuardrailIntegrations.TOOL_PERMISSION.value: initialize_tool_permission,
     SupportedGuardrailIntegrations.GRAYSWAN.value: initialize_grayswan,
     SupportedGuardrailIntegrations.LLM_AS_A_JUDGE.value: initialize_llm_as_a_judge,
@@ -283,7 +282,9 @@ class GuardrailRegistry:
     ###########################################################
     ########### DB management helpers for guardrails ###########
     ############################################################
-    async def add_guardrail_to_db(self, guardrail: Guardrail, prisma_client: PrismaClient):
+    async def add_guardrail_to_db(
+        self, guardrail: Guardrail, prisma_client: PrismaClient, organization_id: str | None = None
+    ):
         """
         Add a guardrail to the database
         """
@@ -304,6 +305,7 @@ class GuardrailRegistry:
                     "guardrail_name": guardrail_name,
                     "litellm_params": litellm_params,
                     "guardrail_info": guardrail_info,
+                    "organization_id": organization_id,
                     "created_at": datetime.now(timezone.utc),
                     "updated_at": datetime.now(timezone.utc),
                 }
@@ -329,7 +331,13 @@ class GuardrailRegistry:
         except Exception as e:
             raise Exception(f"Error deleting guardrail from DB: {e}")
 
-    async def update_guardrail_in_db(self, guardrail_id: str, guardrail: Guardrail, prisma_client: PrismaClient):
+    async def update_guardrail_in_db(
+        self,
+        guardrail_id: str,
+        guardrail: Guardrail,
+        prisma_client: PrismaClient,
+        owner_change: Mapping[str, str | None] = MappingProxyType({}),
+    ):
         """
         Update a guardrail in the database
         """
@@ -352,6 +360,7 @@ class GuardrailRegistry:
                     "litellm_params": litellm_params,
                     "guardrail_info": guardrail_info,
                     "updated_at": datetime.now(timezone.utc),
+                    **owner_change,
                 },
             )
             if updated_guardrail is None:

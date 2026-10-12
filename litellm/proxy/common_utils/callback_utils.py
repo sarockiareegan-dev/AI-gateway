@@ -25,7 +25,7 @@ from litellm.litellm_core_utils.core_helpers import (
     get_or_create_metadata_bucket,
 )
 from litellm.litellm_core_utils.sensitive_data_masker import SensitiveDataMasker
-from litellm.proxy._types import CommonProxyErrors, LiteLLMPromptInjectionParams
+from litellm.proxy._types import LiteLLMPromptInjectionParams
 from litellm.proxy.common_utils.encrypt_decrypt_utils import (
     decrypt_value_helper,
     encrypt_value_helper,
@@ -132,7 +132,6 @@ def _loaded_callback_or_raise(entry: str, loaded: object) -> CustomLogger | Call
 
 def initialize_callbacks_on_proxy(
     value: Any,
-    premium_user: bool,
     config_file_path: str,
     litellm_settings: dict,
     callback_specific_params: dict | None = None,
@@ -143,7 +142,6 @@ def initialize_callbacks_on_proxy(
     from litellm.litellm_core_utils.logging_callback_manager import (
         LoggingCallbackManager,
     )
-    from litellm.proxy.proxy_server import prisma_client
 
     verbose_proxy_logger.debug("%sinitializing callbacks=%s on proxy%s", blue_color_code, value, reset_color_code)
     if isinstance(value, list):
@@ -198,51 +196,47 @@ def initialize_callbacks_on_proxy(
                 pii_masking_object = _OPTIONAL_PresidioPIIMasking(**params)
                 imported_list.append(pii_masking_object)
             elif isinstance(callback, str) and callback == "llamaguard_moderations":
-                try:
-                    from litellm_enterprise.enterprise_callbacks.llama_guard import (
-                        _ENTERPRISE_LlamaGuard,
-                    )
-                except ImportError:
-                    raise Exception(
-                        "MissingTrying to use Llama Guard" + CommonProxyErrors.missing_enterprise_package.value
-                    )
+                from litellm.proxy.guardrails.legacy_callbacks import build_llamaguard_guardrail
 
-                if premium_user is not True:
-                    raise Exception("Trying to use Llama Guard" + CommonProxyErrors.not_premium_user.value)
+                imported_list.append(
+                    build_llamaguard_guardrail(
+                        litellm_settings,
+                        model_fallback=litellm.llamaguard_model_name,
+                        categories_fallback=litellm.llamaguard_unsafe_content_categories,
+                    )
+                )
+            elif isinstance(callback, str) and callback == "llmguard_moderations":
+                from litellm.proxy.guardrails.legacy_callbacks import build_llm_guard_guardrail
 
-                llama_guard_object = _ENTERPRISE_LlamaGuard()
-                imported_list.append(llama_guard_object)
+                imported_list.append(build_llm_guard_guardrail(litellm_settings, mode_fallback=litellm.llm_guard_mode))
+            elif isinstance(callback, str) and callback == "google_text_moderation":
+                from litellm.proxy.guardrails.legacy_callbacks import build_google_text_moderation_guardrail
+
+                imported_list.append(
+                    build_google_text_moderation_guardrail(
+                        litellm_settings, fallback=litellm.google_moderation_confidence_threshold
+                    )
+                )
+            elif isinstance(callback, str) and callback == "banned_keywords":
+                from litellm.proxy.guardrails.legacy_callbacks import build_banned_keywords_guardrail
+
+                imported_list.append(
+                    build_banned_keywords_guardrail(litellm_settings, fallback=litellm.banned_keywords_list)
+                )
+            elif isinstance(callback, str) and callback == "blocked_user_check":
+                from litellm.proxy.guardrails.legacy_callbacks import build_blocked_user_guardrail
+
+                imported_list.append(build_blocked_user_guardrail(litellm_settings, fallback=litellm.blocked_user_list))
             elif isinstance(callback, str) and callback == "hide_secrets":
-                try:
-                    from litellm_enterprise.enterprise_callbacks.secret_detection import (
-                        _ENTERPRISE_SecretDetection,
-                    )
-                except ImportError:
-                    raise Exception(
-                        "Trying to use Secret Detection" + CommonProxyErrors.missing_enterprise_package.value
-                    )
+                from litellm.proxy.guardrails.legacy_callbacks import build_hide_secrets_guardrail
 
-                if premium_user is not True:
-                    raise Exception("Trying to use secret hiding" + CommonProxyErrors.not_premium_user.value)
-
-                _secret_detection_object = _ENTERPRISE_SecretDetection()
-                imported_list.append(_secret_detection_object)
+                imported_list.append(build_hide_secrets_guardrail())
             elif isinstance(callback, str) and callback == "openai_moderations":
-                try:
-                    from enterprise.enterprise_hooks.openai_moderation import (
-                        _ENTERPRISE_OpenAI_Moderation,
-                    )
-                except ImportError:
-                    raise Exception(
-                        "Trying to use OpenAI Moderations Check,"
-                        + CommonProxyErrors.missing_enterprise_package_docker.value
-                    )
+                from litellm.proxy.guardrails.legacy_callbacks import build_openai_moderation_guardrail
 
-                if premium_user is not True:
-                    raise Exception("Trying to use OpenAI Moderations Check" + CommonProxyErrors.not_premium_user.value)
-
-                openai_moderations_object = _ENTERPRISE_OpenAI_Moderation()
-                imported_list.append(openai_moderations_object)
+                imported_list.append(
+                    build_openai_moderation_guardrail(litellm_settings, fallback=litellm.openai_moderations_model_name)
+                )
             elif isinstance(callback, str) and callback == "lakera_prompt_injection":
                 from litellm.proxy.guardrails.guardrail_hooks.lakera_ai import (
                     lakeraAI_Moderation,
@@ -262,65 +256,6 @@ def initialize_callbacks_on_proxy(
 
                 aporia_guardrail_object = AporiaGuardrail()
                 imported_list.append(aporia_guardrail_object)
-            elif isinstance(callback, str) and callback == "google_text_moderation":
-                try:
-                    from enterprise.enterprise_hooks.google_text_moderation import (
-                        _ENTERPRISE_GoogleTextModeration,
-                    )
-                except ImportError:
-                    raise Exception(
-                        "Trying to use Google Text Moderation,"
-                        + CommonProxyErrors.missing_enterprise_package_docker.value
-                    )
-
-                if premium_user is not True:
-                    raise Exception("Trying to use Google Text Moderation" + CommonProxyErrors.not_premium_user.value)
-
-                google_text_moderation_obj = _ENTERPRISE_GoogleTextModeration()
-                imported_list.append(google_text_moderation_obj)
-            elif isinstance(callback, str) and callback == "llmguard_moderations":
-                try:
-                    from litellm_enterprise.enterprise_callbacks.llm_guard import (
-                        _ENTERPRISE_LLMGuard,
-                    )
-                except ImportError:
-                    raise Exception("Trying to use Llm Guard" + CommonProxyErrors.missing_enterprise_package.value)
-
-                if premium_user is not True:
-                    raise Exception("Trying to use Llm Guard" + CommonProxyErrors.not_premium_user.value)
-
-                llm_guard_moderation_obj = _ENTERPRISE_LLMGuard()
-                imported_list.append(llm_guard_moderation_obj)
-            elif isinstance(callback, str) and callback == "blocked_user_check":
-                try:
-                    from enterprise.enterprise_hooks.blocked_user_list import (
-                        _ENTERPRISE_BlockedUserList,
-                    )
-                except ImportError:
-                    raise Exception(
-                        "Trying to use Blocked User List" + CommonProxyErrors.missing_enterprise_package_docker.value
-                    )
-
-                if premium_user is not True:
-                    raise Exception("Trying to use ENTERPRISE BlockedUser" + CommonProxyErrors.not_premium_user.value)
-
-                blocked_user_list = _ENTERPRISE_BlockedUserList(prisma_client=prisma_client)
-                imported_list.append(blocked_user_list)
-            elif isinstance(callback, str) and callback == "banned_keywords":
-                try:
-                    from enterprise.enterprise_hooks.banned_keywords import (
-                        _ENTERPRISE_BannedKeywords,
-                    )
-                except ImportError:
-                    raise Exception(
-                        "Trying to use Banned Keywords" + CommonProxyErrors.missing_enterprise_package_docker.value
-                    )
-
-                if premium_user is not True:
-                    raise Exception("Trying to use ENTERPRISE BannedKeyword" + CommonProxyErrors.not_premium_user.value)
-
-                banned_keywords_obj = _ENTERPRISE_BannedKeywords()
-                imported_list.append(banned_keywords_obj)
             elif isinstance(callback, str) and callback == "detect_prompt_injection":
                 from litellm.proxy.hooks.prompt_injection_detection import (
                     _OPTIONAL_PromptInjectionDetection,

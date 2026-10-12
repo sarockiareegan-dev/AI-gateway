@@ -1385,10 +1385,7 @@ if MCP_AVAILABLE:
     async def get_mcp_gateway_sessions(
         user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
     ) -> MCPGatewaySessionsResponse:
-        if user_api_key_dict.user_role not in (
-            LitellmUserRoles.PROXY_ADMIN,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-        ):
+        if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={  # mutable-ok: HTTPException detail must be a plain mapping to keep this route's {"error": ...} response shape
@@ -1449,10 +1446,7 @@ if MCP_AVAILABLE:
         """
         Admin-only endpoint to view all user-submitted MCP servers pending review.
         """
-        if user_api_key_dict.user_role not in (
-            LitellmUserRoles.PROXY_ADMIN,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-        ):
+        if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"error": "Admin access required to view MCP server submissions."},
@@ -1462,8 +1456,6 @@ if MCP_AVAILABLE:
 
         submissions: Final = await get_mcp_submissions(prisma_client)
         submissions.items = _redact_mcp_credentials_list(submissions.items)
-        if not _user_is_full_admin(user_api_key_dict):
-            submissions.items = _sanitize_mcp_server_list_for_non_admin(submissions.items)
         return submissions
 
     @router.put(
@@ -2553,10 +2545,7 @@ if MCP_AVAILABLE:
         server_id: str,
         user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
     ) -> tuple[MCPServerUserCredentialListItem, ...]:
-        if user_api_key_dict.user_role not in (
-            LitellmUserRoles.PROXY_ADMIN,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-        ):
+        if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={  # mutable-ok: FastAPI HTTPException detail requires a plain dict

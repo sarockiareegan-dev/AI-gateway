@@ -4,10 +4,13 @@ import logging
 import os
 from contextlib import ExitStack, asynccontextmanager
 from types import SimpleNamespace
+from typing import Final
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, Request
+from fastapi.responses import RedirectResponse
+from fastapi_sso.sso.base import OpenID
 
 import litellm
 from litellm._uuid import uuid
@@ -30,6 +33,11 @@ from litellm.types.proxy.management_endpoints.ui_sso import (
     MicrosoftGraphAPIUserGroupResponse,
     MicrosoftServicePrincipalTeam,
     TeamMappings,
+)
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
 )
 
 _SSO_PROVIDER_ENV_VARS = (
@@ -2273,264 +2281,6 @@ class TestHTMLIntegration:
         assert "This window will close in" not in html
 
 
-class TestCustomUISSO:
-    """Test the custom UI SSO sign-in handler functionality"""
-
-    def test_enterprise_import_error_handling(self):
-        """Test that proper error is raised when enterprise module is not available"""
-        from unittest.mock import MagicMock, patch
-
-        # Mock request
-        mock_request = MagicMock()
-        mock_request.base_url = "https://test.example.com/"
-
-        # Mock user_custom_ui_sso_sign_in_handler to exist but make enterprise import fail
-        with patch("litellm.proxy.proxy_server.premium_user", True):
-            with patch(
-                "litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler",
-                MagicMock(),
-            ):
-                with patch.dict(
-                    "sys.modules",
-                    {"litellm_enterprise.proxy.auth.custom_sso_handler": None},
-                ):
-                    # Temporarily mock the google_login function call to test the import error path
-                    async def mock_google_login():
-                        # This mimics the relevant part of google_login that would trigger the import error
-                        try:
-                            from litellm_enterprise.proxy.auth.custom_sso_handler import (  # noqa: F401
-                                EnterpriseCustomSSOHandler,
-                            )
-
-                            return "success"
-                        except ImportError:
-                            raise ValueError(
-                                "Enterprise features are not available. Custom UI SSO sign-in requires LiteLLM Enterprise."
-                            )
-
-                    # Test that the ValueError is raised with the correct message
-                    import pytest
-
-                    with pytest.raises(
-                        ValueError, match="Enterprise features are not available"
-                    ):
-                        asyncio.run(mock_google_login())
-
-    @pytest.mark.asyncio
-    async def test_handle_custom_ui_sso_sign_in_success(self):
-        """Test successful custom UI SSO sign-in with valid headers"""
-        from fastapi_sso.sso.base import OpenID
-        from litellm_enterprise.proxy.auth.custom_sso_handler import (
-            EnterpriseCustomSSOHandler,
-        )
-
-        from litellm.integrations.custom_sso_handler import CustomSSOLoginHandler
-
-        # Mock request with custom headers
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {
-            "x-litellm-user-id": "test_user_123",
-            "x-litellm-user-email": "test@example.com",
-            "x-forwarded-for": "192.168.1.1",
-        }
-        mock_request.base_url = "https://test.litellm.ai/"
-        mock_request.client.host = "10.0.0.10"
-
-        # Mock the custom handler
-        mock_custom_handler = MagicMock(spec=CustomSSOLoginHandler)
-        expected_openid = OpenID(
-            id="test_user_123",
-            email="test@example.com",
-            first_name="Test",
-            last_name="User",
-            display_name="Test User",
-            picture=None,
-            provider="custom",
-        )
-        mock_custom_handler.handle_custom_ui_sso_sign_in = AsyncMock(
-            return_value=expected_openid
-        )
-
-        # Mock the redirect response method
-        mock_redirect_response = MagicMock()
-        mock_redirect_response.status_code = 303
-
-        with patch("litellm.proxy.proxy_server.premium_user", True):
-            with patch(
-                "litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler",
-                mock_custom_handler,
-            ):
-                with patch(
-                    "litellm.proxy.proxy_server.general_settings",
-                    {"trusted_proxy_ranges": ["10.0.0.0/24"]},
-                ):
-                    with patch.object(
-                        SSOAuthenticationHandler,
-                        "get_redirect_response_from_openid",
-                        return_value=mock_redirect_response,
-                    ) as mock_get_redirect:
-                        # Act
-                        result = await EnterpriseCustomSSOHandler.handle_custom_ui_sso_sign_in(
-                            request=mock_request
-                        )
-
-                        # Assert
-                        # Verify the custom handler was called with the request
-                        mock_custom_handler.handle_custom_ui_sso_sign_in.assert_called_once_with(
-                            request=mock_request
-                        )
-
-                        # Verify the redirect response was generated with correct OpenID
-                        mock_get_redirect.assert_called_once_with(
-                            result=expected_openid,
-                            request=mock_request,
-                            received_response=None,
-                            generic_client_id=None,
-                            ui_access_mode=None,
-                        )
-
-                        # Verify the result is the redirect response
-                        assert result == mock_redirect_response
-                        assert result.status_code == 303
-
-    @pytest.mark.asyncio
-    async def test_handle_custom_ui_sso_sign_in_rejects_untrusted_proxy(self):
-        """Custom UI SSO rejects spoofed identity headers from direct clients."""
-        from litellm_enterprise.proxy.auth.custom_sso_handler import (
-            EnterpriseCustomSSOHandler,
-        )
-
-        from litellm.integrations.custom_sso_handler import CustomSSOLoginHandler
-
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {
-            "x-litellm-user-id": "admin",
-            "x-litellm-user-email": "admin@example.com",
-        }
-        mock_request.base_url = "https://test.litellm.ai/"
-        mock_request.client.host = "203.0.113.10"
-
-        mock_custom_handler = MagicMock(spec=CustomSSOLoginHandler)
-        mock_custom_handler.handle_custom_ui_sso_sign_in = AsyncMock()
-
-        with patch("litellm.proxy.proxy_server.premium_user", True):
-            with patch(
-                "litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler",
-                mock_custom_handler,
-            ):
-                with patch(
-                    "litellm.proxy.proxy_server.general_settings",
-                    {"trusted_proxy_ranges": ["10.0.0.0/24"]},
-                ):
-                    with pytest.raises(ValueError, match="not trusted"):
-                        await EnterpriseCustomSSOHandler.handle_custom_ui_sso_sign_in(
-                            request=mock_request
-                        )
-
-        mock_custom_handler.handle_custom_ui_sso_sign_in.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_custom_ui_sso_handler_execution_with_real_class(self):
-        """
-        Test that when a user provides a custom class instance, it gets properly executed
-        and its methods are called with the correct parameters
-        """
-        from fastapi_sso.sso.base import OpenID
-        from litellm_enterprise.proxy.auth.custom_sso_handler import (
-            EnterpriseCustomSSOHandler,
-        )
-
-        from litellm.integrations.custom_sso_handler import CustomSSOLoginHandler
-
-        # Create a real custom handler class instance
-        class TestCustomSSOHandler(CustomSSOLoginHandler):
-            def __init__(self):
-                super().__init__()
-                self.method_called = False
-                self.received_request = None
-
-            async def handle_custom_ui_sso_sign_in(self, request: Request) -> OpenID:
-                self.method_called = True
-                self.received_request = request
-
-                # Parse headers like the actual implementation would
-                request_headers_dict = dict(request.headers)
-                return OpenID(
-                    id=request_headers_dict.get("x-litellm-user-id", "default_user"),
-                    email=request_headers_dict.get(
-                        "x-litellm-user-email", "default@test.com"
-                    ),
-                    first_name="Custom",
-                    last_name="Handler",
-                    display_name="Custom Handler Test",
-                    picture=None,
-                    provider="custom",
-                )
-
-        # Create instance of our test handler
-        test_handler_instance = TestCustomSSOHandler()
-
-        # Mock request with custom headers
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = {
-            "x-litellm-user-id": "custom_test_user_456",
-            "x-litellm-user-email": "custom@example.com",
-            "x-forwarded-for": "10.0.0.1",
-        }
-        mock_request.base_url = "https://custom.litellm.ai/"
-        mock_request.client.host = "10.0.0.20"
-
-        # Mock the redirect response method
-        mock_redirect_response = MagicMock()
-        mock_redirect_response.status_code = 303
-
-        with patch("litellm.proxy.proxy_server.premium_user", True):
-            with patch(
-                "litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler",
-                test_handler_instance,
-            ):
-                with patch(
-                    "litellm.proxy.proxy_server.general_settings",
-                    {"trusted_proxy_ranges": ["10.0.0.0/24"]},
-                ):
-                    with patch.object(
-                        SSOAuthenticationHandler,
-                        "get_redirect_response_from_openid",
-                        return_value=mock_redirect_response,
-                    ) as mock_get_redirect:
-                        # Act
-                        result = await EnterpriseCustomSSOHandler.handle_custom_ui_sso_sign_in(
-                            request=mock_request
-                        )
-
-                        # Assert that our custom handler was executed
-                        assert test_handler_instance.method_called is True
-                        assert test_handler_instance.received_request == mock_request
-
-                        # Verify the redirect response was called with the OpenID from our custom handler
-                        mock_get_redirect.assert_called_once()
-                        call_args = mock_get_redirect.call_args.kwargs
-
-                        # Verify the OpenID object has the expected values from our custom handler
-                        openid_result = call_args["result"]
-                        assert openid_result.id == "custom_test_user_456"
-                        assert openid_result.email == "custom@example.com"
-                        assert openid_result.first_name == "Custom"
-                        assert openid_result.last_name == "Handler"
-                        assert openid_result.display_name == "Custom Handler Test"
-                        assert openid_result.provider == "custom"
-
-                    # Verify the request and other parameters were passed correctly
-                    assert call_args["request"] == mock_request
-                    assert call_args["received_response"] is None
-                    assert call_args["generic_client_id"] is None
-                    assert call_args["ui_access_mode"] is None
-
-                    # Verify the result is the redirect response
-                    assert result == mock_redirect_response
-                    assert result.status_code == 303
-
-
 class TestCLIKeyRegenerationFlow:
     """Test the end-to-end CLI key regeneration flow"""
 
@@ -2836,7 +2586,6 @@ class TestCLIKeyRegenerationFlow:
         async def drive(enabled: bool):
             with (
                 patch.dict(os.environ, env_without_sso_providers, clear=True),
-                patch("litellm.proxy.proxy_server.premium_user", True),
                 patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
                 patch("litellm.proxy.proxy_server.user_api_key_cache", mock_cache),
                 patch("litellm.proxy.proxy_server.cli_sso_session_cache", mock_cache),
@@ -8322,7 +8071,6 @@ async def _render_legacy_login_page(env_overrides, general_settings):
         patch.dict(os.environ, {}, clear=False),
         patch("litellm.proxy.proxy_server.master_key", "sk-1234"),
         patch("litellm.proxy.proxy_server.prisma_client", MagicMock()),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.general_settings", general_settings),
         patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
         patch("litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler", None),
@@ -8449,8 +8197,8 @@ async def test_saml_callback_enforces_free_sso_user_limit_after_validation():
     request_double = SimpleNamespace(cookies={}, headers={}, stream=_stream)
 
     with patch.dict(os.environ, {"DISABLE_ADMIN_UI": "false"}), patch(
-        "litellm.proxy.proxy_server.premium_user", False
-    ), patch("litellm.proxy.proxy_server.prisma_client", MagicMock()), patch(
+        "litellm.proxy.proxy_server.prisma_client", MagicMock()
+    ), patch(
         "litellm.proxy.proxy_server.master_key", "sk-1234"
     ), patch(
         "litellm.proxy.management_endpoints.sso.saml_sso.SAMLAuthHandler.handle_acs",
@@ -8464,6 +8212,55 @@ async def test_saml_callback_enforces_free_sso_user_limit_after_validation():
 
     assert str(exc.value.code) == "403"
     assert call_order == ["validate", "count"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("entitlements", "billable_users", "allowed"),
+    [
+        pytest.param(licensed_entitlements(features=("sso",)), 6, True, id="sso-licence-lifts-the-limit"),
+        pytest.param(licensed_entitlements(features=("budgets",)), 6, False, id="other-feature-does-not"),
+        pytest.param(unlicensed_entitlements(), 6, False, id="no-licence-over-the-limit"),
+        pytest.param(unlicensed_entitlements(), 5, True, id="no-licence-within-the-free-limit"),
+    ],
+)
+async def test_sso_free_user_limit_is_lifted_only_by_the_sso_licence_feature(entitlements, billable_users, allowed):
+    from litellm.proxy._types import ProxyException
+    from litellm.proxy.management_endpoints.ui_sso import _raise_if_sso_exceeds_free_user_limit
+
+    prisma_client = MagicMock()
+
+    with patch(  # test-quality-ok: the billable-user count is a DB query and unit tests have no DB
+        "litellm.repositories.user_repository.UserRepository.count_billable_users",
+        new=AsyncMock(return_value=billable_users),
+    ):
+        if allowed:
+            await _raise_if_sso_exceeds_free_user_limit(prisma_client, entitlements)
+            return
+        with pytest.raises(ProxyException) as exc:
+            await _raise_if_sso_exceeds_free_user_limit(prisma_client, entitlements)
+
+    assert str(exc.value.code) == "403"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("features", "allowed"), [(("sso",), True), (("budgets",), False)], ids=["sso", "other"])
+async def test_sso_debug_login_requires_the_sso_licence_feature(monkeypatch, features, allowed):
+    from litellm.proxy._types import ProxyException
+    from litellm.proxy.management_endpoints.ui_sso import SSOAuthenticationHandler, debug_sso_login
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "debug-client")
+    redirect = MagicMock()
+    monkeypatch.setattr(SSOAuthenticationHandler, "get_redirect_url_for_sso", MagicMock(return_value="https://x/cb"))
+    monkeypatch.setattr(SSOAuthenticationHandler, "get_sso_login_redirect", AsyncMock(return_value=redirect))
+
+    if allowed:
+        assert await debug_sso_login(MagicMock(spec=Request)) is redirect
+        return
+    with pytest.raises(ProxyException) as exc:
+        await debug_sso_login(MagicMock(spec=Request))
+    assert str(exc.value.code) == "403"
 
 
 @pytest.mark.asyncio
@@ -8728,7 +8525,6 @@ async def test_redirect_from_openid_persists_assertion_under_canonical_user_id()
         patch("litellm.proxy.utils.get_prisma_client_or_throw", return_value=MagicMock()),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),
         patch("litellm.proxy.proxy_server.general_settings", {}),
-        patch("litellm.proxy.proxy_server.premium_user", False),
         patch("litellm.proxy.proxy_server.user_custom_sso", None),
         patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),
         patch("litellm.proxy.proxy_server.redis_usage_cache", None),
@@ -8967,7 +8763,6 @@ async def test_browser_funnel_reports_an_uncaptured_assertion(monkeypatch, caplo
         ),
         patch("litellm.proxy.proxy_server.master_key", "sk-master"),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.general_settings", {}),  # test-quality-ok: endpoint reads proxy globals
-        patch("litellm.proxy.proxy_server.premium_user", False),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.user_custom_sso", None),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),  # test-quality-ok: endpoint reads proxy globals
         patch("litellm.proxy.proxy_server.redis_usage_cache", None),  # test-quality-ok: endpoint reads proxy globals
@@ -9407,3 +9202,137 @@ class TestSessionTokenCookie:
         resp = Response()
         set_session_token_cookie(resp, _make_http_request(), "jwt-token-value")
         assert "Secure" in self._cookie(resp)
+
+
+class _HeaderSignInHandler:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def handle_custom_ui_sso_sign_in(self, request: Request) -> OpenID:
+        self.calls += 1
+        return OpenID(id=request.headers["x-forwarded-user"], email="dev@example.com", provider="oauth2-proxy")
+
+
+class _RecordedSignIn:
+    def __init__(self) -> None:
+        self.kwargs: dict[str, object] = {}
+
+    async def __call__(self, **kwargs: object) -> RedirectResponse:
+        self.kwargs = kwargs
+        return RedirectResponse("/ui/")
+
+
+def _peer_request(client_ip: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/sso/key/generate",
+            "query_string": b"",
+            "headers": [(b"x-forwarded-user", b"user-from-proxy")],
+            "client": (client_ip, 51000),
+        }
+    )
+
+
+@pytest.fixture
+def behind_trusted_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {"trusted_proxy_ranges": ["10.0.0.0/8"]})
+
+
+@pytest.mark.usefixtures("behind_trusted_proxy")
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_signs_in_the_user_it_returns(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+    finish: Final = _RecordedSignIn()
+
+    response: Final = await _sign_in_with_custom_ui_sso_handler(
+        handler=_HeaderSignInHandler(),
+        request=_peer_request("10.1.2.3"),
+        return_to="https://attacker.example/steal",
+        complete_sign_in=finish,
+    )
+
+    assert response.headers["location"] == "/ui/"
+    result: Final = finish.kwargs["result"]
+    assert isinstance(result, OpenID)
+    assert result.id == "user-from-proxy"
+    assert finish.kwargs["return_to"] is None
+
+
+@pytest.mark.usefixtures("behind_trusted_proxy")
+@pytest.mark.parametrize(
+    ("features", "client_ip"),
+    [(("guardrails",), "10.1.2.3"), (("sso",), "203.0.113.9")],
+    ids=["without-sso-feature", "untrusted-peer"],
+)
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_is_refused_before_it_reads_headers(
+    monkeypatch: pytest.MonkeyPatch, features: tuple[str, ...], client_ip: str
+) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    handler: Final = _HeaderSignInHandler()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _sign_in_with_custom_ui_sso_handler(
+            handler=handler, request=_peer_request(client_ip), return_to=None, complete_sign_in=_RecordedSignIn()
+        )
+
+    assert exc_info.value.status_code == 403
+    assert handler.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_needs_trusted_proxy_ranges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+    monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {})
+    handler: Final = _HeaderSignInHandler()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _sign_in_with_custom_ui_sso_handler(
+            handler=handler, request=_peer_request("10.1.2.3"), return_to=None, complete_sign_in=_RecordedSignIn()
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "trusted_proxy_ranges" in str(exc_info.value.detail)
+    assert handler.calls == 0
+
+
+@pytest.mark.usefixtures("behind_trusted_proxy")
+@pytest.mark.asyncio
+async def test_custom_ui_sso_handler_without_the_sign_in_method_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import _sign_in_with_custom_ui_sso_handler
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+
+    with pytest.raises(ValueError, match="handle_custom_ui_sso_sign_in"):
+        await _sign_in_with_custom_ui_sso_handler(
+            handler=object(), request=_peer_request("10.1.2.3"), return_to=None, complete_sign_in=_RecordedSignIn()
+        )
+
+
+@pytest.mark.asyncio
+async def test_sso_login_endpoint_routes_to_the_custom_ui_sso_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.proxy.management_endpoints.ui_sso import google_login
+
+    install_entitlements(monkeypatch, unlicensed_entitlements())
+    handler: Final = _HeaderSignInHandler()
+    for var in _SSO_PROVIDER_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("litellm.proxy.proxy_server.master_key", "sk-1234")
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock())
+    monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {"trusted_proxy_ranges": ["10.0.0.0/8"]})
+    monkeypatch.setattr("litellm.proxy.proxy_server.user_custom_ui_sso_sign_in_handler", handler)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await google_login(request=_peer_request("10.1.2.3"))
+
+    assert exc_info.value.status_code == 403
+    assert "Custom UI SSO sign-in" in str(exc_info.value.detail)
+    assert handler.calls == 0

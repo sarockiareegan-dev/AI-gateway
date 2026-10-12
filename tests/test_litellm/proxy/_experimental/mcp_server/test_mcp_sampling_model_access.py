@@ -154,6 +154,20 @@ class TestCheckModelAccess:
         assert "Tried to access gpt-4oforged" in denial_records[0].getMessage()
 
     @pytest.mark.asyncio
+    async def test_should_deny_admin_viewer_without_a_real_credential(self):
+        auth = _make_user_api_key_auth(
+            models=[],
+            api_key=None,
+            token=None,
+            user_role="proxy_admin_viewer",
+        )
+
+        result = await _check_model_access("gpt-4o", user_api_key_auth=auth)
+
+        assert result is not None
+        assert "sampling requires a valid LiteLLM" in result.message
+
+    @pytest.mark.asyncio
     async def test_should_deny_empty_oauth_passthrough_placeholder(self):
         """Regression: process_mcp_request() returns an empty UserAPIKeyAuth()
         for OAuth2 upstream-token passthrough.  The None check alone is not

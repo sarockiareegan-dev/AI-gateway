@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from litellm.proxy._types import LiteLLMRoutes
+from litellm.proxy._types import LiteLLMRoutes, LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.analytics_endpoints.analytics_endpoints import get_global_activity
 from litellm.proxy.analytics_endpoints.cache_activity import (
     ERROR_BREAKDOWN_SQL,
@@ -48,6 +48,7 @@ ERROR_ROWS = [
 ]
 KEY_ALIAS_ROWS = [{"key_alias": "Unnamed Key"}, {"key_alias": "my-key"}]
 MODEL_ROWS = [{"model": "gpt-5.1"}]
+ADMIN = UserAPIKeyAuth(api_key="sk-admin", user_role=LitellmUserRoles.PROXY_ADMIN)
 
 
 def build_prisma(query_raw: AsyncMock) -> MagicMock:
@@ -78,7 +79,9 @@ def mock_prisma(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_returns_groups_totals_and_filter_options(mock_prisma: MagicMock):
-    response = await get_global_activity(start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[])
+    response = await get_global_activity(
+        start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN
+    )
 
     assert [group.call_type for group in response.groups] == ["acompletion", "Unknown"]
     assert response.groups[0].api_requests == 1000
@@ -104,6 +107,7 @@ async def test_filters_are_passed_to_sql_as_json_arrays(mock_prisma: MagicMock):
         end_date="2026-07-27",
         key_aliases=["my-key"],
         models=["gpt-5.1", "claude-opus-4-8"],
+        user_api_key_dict=ADMIN,
     )
 
     filtered_calls = [
@@ -120,7 +124,9 @@ async def test_every_query_excludes_the_same_info_routes(mock_prisma: MagicMock)
     """Regression for LIT-5884: failed info-route calls are spend-logged but are not inference traffic, so
     the groups, error breakdown and both filter-option queries all receive the same exclusion list. What
     the SQL does with it is covered against Postgres in tests/proxy_behavior/spend/test_cache_activity.py."""
-    await get_global_activity(start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[])
+    await get_global_activity(
+        start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN
+    )
 
     exclusions_by_query = {call.args[0]: json.loads(call.args[-1]) for call in mock_prisma.db.query_raw.call_args_list}
     assert set(exclusions_by_query) == {GROUPS_SQL, ERROR_BREAKDOWN_SQL, KEY_ALIAS_OPTIONS_SQL, MODEL_OPTIONS_SQL}
@@ -133,9 +139,25 @@ async def test_every_query_excludes_the_same_info_routes(mock_prisma: MagicMock)
 @pytest.mark.asyncio
 async def test_rejects_malformed_dates_with_400(mock_prisma: MagicMock):
     with pytest.raises(HTTPException) as exc_info:
-        await get_global_activity(start_date="07/01/2026", end_date="2026-07-27", key_aliases=[], models=[])
+        await get_global_activity(
+            start_date="07/01/2026", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=ADMIN
+        )
 
     assert exc_info.value.status_code == 400
+    mock_prisma.db.query_raw.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN, LitellmUserRoles.TEAM])
+async def test_non_admins_cannot_read_proxy_wide_cache_activity(mock_prisma: MagicMock, role):
+    caller = UserAPIKeyAuth(api_key="sk-member", user_id="member", org_id="org-a", user_role=role)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_global_activity(
+            start_date="2026-07-01", end_date="2026-07-27", key_aliases=[], models=[], user_api_key_dict=caller
+        )
+
+    assert exc_info.value.status_code == 403
     mock_prisma.db.query_raw.assert_not_called()
 
 

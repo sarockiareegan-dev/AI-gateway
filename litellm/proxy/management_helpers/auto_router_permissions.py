@@ -26,6 +26,7 @@ from litellm.proxy.auth.auth_checks import (
     can_project_access_model,
     can_team_access_model,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.team_grants import team_model_aliases
 from litellm.proxy.common_utils.encrypt_decrypt_utils import decrypt_value_helper
 from litellm.repositories.organization_repository import OrganizationRepository
@@ -106,10 +107,14 @@ class MemberAutoRouterDependencyObjects:
 
 
 def authorize_member_auto_router_team(
-    *, user_api_key_dict: UserAPIKeyAuth, team: LiteLLM_TeamTable, premium_user: bool
+    *, user_api_key_dict: UserAPIKeyAuth, team: LiteLLM_TeamTable, entitlements: EntitlementService | None = None
 ) -> None:
-    if not premium_user:
-        raise HTTPException(status_code=403, detail=CommonProxyErrors.not_premium_user.value)
+    if not is_licensed(LicenseFeature.AUTO_ROUTER, entitlements):
+        raise HTTPException(
+            status_code=403,
+            detail="Team member auto routers need the 'auto_router' feature on the Agami license. "
+            f"{CommonProxyErrors.not_premium_user.value}",
+        )
     if (
         user_api_key_dict.user_role
         not in (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.TEAM, LitellmUserRoles.ORG_ADMIN)
@@ -274,11 +279,10 @@ async def authorize_member_auto_router_write(
     existing: Deployment | None,
     user_api_key_dict: UserAPIKeyAuth,
     team: LiteLLM_TeamTable,
-    premium_user: bool,
     prisma_client: DatabaseClient,
     llm_router: Router,
 ) -> MemberAutoRouterWrite:
-    authorize_member_auto_router_team(user_api_key_dict=user_api_key_dict, team=team, premium_user=premium_user)
+    authorize_member_auto_router_team(user_api_key_dict=user_api_key_dict, team=team)
     stored: Final = StoredAutoRouterIdentity.model_validate(existing.model_dump()) if existing is not None else None
     if stored is not None and stored.created_by != user_api_key_dict.user_id:
         raise HTTPException(status_code=403, detail="Team members can update only their own auto routers.")

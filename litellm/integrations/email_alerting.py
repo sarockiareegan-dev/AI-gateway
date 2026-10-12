@@ -79,10 +79,6 @@ async def send_team_budget_alert(webhook_event: WebhookEvent) -> bool:
     email_logo_url = os.getenv("SMTP_SENDER_LOGO", os.getenv("EMAIL_LOGO_URL", None))
     email_support_contact = os.getenv("EMAIL_SUPPORT_CONTACT", None)
 
-    # await self._check_if_using_premium_email_feature(
-    #     premium_user, email_logo_url, email_support_contact
-    # )
-
     if email_logo_url is None:
         email_logo_url = LITELLM_LOGO_URL
     if email_support_contact is None:

@@ -13,10 +13,6 @@ from .prompt_cache_prediction import PromptCacheObserver
 from .responses_id_security import ResponsesIDSecurity
 from .sensitive_data_routing import _PROXY_SensitiveDataRoutingHandler
 
-# List of all available hooks that can be enabled.
-# Defined before the enterprise import below so that any module re-imported
-# transitively through `enterprise.enterprise_hooks` can resolve `PROXY_HOOKS`
-# and `get_proxy_hook` from this partially-initialized module without circling.
 PROXY_HOOKS: Final = {
     "parallel_request_limiter": _PROXY_MaxParallelRequestsHandler_v3,
     "cache_control_check": _PROXY_CacheControlCheck,
@@ -43,16 +39,3 @@ def get_proxy_hook(
     if hook_name not in PROXY_HOOKS:
         raise ValueError(f"Unknown hook: {hook_name}. Available hooks: {list(PROXY_HOOKS.keys())}")
     return PROXY_HOOKS[hook_name]
-
-
-### CHECK IF ENTERPRISE HOOKS ARE AVAILABLE ####
-
-try:
-    from enterprise.enterprise_hooks import ENTERPRISE_PROXY_HOOKS
-except ImportError:
-    ENTERPRISE_PROXY_HOOKS = {}
-
-
-### update PROXY_HOOKS with ENTERPRISE_PROXY_HOOKS ###
-
-PROXY_HOOKS.update(ENTERPRISE_PROXY_HOOKS)

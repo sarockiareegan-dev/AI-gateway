@@ -365,3 +365,19 @@ async def test_service_client_defaults_to_commercial_endpoint(mock_env_vars):
         fake_aio_module.DataLakeServiceClient.call_args.kwargs["account_url"]
         == "https://test-account.dfs.core.windows.net"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("features", "queued"), [(("logging_integrations",), 1), (("sso",), 0)])
+async def test_success_events_are_only_queued_with_the_logging_integrations_feature(
+    mock_env_vars, monkeypatch, features, queued
+):
+    from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    with patch("litellm.integrations.azure_storage.azure_storage.get_azure_ad_token_from_entra_id"):
+        logger = AzureBlobStorageLogger()
+
+    await logger.async_log_success_event({"standard_logging_object": {"id": "log-1"}}, None, None, None)
+
+    assert len(logger.log_queue) == queued

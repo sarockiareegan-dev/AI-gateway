@@ -35,7 +35,8 @@ from litellm.constants import (
 )
 from litellm.litellm_core_utils.classifier_logging import classifier_audit_fields, classifier_input_snapshot
 from litellm.proxy._types import *
-from litellm.proxy._types import ProviderBudgetResponse, ProviderBudgetResponseObject
+from litellm.proxy._types import ProviderBudgetResponse, ProviderBudgetResponseObject, ProxyErrorDetail
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 
 # NOTE: Avoid module-level import from common_utils: proxy_server imports this
@@ -395,9 +396,8 @@ async def spend_key_fn(
     """
     View keys created, ordered by spend.
 
-    - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every key in
-      the database.
-    - All other callers (INTERNAL_USER / INTERNAL_USER_VIEW_ONLY, etc.) are
+    - PROXY_ADMIN sees every key in the database.
+    - All other callers (PROXY_ADMIN_VIEW_ONLY, INTERNAL_USER, etc.) are
       scoped to keys they own (``user_id == caller``). A caller with no
       ``user_id`` has no scope and receives an empty list rather than the
       full table.
@@ -461,8 +461,8 @@ async def spend_user_fn(
     """
     View users created, ordered by spend.
 
-    - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every user, or
-      a specific user when ``user_id`` is supplied.
+    - PROXY_ADMIN sees every user, or a specific user when ``user_id`` is
+      supplied.
     - All other callers may only read their own row. If they supply a
       ``user_id`` query parameter that does not match their authenticated
       ``user_id`` the request is rejected with HTTP 403; supplying their
@@ -529,6 +529,7 @@ async def spend_user_fn(
     },
 )
 async def view_spend_tags(
+    user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
     start_date: str | None = fastapi.Query(
         default=None,
         description="Time from which to start viewing key spend",
@@ -560,6 +561,11 @@ async def view_spend_tags(
         if prisma_client is None:
             raise Exception(
                 "Database not connected. Connect a database to your proxy - https://docs.litellm.ai/docs/simple_proxy#managing-auth---virtual-keys"
+            )
+        if not _is_admin_view_safe(user_api_key_dict=user_api_key_dict):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ProxyErrorDetail(error="Only proxy admins can view proxy-wide tag spend."),
             )
 
         # run the following SQL query on prisma
@@ -682,10 +688,7 @@ async def get_global_activity(
             )
 
         db_response: Sequence[_ActivityRow] | None
-        if (
-            user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER
-            or user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER_VIEW_ONLY
-        ):
+        if not _is_admin_view_safe(user_api_key_dict):
             db_response = await get_global_activity_internal_user(user_api_key_dict, start_date_obj, end_date_obj)
         else:
             sql_query: Final = """
@@ -847,10 +850,7 @@ async def get_global_activity_model(
             )
 
         db_response: Sequence[_ActivityModelRow] | None
-        if (
-            user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER
-            or user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER_VIEW_ONLY
-        ):
+        if not _is_admin_view_safe(user_api_key_dict):
             db_response = await get_global_activity_model_internal_user(user_api_key_dict, start_date_obj, end_date_obj)
         else:
             sql_query: Final = """
@@ -1379,7 +1379,7 @@ async def get_global_spend_report(
     start_date_obj: Final = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     end_date_obj: Final = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
-    from litellm.proxy.proxy_server import premium_user, prisma_client
+    from litellm.proxy.proxy_server import prisma_client
 
     try:
         if prisma_client is None:
@@ -1387,7 +1387,7 @@ async def get_global_spend_report(
                 "Database not connected. Connect a database to your proxy - https://docs.litellm.ai/docs/simple_proxy#managing-auth---virtual-keys"
             )
 
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.SPEND_REPORTS):
             verbose_proxy_logger.debug("accessing /spend/report but not a premium user")
             raise ValueError("/spend/report endpoint " + CommonProxyErrors.not_premium_user.value)
         db_response: Sequence[Mapping[str, object]] | None
@@ -1695,14 +1695,14 @@ _ORG_SPEND_REPORT_SQL = """
 
 
 def _spend_report_prereqs() -> PrismaClient:
-    from litellm.proxy.proxy_server import premium_user, prisma_client
+    from litellm.proxy.proxy_server import prisma_client
 
     if prisma_client is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=CommonProxyErrors.db_not_connected_error.value,
         )
-    if premium_user is not True:
+    if not is_licensed(LicenseFeature.SPEND_REPORTS):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="/spend/report endpoint " + CommonProxyErrors.not_premium_user.value,
@@ -1749,8 +1749,7 @@ def _resolve_spend_report_scope(
     """Return the scope value the caller may query spend for.
 
     Non-admin callers are clamped to their own identity: a ``requested`` value
-    that differs from ``caller_value`` is a 403. Proxy admins (and admin
-    viewers) may request any scope.
+    that differs from ``caller_value`` is a 403. Proxy admins may request any scope.
     """
     if requested:
         if requested != caller_value and not _is_admin_view_safe(user_api_key_dict=user_api_key_dict):
@@ -1774,8 +1773,8 @@ async def _resolve_org_spend_report_scope(
 ) -> tuple[str, tuple[str, ...]]:
     """Return the organization to report on and the team_ids belonging to it.
 
-    Callable by proxy admins (any organization) and org admins of the target
-    organization; every other caller is a 403 from ``_verify_org_access``.
+    Callable by proxy admins (any organization), and by org admins and admin viewers
+    of the target organization; every other caller is a 403 from ``_verify_org_access``.
     """
     from litellm.proxy.management_endpoints.organization_endpoints import _verify_org_access
 
@@ -1789,6 +1788,7 @@ async def _resolve_org_spend_report_scope(
         organization_id=target_org,
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
+        access="read",
     )
     teams = await TeamRepository(prisma_client).find_by_organization_id(organization_id=target_org)
     return target_org, tuple(team.team_id for team in teams)
@@ -2685,6 +2685,13 @@ async def ui_view_spend_logs(
                             {"user": user_api_key_dict.user_id}
                         ]
                 where_conditions.pop("team_id", None)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=ProxyErrorDetail(
+                        error="Viewing spend logs needs a key that belongs to a user, or a team_id you can view."
+                    ),
+                )
         # Calculate skip value for pagination
         skip: Final = (page - 1) * page_size
 
@@ -3400,10 +3407,14 @@ async def view_spend_logs(
     """
     from litellm.proxy.proxy_server import prisma_client
 
-    if (
-        user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER
-        or user_api_key_dict.user_role == LitellmUserRoles.INTERNAL_USER_VIEW_ONLY
-    ):
+    if not _is_admin_view_safe(user_api_key_dict):
+        if user_api_key_dict.user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ProxyErrorDetail(
+                    error="Viewing spend logs needs a key that belongs to a user, or a proxy admin key."
+                ),
+            )
         user_id = user_api_key_dict.user_id
 
     try:
@@ -4679,13 +4690,7 @@ def _is_admin_view_safe(user_api_key_dict: UserAPIKeyAuth) -> bool:
     Defaults to False on any exception.
     """
     try:
-        user_role: Final = getattr(user_api_key_dict, "user_role", None)
-        if user_role is None:
-            return False
-        return user_role in (
-            LitellmUserRoles.PROXY_ADMIN,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-        )
+        return user_api_key_has_admin_view(user_api_key_dict)
     except Exception:
         return False
 
@@ -4724,16 +4729,7 @@ def _can_user_view_spend_log(user_api_key_dict: UserAPIKeyAuth) -> bool:
     """
     Check if the requesting user can view their own spend logs.
     """
-    user_role: Final = user_api_key_dict.user_role
-    user_id: Final = user_api_key_dict.user_id
-    return (
-        user_role
-        in (
-            LitellmUserRoles.INTERNAL_USER,
-            LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
-        )
-        and user_id is not None
-    )
+    return not _is_admin_view_safe(user_api_key_dict) and user_api_key_dict.user_id is not None
 
 
 async def _user_can_view_spend_log_owner(

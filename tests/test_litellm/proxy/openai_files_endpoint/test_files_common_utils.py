@@ -4,8 +4,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from agami.routing.org_models import GLOBAL_MODELS_ONLY, org_model_name
+from litellm import Router
+from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+from litellm.proxy.auth.agami_access import key_model_visibility
 from litellm.proxy.openai_files_endpoints.common_utils import (
     apply_unified_file_ids,
+    get_authorized_credentials_for_model,
     get_credentials_for_model,
     is_litellm_executed_batch,
     map_raw_file_ids_to_unified,
@@ -31,6 +36,50 @@ def test_get_credentials_for_model_rejects_an_unknown_model_without_persisting_t
     assert raised.value.retryable_with_model_read_through is False
     assert raised.value.spend_log_error_message.startswith("file upload: ")
     assert "medical records" not in raised.value.spend_log_error_message
+
+
+def _org_router() -> Router:
+    return Router(
+        model_list=[
+            {
+                "model_name": org_model_name(organization_id, "gpt-4o"),
+                "litellm_params": {"model": "openai/gpt-4o", "api_key": f"sk-{organization_id}"},
+                "model_info": {
+                    "id": f"{organization_id}-dep",
+                    "organization_id": organization_id,
+                    "organization_public_model_name": "gpt-4o",
+                },
+            }
+            for organization_id in ("org-a", "org-b")
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_file_credentials_resolve_only_the_callers_organization_models():
+    router: Final = _org_router()
+    org_a_key: Final = UserAPIKeyAuth(api_key="sk-key", org_id="org-a")
+
+    own: Final = await get_authorized_credentials_for_model(
+        llm_router=router, model_id="gpt-4o", user_api_key_dict=org_a_key
+    )
+    assert own["api_key"] == "sk-org-a"
+
+    for other_organizations_model in ("org-b-dep", org_model_name("org-b", "gpt-4o")):
+        with pytest.raises(ProxyModelNotFoundError):
+            await get_authorized_credentials_for_model(
+                llm_router=router, model_id=other_organizations_model, user_api_key_dict=org_a_key
+            )
+
+
+def test_super_admin_resolves_any_organizations_credentials():
+    admin: Final = UserAPIKeyAuth(api_key="sk-admin", user_role=LitellmUserRoles.PROXY_ADMIN)
+
+    credentials: Final = get_credentials_for_model(
+        llm_router=_org_router(), model_id="org-b-dep", visibility=key_model_visibility(admin)
+    )
+
+    assert credentials["api_key"] == "sk-org-b"
 
 
 def _batch(input_file_id, output_file_id, error_file_id) -> LiteLLMBatch:
@@ -411,7 +460,9 @@ def test_add_internal_model_credentials_attaches_an_immutable_snapshot():
     assert isinstance(snapshot, MappingProxyType)
     with pytest.raises(TypeError):
         snapshot["s3_bucket_name"] = "attacker-bucket"
-    router.get_deployment_credentials_with_provider.assert_called_once_with(model_id="deployment-1")
+    router.get_deployment_credentials_with_provider.assert_called_once_with(
+        model_id="deployment-1", visibility=GLOBAL_MODELS_ONLY
+    )
 
 
 @pytest.mark.parametrize(

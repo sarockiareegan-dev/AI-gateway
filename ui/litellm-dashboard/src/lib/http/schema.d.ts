@@ -1104,60 +1104,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/audit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Audit Logs
-         * @description Get all audit logs with filtering and pagination.
-         *
-         *     Returns a paginated response of audit logs matching the specified filters.
-         *
-         *     Note: object_team_id and object_key_hash use Prisma JSON path filtering,
-         *     which requires PostgreSQL.
-         */
-        get: operations["get_audit_logs_audit_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/audit/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Audit Log By Id
-         * @description Get detailed information about a specific audit log entry by its ID.
-         *
-         *     Args:
-         *         id (str): The unique identifier of the audit log entry
-         *
-         *     Returns:
-         *         AuditLogResponse: Detailed information about the audit log entry
-         *
-         *     Raises:
-         *         HTTPException: If the audit log is not found or if there's a database connection error
-         */
-        get: operations["get_audit_log_by_id_audit__id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/authorize": {
         parameters: {
             query?: never;
@@ -4349,50 +4295,6 @@ export interface paths {
         put?: never;
         /** Delete Allowed Ip */
         post: operations["delete_allowed_ip_delete_allowed_ip_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/email/event_settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Email Event Settings
-         * @description Get all email event settings
-         */
-        get: operations["get_email_event_settings_email_event_settings_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update Event Settings
-         * @description Update the settings for email events
-         */
-        patch: operations["update_event_settings_email_event_settings_patch"];
-        trace?: never;
-    };
-    "/email/event_settings/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reset Event Settings
-         * @description Reset all email event settings to default (new user invitations on, virtual key creation off)
-         */
-        post: operations["reset_event_settings_email_event_settings_reset_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11884,20 +11786,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Project
-         * @description Delete projects
-         *
-         *     Parameters:
-         *     - project_ids: *List[str]* - List of project ids to delete
-         *
-         *     Example:
-         *     ```bash
-         *     curl --location --request DELETE 'http://0.0.0.0:4000/project/delete' \
-         *     --header 'Authorization: Bearer sk-1234' \
-         *     --header 'Content-Type: application/json' \
-         *     --data '{
-         *         "project_ids": ["project-123", "project-456"]
-         *     }'
-         *     ```
+         * @description Delete projects. Refused while any key is still attached to one of them.
          */
         delete: operations["delete_project_project_delete_delete"];
         options?: never;
@@ -11912,19 +11801,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Project Info
-         * @description Get information about a specific project
-         *
-         *     Parameters:
-         *     - project_id: *str* - The project id to fetch info for
-         *
-         *     Example:
-         *     ```bash
-         *     curl --location 'http://0.0.0.0:4000/project/info?project_id=project-123' \
-         *     --header 'Authorization: Bearer sk-1234'
-         *     ```
-         */
+        /** Project Info */
         get: operations["project_info_project_info_get"];
         put?: never;
         post?: never;
@@ -11943,13 +11820,7 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description List all projects that the user has access to
-         *
-         *     Example:
-         *     ```bash
-         *     curl --location 'http://0.0.0.0:4000/project/list' \
-         *     --header 'Authorization: Bearer sk-1234'
-         *     ```
+         * @description Projects of every team the caller belongs to or reads through its organizations; all projects for admins.
          */
         get: operations["list_projects_project_list_get"];
         put?: never;
@@ -11971,76 +11842,7 @@ export interface paths {
         put?: never;
         /**
          * New Project
-         * @description Create a new project. Projects sit between teams and keys in the hierarchy.
-         *
-         *     Only admins or team admins can create projects.
-         *
-         *     # Parameters
-         *
-         *     - project_alias: *Optional[str]* - The name of the project.
-         *     - description: *Optional[str]* - Description of the project's purpose and use case.
-         *     - team_id: *str* - The team id that this project belongs to. Required.
-         *     - models: *List* - The models the project has access to.
-         *     - budget_id: *Optional[str]* - The id for a budget (tpm/rpm/max budget) for the project.
-         *     ### IF NO BUDGET ID - CREATE ONE WITH THESE PARAMS ###
-         *     - max_budget: *Optional[float]* - Max budget for project
-         *     - tpm_limit: *Optional[int]* - Max tpm limit for project
-         *     - rpm_limit: *Optional[int]* - Max rpm limit for project
-         *     - max_parallel_requests: *Optional[int]* - Max parallel requests for project
-         *     - soft_budget: *Optional[float]* - Get a slack alert when this soft budget is reached. Don't block requests.
-         *     - model_max_budget: *Optional[dict]* - Max budget for a specific model. Example: {"gpt-4": 100.0, "gpt-3.5-turbo": 50.0}
-         *     - model_rpm_limit: *Optional[dict]* - RPM limits per model. Example: {"gpt-4": 1000, "gpt-3.5-turbo": 5000}
-         *     - model_tpm_limit: *Optional[dict]* - TPM limits per model. Example: {"gpt-4": 50000, "gpt-3.5-turbo": 100000}
-         *     - budget_duration: *Optional[str]* - Frequency of reseting project budget
-         *     - metadata: *Optional[dict]* - Metadata for project, store information for project. Example metadata - {"use_case_id": "SNOW-12345", "responsible_ai_id": "RAI-67890"}
-         *     - tags: *Optional[list]* - Tags for the project. Example: ["production", "api"]
-         *     - blocked: *bool* - Flag indicating if the project is blocked or not - will stop all calls from keys with this project_id.
-         *     - object_permission: Optional[LiteLLM_ObjectPermissionBase] - project-specific object permission. Example - {"vector_stores": ["vector_store_1", "vector_store_2"]}. IF null or {} then no object permission.
-         *
-         *     Example 1: Create new project **without** a budget_id, with model-specific limits
-         *
-         *     ```bash
-         *     curl --location 'http://0.0.0.0:4000/project/new' \
-         *     --header 'Authorization: Bearer sk-1234' \
-         *     --header 'Content-Type: application/json' \
-         *     --data '{
-         *         "project_alias": "flight-search-assistant",
-         *         "description": "AI-powered flight search and booking assistant",
-         *         "team_id": "team-123",
-         *         "models": ["gpt-4", "gpt-3.5-turbo"],
-         *         "max_budget": 100,
-         *         "model_rpm_limit": {
-         *             "gpt-4": 1000,
-         *             "gpt-3.5-turbo": 5000
-         *         },
-         *         "model_tpm_limit": {
-         *             "gpt-4": 50000,
-         *             "gpt-3.5-turbo": 100000
-         *         },
-         *         "metadata": {
-         *             "use_case_id": "SNOW-12345",
-         *             "responsible_ai_id": "RAI-67890"
-         *         }
-         *     }'
-         *     ```
-         *
-         *     Example 2: Create new project **with** a budget_id
-         *
-         *     ```bash
-         *     curl --location 'http://0.0.0.0:4000/project/new' \
-         *     --header 'Authorization: Bearer sk-1234' \
-         *     --header 'Content-Type: application/json' \
-         *     --data '{
-         *         "project_alias": "hotel-recommendations",
-         *         "description": "Personalized hotel recommendation engine",
-         *         "team_id": "team-123",
-         *         "models": ["claude-3-sonnet"],
-         *         "budget_id": "428eeaa8-f3ac-4e85-a8fb-7dc8d7aa8689",
-         *         "metadata": {
-         *             "use_case_id": "SNOW-54321"
-         *         }
-         *     }'
-         *     ```
+         * @description Create a project inside a team. Budget fields create a budget for the project unless budget_id is given.
          */
         post: operations["new_project_project_new_post"];
         delete?: never;
@@ -12060,44 +11862,7 @@ export interface paths {
         put?: never;
         /**
          * Update Project
-         * @description Update a project
-         *
-         *     Parameters:
-         *     - project_id: *str* - The project id to update. Required.
-         *     - project_alias: *Optional[str]* - Updated name for the project
-         *     - description: *Optional[str]* - Updated description for the project
-         *     - team_id: *Optional[str]* - Updated team_id for the project
-         *     - metadata: *Optional[dict]* - Updated metadata for project
-         *     - models: *Optional[list]* - Updated list of models for the project
-         *     - blocked: *Optional[bool]* - Updated blocked status
-         *     - max_budget: *Optional[float]* - Updated max budget
-         *     - tpm_limit: *Optional[int]* - Updated tpm limit
-         *     - rpm_limit: *Optional[int]* - Updated rpm limit
-         *     - model_rpm_limit: *Optional[dict]* - Updated RPM limits per model
-         *     - model_tpm_limit: *Optional[dict]* - Updated TPM limits per model
-         *     - budget_duration: *Optional[str]* - Updated budget duration
-         *     - tags: *Optional[list]* - Updated list of tags for the project
-         *     - object_permission: Optional[LiteLLM_ObjectPermissionBase] - Updated object permission
-         *
-         *     Example:
-         *     ```bash
-         *     curl --location 'http://0.0.0.0:4000/project/update' \
-         *     --header 'Authorization: Bearer sk-1234' \
-         *     --header 'Content-Type: application/json' \
-         *     --data '{
-         *         "project_id": "project-123",
-         *         "description": "Updated flight search system with enhanced capabilities",
-         *         "max_budget": 200,
-         *         "model_rpm_limit": {
-         *             "gpt-4": 2000,
-         *             "gpt-3.5-turbo": 10000
-         *         },
-         *         "metadata": {
-         *             "use_case_id": "SNOW-12345",
-         *             "status": "active"
-         *         }
-         *     }'
-         *     ```
+         * @description Update a project. Metadata keys are merged; budget fields update the project's budget or create one.
          */
         post: operations["update_project_project_update_post"];
         delete?: never;
@@ -13362,27 +13127,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/robots.txt": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Robots
-         * @description Block all web crawlers from indexing the proxy server endpoints
-         *     This is useful for ensuring that the API endpoints aren't indexed by search engines
-         */
-        get: operations["get_robots_robots_txt_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/router/fields": {
         parameters: {
             query?: never;
@@ -14478,9 +14222,8 @@ export interface paths {
          * Spend Key Fn
          * @description View keys created, ordered by spend.
          *
-         *     - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every key in
-         *       the database.
-         *     - All other callers (INTERNAL_USER / INTERNAL_USER_VIEW_ONLY, etc.) are
+         *     - PROXY_ADMIN sees every key in the database.
+         *     - All other callers (PROXY_ADMIN_VIEW_ONLY, INTERNAL_USER, etc.) are
          *       scoped to keys they own (``user_id == caller``). A caller with no
          *       ``user_id`` has no scope and receives an empty list rather than the
          *       full table.
@@ -14702,8 +14445,8 @@ export interface paths {
          * Spend User Fn
          * @description View users created, ordered by spend.
          *
-         *     - Admin callers (PROXY_ADMIN / PROXY_ADMIN_VIEW_ONLY) see every user, or
-         *       a specific user when ``user_id`` is supplied.
+         *     - PROXY_ADMIN sees every user, or a specific user when ``user_id`` is
+         *       supplied.
          *     - All other callers may only read their own row. If they supply a
          *       ``user_id`` query parameter that does not match their authenticated
          *       ``user_id`` the request is rejected with HTTP 403; supplying their
@@ -16950,26 +16693,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/user/available_users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Available Enterprise Users
-         * @description For keys with `max_users` set, return the list of users that are allowed to use the key.
-         */
-        get: operations["available_enterprise_users_user_available_users_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/user/bulk_update": {
         parameters: {
             query?: never;
@@ -17140,15 +16863,10 @@ export interface paths {
          * Ui View Users
          * @description Filter users based on partial match of user_id or email with pagination.
          *
-         *     Behaviour depends on the ``scope_user_search_to_org`` UI-setting flag
-         *     (stored in the ``litellm_uisettings`` table):
-         *
-         *     * **Flag OFF (default):** any authenticated user can search all users.
-         *     * **Flag ON:**
-         *       - Proxy admins see all users.
-         *       - Org admins see only users in their org(s).
-         *       - Team admins for an org-bound team see users in that org.
-         *       - Others receive a 403.
+         *     * Proxy admins see all users.
+         *     * Organization members see only users in their org(s).
+         *     * Team admins for an org-bound team see users in that org.
+         *     * Others receive a 403.
          */
         get: operations["ui_view_users_user_filter_ui_get"];
         put?: never;
@@ -23841,37 +23559,6 @@ export interface components {
             unnamed_teams_count: number;
         };
         /**
-         * AuditLogResponse
-         * @description Response model for a single audit log entry
-         */
-        AuditLogResponse: {
-            /** Action */
-            action: string;
-            /** Before Value */
-            before_value?: {
-                [key: string]: unknown;
-            } | null;
-            /** Changed By */
-            changed_by: string;
-            /** Changed By Api Key */
-            changed_by_api_key: string;
-            /** Id */
-            id: string;
-            /** Object Id */
-            object_id: string;
-            /** Table Name */
-            table_name: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Updated Values */
-            updated_values?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
          * AutoRouterBenchmarkGroup
          * @description One auto-router's slice of the benchmarks.
          */
@@ -27817,6 +27504,8 @@ export interface components {
         /** CreateGuardrailRequest */
         CreateGuardrailRequest: {
             guardrail: components["schemas"]["Guardrail"];
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /** CreateJWTKeyMappingRequest */
         CreateJWTKeyMappingRequest: {
@@ -28367,27 +28056,6 @@ export interface components {
             user_table_name: string;
             /** Write Capacity Units */
             write_capacity_units?: number | null;
-        };
-        /**
-         * EmailEvent
-         * @enum {string}
-         */
-        EmailEvent: "Virtual Key Created" | "New User Invitation" | "Virtual Key Rotated" | "Soft Budget Crossed" | "Max Budget Alert";
-        /** EmailEventSettings */
-        EmailEventSettings: {
-            /** Enabled */
-            enabled: boolean;
-            event: components["schemas"]["EmailEvent"];
-        };
-        /** EmailEventSettingsResponse */
-        EmailEventSettingsResponse: {
-            /** Settings */
-            settings: components["schemas"]["EmailEventSettings"][];
-        };
-        /** EmailEventSettingsUpdateRequest */
-        EmailEventSettingsUpdateRequest: {
-            /** Settings */
-            settings: components["schemas"]["EmailEventSettings"][];
         };
         /** EmbeddingRequest */
         EmbeddingRequest: {
@@ -32710,7 +32378,7 @@ export interface components {
          * LitellmUserRoles
          * @description Admin Roles:
          *     PROXY_ADMIN: admin over the platform
-         *     PROXY_ADMIN_VIEW_ONLY: can login, view all own keys, view all spend
+         *     PROXY_ADMIN_VIEW_ONLY: can login, read-only view of the organizations they belong to
          *     ORG_ADMIN: admin over a specific organization, can create teams, users only within their organization
          *
          *     Internal User Roles:
@@ -33982,71 +33650,6 @@ export interface components {
             /** Tpm Limit */
             tpm_limit?: number | null;
         };
-        /**
-         * NewProjectResponse
-         * @description Response model for POST /project/new
-         */
-        NewProjectResponse: {
-            /**
-             * Blocked
-             * @default false
-             */
-            blocked: boolean;
-            /** Budget Id */
-            budget_id?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Created By */
-            created_by?: string | null;
-            /** Description */
-            description?: string | null;
-            litellm_budget_table?: components["schemas"]["LiteLLM_BudgetTable"] | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Model Rpm Limit */
-            model_rpm_limit?: {
-                [key: string]: unknown;
-            } | null;
-            /** Model Spend */
-            model_spend?: {
-                [key: string]: unknown;
-            } | null;
-            /** Model Tpm Limit */
-            model_tpm_limit?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Models
-             * @default []
-             */
-            models: string[];
-            object_permission?: components["schemas"]["LiteLLM_ObjectPermissionTable"] | null;
-            /** Object Permission Id */
-            object_permission_id?: string | null;
-            /** Project Alias */
-            project_alias?: string | null;
-            /** Project Id */
-            project_id: string;
-            /**
-             * Spend
-             * @default 0
-             */
-            spend: number;
-            /** Team Id */
-            team_id?: string | null;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Updated By */
-            updated_by?: string | null;
-        };
         /** NewTeamRequest */
         NewTeamRequest: {
             /** Access Group Ids */
@@ -34659,34 +34262,6 @@ export interface components {
             page: number;
             /** Page Size */
             page_size: number;
-        };
-        /**
-         * PaginatedAuditLogResponse
-         * @description Response model for paginated audit logs
-         */
-        PaginatedAuditLogResponse: {
-            /** Audit Logs */
-            audit_logs: components["schemas"]["AuditLogResponse"][];
-            /**
-             * Page
-             * @description Current page number
-             */
-            page: number;
-            /**
-             * Page Size
-             * @description Number of items per page
-             */
-            page_size: number;
-            /**
-             * Total
-             * @description Total number of audit logs matching the filters
-             */
-            total: number;
-            /**
-             * Total Pages
-             * @description Total number of pages
-             */
-            total_pages: number;
         };
         /** PassThroughEndpointResponse */
         PassThroughEndpointResponse: {
@@ -39554,6 +39129,8 @@ export interface components {
         /** UpdateGuardrailRequest */
         UpdateGuardrailRequest: {
             guardrail: components["schemas"]["Guardrail"];
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /** UpdateJWTKeyMappingRequest */
         UpdateJWTKeyMappingRequest: {
@@ -41468,6 +41045,10 @@ export interface components {
              * @default false
              */
             member_auto_router: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Organization Public Model Name */
+            organization_public_model_name?: string | null;
             /** Output Cost Per Character */
             output_cost_per_character?: number | null;
             /** Output Cost Per Token */
@@ -43345,107 +42926,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
-            };
-        };
-    };
-    get_audit_logs_audit_get: {
-        parameters: {
-            query?: {
-                page?: number;
-                page_size?: number;
-                /** @description Filter by user or system that performed the action */
-                changed_by?: string | null;
-                /** @description Filter by API key hash that performed the action */
-                changed_by_api_key?: string | null;
-                /** @description Filter by action type (create, update, delete) */
-                action?: string | null;
-                /** @description Filter by table name that was modified */
-                table_name?: string | null;
-                /** @description Filter by ID of the object that was modified */
-                object_id?: string | null;
-                /** @description Filter logs after this date */
-                start_date?: string | null;
-                /** @description Filter logs before this date */
-                end_date?: string | null;
-                /** @description Filter by team_id present in before_value or updated_values JSON (PostgreSQL only) */
-                object_team_id?: string | null;
-                /** @description Filter by token (key hash) present in before_value or updated_values JSON (PostgreSQL only) */
-                object_key_hash?: string | null;
-                /** @description Match a row whose id, object_id, changed_by, or changed_by_api_key equals this value */
-                search?: string | null;
-                /** @description Column to sort by (e.g. 'updated_at', 'action', 'table_name') */
-                sort_by?: string | null;
-                /** @description Sort order ('asc' or 'desc') */
-                sort_order?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedAuditLogResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_audit_log_by_id_audit__id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuditLogResponse"];
-                };
-            };
-            /** @description Audit log not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Database connection error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -48087,79 +47567,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_email_event_settings_email_event_settings_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailEventSettingsResponse"];
-                };
-            };
-        };
-    };
-    update_event_settings_email_event_settings_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailEventSettingsUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reset_event_settings_email_event_settings_reset_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };
@@ -57479,7 +56886,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LiteLLM_ProjectTable"][];
+                    "application/json": {
+                        [key: string]: string[];
+                    };
                 };
             };
             /** @description Validation Error */
@@ -57563,7 +56972,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NewProjectResponse"];
+                    "application/json": components["schemas"]["LiteLLM_ProjectTable"];
                 };
             };
             /** @description Validation Error */
@@ -58739,26 +58148,6 @@ export interface operations {
             };
         };
     };
-    get_robots_robots_txt_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     get_router_fields_router_fields_get: {
         parameters: {
             query?: never;
@@ -58963,9 +58352,7 @@ export interface operations {
     };
     get_scim_base_scim_v2_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -58981,15 +58368,6 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_groups_scim_v2_Groups_get: {
@@ -58998,7 +58376,6 @@ export interface operations {
                 startIndex?: number;
                 count?: number;
                 filter?: string | null;
-                feature?: string | null;
             };
             header?: never;
             path?: never;
@@ -59028,9 +58405,7 @@ export interface operations {
     };
     create_group_scim_v2_Groups_post: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -59063,9 +58438,7 @@ export interface operations {
     };
     get_group_scim_v2_Groups__group_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -59096,9 +58469,7 @@ export interface operations {
     };
     update_group_scim_v2_Groups__group_id__put: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -59133,9 +58504,7 @@ export interface operations {
     };
     delete_group_scim_v2_Groups__group_id__delete: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -59164,9 +58533,7 @@ export interface operations {
     };
     patch_group_scim_v2_Groups__group_id__patch: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 group_id: string;
@@ -59201,9 +58568,7 @@ export interface operations {
     };
     get_resource_types_scim_v2_ResourceTypes_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -59219,22 +58584,11 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_resource_type_scim_v2_ResourceTypes__resource_type_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 resource_type_id: string;
@@ -59265,9 +58619,7 @@ export interface operations {
     };
     get_schemas_scim_v2_Schemas_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -59283,22 +58635,11 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_schema_scim_v2_Schemas__schema_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 schema_id: string;
@@ -59329,9 +58670,7 @@ export interface operations {
     };
     get_service_provider_config_scim_v2_ServiceProviderConfig_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -59347,15 +58686,6 @@ export interface operations {
                     "application/json": components["schemas"]["SCIMServiceProviderConfig"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_users_scim_v2_Users_get: {
@@ -59364,7 +58694,6 @@ export interface operations {
                 startIndex?: number;
                 count?: number;
                 filter?: string | null;
-                feature?: string | null;
             };
             header?: never;
             path?: never;
@@ -59394,9 +58723,7 @@ export interface operations {
     };
     create_user_scim_v2_Users_post: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -59429,9 +58756,7 @@ export interface operations {
     };
     get_user_scim_v2_Users__user_id__get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -59462,9 +58787,7 @@ export interface operations {
     };
     update_user_scim_v2_Users__user_id__put: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -59499,9 +58822,7 @@ export interface operations {
     };
     delete_user_scim_v2_Users__user_id__delete: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -59530,9 +58851,7 @@ export interface operations {
     };
     patch_user_scim_v2_Users__user_id__patch: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -59567,9 +58886,7 @@ export interface operations {
     };
     list_placeholders_scim_v2_placeholders_get: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -59585,22 +58902,11 @@ export interface operations {
                     "application/json": components["schemas"]["SCIMPlaceholder"][];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     merge_placeholder_scim_v2_placeholders__user_id__merge_post: {
         parameters: {
-            query?: {
-                feature?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 user_id: string;
@@ -63084,26 +62390,6 @@ export interface operations {
         };
     };
     ui_get_available_role_user_available_roles_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    available_enterprise_users_user_available_users_get: {
         parameters: {
             query?: never;
             header?: never;

@@ -747,7 +747,7 @@ async def _check_model_access(model: str, user_api_key_auth: "UserAPIKeyAuth | N
     _user_role: Final = getattr(user_api_key_auth, "user_role", None)
 
     _has_real_credential: Final = bool(_api_key) or bool(_token)
-    _is_admin: Final = _user_role in ("proxy_admin", "proxy_admin_viewer") if _user_role else False
+    _is_admin: Final = _user_role == "proxy_admin"
 
     if not _has_real_credential and not _is_admin:
         verbose_logger.warning(

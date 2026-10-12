@@ -8,10 +8,9 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 # POST /v2/key/info resolves the posted keys, then drops any key the caller
-# cannot see via _can_user_query_key_info — silently, no 403. A non-admin sees
-# a key it owns (user_id match) or a key whose team it belongs to. The world's
-# TEAM_ALPHA members all see each other's keys; CROSS_ORG_USER and the org
-# admins see only their own. The request is posted with every world key, and
+# cannot see via _can_user_query_key_info, silently, no 403. Plain members see
+# only their own keys, a team admin sees every key in the team, and an org admin
+# sees every key in the org. The request is posted with every world key, and
 # the returned info set is asserted to equal the visible subset.
 _ALPHA_KEYS = frozenset(
     {
@@ -24,14 +23,14 @@ _ALPHA_KEYS = frozenset(
 )
 _VISIBILITY = {
     Actor.PROXY_ADMIN: frozenset(Actor),
-    Actor.ORG_ADMIN: frozenset({Actor.ORG_ADMIN}),
+    Actor.ORG_ADMIN: _ALPHA_KEYS | {Actor.ORG_ADMIN},
     Actor.TEAM_ADMIN: _ALPHA_KEYS,
-    Actor.INTERNAL_USER: _ALPHA_KEYS,
-    Actor.OWNER: _ALPHA_KEYS,
-    Actor.UNRELATED_SAME_ORG: _ALPHA_KEYS,
-    Actor.SERVICE_ACCOUNT: _ALPHA_KEYS,
+    Actor.INTERNAL_USER: frozenset({Actor.INTERNAL_USER}),
+    Actor.OWNER: frozenset({Actor.OWNER}),
+    Actor.UNRELATED_SAME_ORG: frozenset({Actor.UNRELATED_SAME_ORG}),
+    Actor.SERVICE_ACCOUNT: frozenset({Actor.SERVICE_ACCOUNT}),
     Actor.CROSS_ORG_USER: frozenset({Actor.CROSS_ORG_USER}),
-    Actor.ORG_B_ADMIN: frozenset({Actor.ORG_B_ADMIN}),
+    Actor.ORG_B_ADMIN: frozenset({Actor.ORG_B_ADMIN, Actor.CROSS_ORG_USER}),
 }
 
 

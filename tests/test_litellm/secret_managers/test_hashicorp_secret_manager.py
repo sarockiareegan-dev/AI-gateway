@@ -10,8 +10,14 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-import litellm.proxy.proxy_server
+import litellm
+from litellm.proxy.auth.entitlements import LicenseFeature
 from litellm.secret_managers.hashicorp_secret_manager import HashicorpSecretManager
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 
 VAULT_ADDR: Final = "http://vault.test:8200"
 LOGIN_RESPONSE: Final = {"auth": {"client_token": "hvs.login-token", "lease_duration": 3600}}
@@ -21,7 +27,7 @@ NAMESPACE_ENV_VARS: Final = ("HCP_VAULT_NAMESPACE", "HCP_VAULT_LOGIN_NAMESPACE",
 
 
 def _build_manager(monkeypatch: pytest.MonkeyPatch, env: Mapping[str, str]) -> HashicorpSecretManager:
-    monkeypatch.setattr(litellm.proxy.proxy_server, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=(LicenseFeature.SECRET_MANAGERS.value,)))
     for name in NAMESPACE_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HCP_VAULT_ADDR", VAULT_ADDR)
@@ -221,7 +227,7 @@ def _write_self_signed_cert(directory: Path) -> tuple[Path, Path]:
 @respx.mock
 def test_tls_login_uses_login_namespace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     cert, key = _write_self_signed_cert(tmp_path)
-    monkeypatch.setattr(litellm.proxy.proxy_server, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=(LicenseFeature.SECRET_MANAGERS.value,)))
     for name in NAMESPACE_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.delenv("HCP_VAULT_APPROLE_ROLE_ID", raising=False)
@@ -236,3 +242,21 @@ def test_tls_login_uses_login_namespace(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     assert manager._auth_via_tls_cert() == "hvs.login-token"
     assert login_route.calls.last.request.headers["X-Vault-Namespace"] == "root"
+
+
+@pytest.mark.parametrize("features", [(), ("sso",)])
+def test_vault_refuses_to_start_without_the_secret_managers_feature(
+    monkeypatch: pytest.MonkeyPatch, features: tuple[str, ...]
+) -> None:
+    monkeypatch.setattr(litellm, "secret_manager_client", None)
+    monkeypatch.setenv("HCP_VAULT_ADDR", VAULT_ADDR)
+    monkeypatch.setenv("HCP_VAULT_APPROLE_ROLE_ID", "role-id")
+    monkeypatch.setenv("HCP_VAULT_APPROLE_SECRET_ID", "secret-id")
+    install_entitlements(
+        monkeypatch, licensed_entitlements(features=features) if features else unlicensed_entitlements()
+    )
+
+    with pytest.raises(ValueError, match="premium"):
+        HashicorpSecretManager()
+
+    assert litellm.secret_manager_client is None

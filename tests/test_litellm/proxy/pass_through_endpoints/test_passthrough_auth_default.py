@@ -59,7 +59,7 @@ def test_passthrough_auth_can_still_be_explicitly_disabled():
 @pytest.mark.asyncio
 async def test_register_passthrough_with_auth_true_works_for_oss(monkeypatch):
     # Regression: setting ``auth: true`` used to raise at startup
-    # unless ``premium_user`` was True, leaving OSS with no safe
+    # without an enterprise license, leaving OSS with no safe
     # configuration.
     app = MagicMock(spec=FastAPI)
     visited: set = set()
@@ -70,11 +70,10 @@ async def test_register_passthrough_with_auth_true_works_for_oss(monkeypatch):
         auth=True,
     )
 
-    # Should not raise; OSS premium_user=False is allowed to use auth=True.
+    # Should not raise; an unlicensed proxy is allowed to use auth=True.
     await _register_pass_through_endpoint(
         endpoint=endpoint,
         app=app,
-        premium_user=False,
         visited_endpoints=visited,
     )
 

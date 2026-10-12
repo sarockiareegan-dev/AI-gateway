@@ -39,10 +39,12 @@ async def test_proxy_admin_always_allowed():
 
 
 @pytest.mark.asyncio
-async def test_proxy_admin_view_only_always_allowed():
+async def test_proxy_admin_view_only_is_blocked_like_other_non_admins():
     user = _make_user(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value)
     with patch.dict(_GS_PATH, {"disable_agents_for_internal_users": True}):
-        await check_feature_access_for_user(user, "agents")
+        with pytest.raises(HTTPException) as exc_info:
+            await check_feature_access_for_user(user, "agents")
+    assert exc_info.value.status_code == 403
 
 
 # ---------------------------------------------------------------------------

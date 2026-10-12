@@ -142,7 +142,7 @@ class LitellmUserRoles(str, enum.Enum):
     """
     Admin Roles:
     PROXY_ADMIN: admin over the platform
-    PROXY_ADMIN_VIEW_ONLY: can login, view all own keys, view all spend
+    PROXY_ADMIN_VIEW_ONLY: can login, read-only view of the organizations they belong to
     ORG_ADMIN: admin over a specific organization, can create teams, users only within their organization
 
     Internal User Roles:
@@ -189,7 +189,7 @@ class LitellmUserRoles(str, enum.Enum):
         """
         descriptions: Final = {
             "proxy_admin": "admin over litellm proxy, has all permissions",
-            "proxy_admin_viewer": "view all keys, view all spend",
+            "proxy_admin_viewer": "view the teams, users and spend of the organizations they belong to",
             "internal_user": "view/create/delete their own keys, view their own spend",
             "internal_user_viewer": "view their own keys, view their own spend",
             "team": "team scope used for JWT auth",
@@ -204,7 +204,7 @@ class LitellmUserRoles(str, enum.Enum):
         """
         ui_labels: Final = {
             "proxy_admin": "Admin (All Permissions)",
-            "proxy_admin_viewer": "Admin (View Only)",
+            "proxy_admin_viewer": "Organization Viewer (View Only)",
             "internal_user": "Internal User (Create/Delete/View)",
             "internal_user_viewer": "Internal User (View Only)",
             "team": "Team",
@@ -951,83 +951,25 @@ class LiteLLMRoutes(enum.Enum):
         "/organization/member_delete",
     ]
 
-    # Routes accessible by Admin Viewer (read-only admin access).
-    #
-    # Admin Viewer follows a read-parity-with-Proxy-Admin rule: anything Proxy
-    # Admin can read/list/get, Admin Viewer can too (no writes, no cost-incurring
-    # actions).
-    #
-    # NOTE: This list is no longer the primary mechanism for granting access —
-    # `_check_proxy_admin_viewer_access()` in route_checks.py default-allows
-    # any safe HTTP method (GET/HEAD/OPTIONS) on non-inference routes. This
-    # list now matters only for non-GET routes that are semantically reads
-    # (e.g. POST /spend/calculate). Adding a new GET endpoint does not require
-    # updating this list — the default-allow behavior covers it automatically.
-    admin_viewer_routes = (
-        [
-            "/user/list",
-            "/user/available_users",
-            "/user/available_roles",
-            "/user/daily/activity",
-            "/team/daily/activity",
-            "/team/daily/activity/aggregated",
-            "/tag/daily/activity",
-            "/tag/list",
-            "/audit",
-            "/audit/{id}",
-            "/global/activity",
-            "/global/activity/model",
-            "/global/activity/cache_hits",
-            # Customer / end-user listing (handlers already gate on
-            # PROXY_ADMIN_VIEW_ONLY — the route gate must match).
-            "/customer/list",
-            "/customer/info",
-            # UI Logs page session detail drawer and the end-user filter facet.
-            # The list endpoint `/spend/logs/ui` and the single-log detail route
-            # `/spend/logs/ui/{request_id}` are covered via spend_tracking_routes
-            # below.
-            "/spend/logs/session/ui",
-            "/management/v1/spend_logs/end_users",
-            "/management/v1/spend_logs/users",
-            # Settings / observability read endpoints exposed in admin-only
-            # sidebar groups (Logging & Alerts, Admin Settings, Budgets,
-            # Invitations).
-            "/callbacks/list",
-            "/callbacks/configs",
-            "/get/config/callbacks",
-            "/alerting/settings",
-            "/config/list",
-            "/config/field/info",
-            "/budget/list",
-            "/management/v1/budgets",
-            "/budget/settings",
-            # Invitation viewing (admin viewer cannot create/delete; can read).
-            "/invitation/info",
-            # Guardrails / Policies pages (read-only views).
-            "/guardrails/list",
-            "/v2/guardrails/list",
-            "/guardrails/submissions",
-            "/guardrails/submissions/{guardrail_id}",
-            "/guardrails/usage/overview",
-            "/policies/attachments/list",
-            # MCP semantic filter settings (read).
-            "/get/mcp_semantic_filter_settings",
-            # Model cost map maintenance views (read-only status / source).
-            "/schedule/model_cost_map_reload/status",
-            "/model/cost_map/source",
-            # A pure read; POST only so the prompt does not ride in a URL.
-            "/auto_router/classifier/default_prompt",
-        ]
-        # Spend tracking reads (/spend/logs, /spend/logs/ui, /spend/keys,
-        # /spend/users, /spend/tags, /spend/calculate, /cost/estimate). Admin
-        # Viewer can already read /global/spend/* via global_spend_tracking_routes;
-        # the per-tenant /spend/* views were the missing peer.
-        + spend_tracking_routes
-        + info_routes
+    # All routes accesible by an Org Admin
+    org_scoped_viewer_routes = [
+        "/user/list",
+        "/user/daily/activity",
+        "/team/daily/activity",
+        "/team/daily/activity/aggregated",
+        "/spend/logs/ui/{request_id}",
+        "/key/spend/report",
+        "/user/spend/report",
+        "/team/spend/report",
+        "/organization/spend/report",
+    ]
+
+    org_admin_allowed_routes = (
+        org_admin_only_routes + management_routes + self_managed_routes + org_scoped_viewer_routes
     )
 
-    # All routes accesible by an Org Admin
-    org_admin_allowed_routes = org_admin_only_routes + management_routes + self_managed_routes + admin_viewer_routes
+    # Reads a proxy_admin_viewer reaches; the handler limits them to the viewer's own organizations
+    org_member_viewer_routes = ("/organization/info", "/organization/spend/report")
 
 
 class LiteLLMPromptInjectionParams(LiteLLMPydanticObjectBase):
@@ -3366,10 +3308,7 @@ def user_api_key_has_admin_view(user_api_key_dict: UserAPIKeyAuth) -> bool:
     Lives on _types.py so leaf modules (e.g. litellm.llms.base_llm.managed_resources)
     can use it without pulling in litellm.proxy.utils via management_endpoints.
     """
-    return user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    )
+    return user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
 
 
 class UserInfoResponse(LiteLLMPydanticObjectBase):
@@ -4163,6 +4102,10 @@ class ModelAccessDeniedProxyException(ProxyException):
         return self.internal_message.replace("\r", "").replace("\n", "")
 
 
+class ProxyErrorDetail(TypedDict):
+    error: ReadOnly[str]
+
+
 class CommonProxyErrors(str, enum.Enum):
     db_not_connected_error = (
         "DB not connected. This endpoint needs a database; set DATABASE_URL to a "
@@ -4171,10 +4114,11 @@ class CommonProxyErrors(str, enum.Enum):
     )
     no_llm_router = "No models configured on proxy"
     not_allowed_access = "Admin-only endpoint. Not allowed to access this."
-    not_premium_user = "You must be a LiteLLM Enterprise user to use this feature. If you have a license please set `LITELLM_LICENSE` in your env. Get a 7 day trial key here: https://www.litellm.ai/enterprise#trial. \nPricing: https://www.litellm.ai/#pricing"
+    not_premium_user = (
+        "This is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env or "
+        "`general_settings.agami_license` in your config."
+    )
     max_parallel_request_limit_reached = "Crossed TPM / RPM / Max Parallel Request Limit"
-    missing_enterprise_package = "Missing litellm-enterprise package. Please install it to use this feature. Run `pip install litellm-enterprise`"
-    missing_enterprise_package_docker = "This uses the enterprise folder - only available on the Docker image."
 
 
 class SpendCalculateRequest(LiteLLMPydanticObjectBase):

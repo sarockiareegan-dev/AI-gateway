@@ -18,6 +18,7 @@ import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.batches.main import CancelBatchRequest, RetrieveBatchRequest
 from litellm.proxy._types import *
+from litellm.proxy.auth.agami_access import key_model_visibility
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.batches_endpoints.common_utils import validate_batch_list_limit
 from litellm.proxy.batches_endpoints.litellm_executed_batches import (
@@ -403,7 +404,7 @@ async def create_batch(
                 )
 
             executed_provider: Final = await resolve_litellm_executed_provider(
-                llm_router, model, user_api_key_dict.team_id
+                llm_router, model, user_api_key_dict.team_id, visibility=key_model_visibility(user_api_key_dict)
             )
             response = (
                 await _litellm_executed_batch_runner(llm_router, proxy_logging_obj).create(
@@ -696,7 +697,12 @@ async def retrieve_batch(
             # so litellm.aretrieve_batch can load BedrockBatchesConfig. Without
             # it the call falls into the legacy provider switch and 400s.
             data["model"] = model_from_id
-            add_deployment_model_info(data=data, llm_router=llm_router, model_id=model_from_id)
+            add_deployment_model_info(
+                data=data,
+                llm_router=llm_router,
+                model_id=model_from_id,
+                visibility=key_model_visibility(user_api_key_dict),
+            )
 
             # Retrieve batch using model credentials
             response = await litellm.aretrieve_batch(
@@ -722,6 +728,7 @@ async def retrieve_batch(
                     data=data,
                     llm_router=llm_router,
                     model_id=unified_model_id,
+                    visibility=key_model_visibility(user_api_key_dict),
                 )
 
             response = await llm_router.aretrieve_batch(**data)

@@ -11,6 +11,8 @@ from datetime import datetime
 
 import pytest
 
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements
+
 import litellm
 from litellm import completion
 from litellm._logging import verbose_logger
@@ -54,7 +56,7 @@ async def test_aaabasic_gcs_logger():
         return {"kind": "storage#object", "name": object_name}
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()),
         patch.object(
             GCSBucketLogger,
             "construct_request_headers",
@@ -175,7 +177,7 @@ async def test_basic_gcs_logger_failure():
     gcs_log_id = f"failure-test-{uuid.uuid4().hex}"
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", return_value=licensed_entitlements()),
         patch.object(
             GCSBucketLogger,
             "construct_request_headers",

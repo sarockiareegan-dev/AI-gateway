@@ -257,13 +257,10 @@ async def get_tool_spend(
     """
     from litellm.proxy.proxy_server import prisma_client
 
-    if user_api_key_dict.user_role not in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
+    if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
         raise HTTPException(
             status_code=403,
-            detail="Only proxy admin roles can view tool spend across the deployment",
+            detail="Only a proxy admin can view tool spend across the deployment",
         )
 
     if prisma_client is None:

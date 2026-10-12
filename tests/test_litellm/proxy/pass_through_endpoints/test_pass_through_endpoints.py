@@ -846,38 +846,34 @@ async def test_initialize_pass_through_endpoints_with_include_subpath():
             "litellm.proxy.pass_through_endpoints.pass_through_endpoints.InitPassThroughEndpointHelpers.add_subpath_route"
         ) as mock_add_subpath_route:
             with patch(
-                "litellm.proxy.proxy_server.premium_user",
-                True,
-            ):
-                with patch(
-                    "litellm.proxy.pass_through_endpoints.pass_through_endpoints.set_env_variables_in_header"
-                ) as mock_set_env:
-                    mock_set_env.return_value = {}
+                "litellm.proxy.pass_through_endpoints.pass_through_endpoints.set_env_variables_in_header"
+            ) as mock_set_env:
+                mock_set_env.return_value = {}
 
-                    # Test endpoint with include_subpath=True
-                    endpoints = [
-                        {
-                            "path": "/test/endpoint",
-                            "target": "http://example.com",
-                            "include_subpath": True,
-                        }
-                    ]
+                # Test endpoint with include_subpath=True
+                endpoints = [
+                    {
+                        "path": "/test/endpoint",
+                        "target": "http://example.com",
+                        "include_subpath": True,
+                    }
+                ]
 
-                    await initialize_pass_through_endpoints(endpoints)
+                await initialize_pass_through_endpoints(endpoints)
 
-                    # Should be called once for exact path and once for subpath
-                    mock_add_exact_route.assert_called_once()
-                    mock_add_subpath_route.assert_called_once()
+                # Should be called once for exact path and once for subpath
+                mock_add_exact_route.assert_called_once()
+                mock_add_subpath_route.assert_called_once()
 
-                    # Verify exact path route call
-                    exact_call_args = mock_add_exact_route.call_args[1]
-                    assert exact_call_args["path"] == "/test/endpoint"
-                    assert exact_call_args["target"] == "http://example.com"
+                # Verify exact path route call
+                exact_call_args = mock_add_exact_route.call_args[1]
+                assert exact_call_args["path"] == "/test/endpoint"
+                assert exact_call_args["target"] == "http://example.com"
 
-                    # Verify subpath route call
-                    subpath_call_args = mock_add_subpath_route.call_args[1]
-                    assert subpath_call_args["path"] == "/test/endpoint"
-                    assert subpath_call_args["target"] == "http://example.com"
+                # Verify subpath route call
+                subpath_call_args = mock_add_subpath_route.call_args[1]
+                assert subpath_call_args["path"] == "/test/endpoint"
+                assert subpath_call_args["target"] == "http://example.com"
 
 
 @pytest.mark.asyncio
@@ -897,33 +893,29 @@ async def test_initialize_pass_through_endpoints_without_include_subpath():
             "litellm.proxy.pass_through_endpoints.pass_through_endpoints.InitPassThroughEndpointHelpers.add_subpath_route"
         ) as mock_add_subpath_route:
             with patch(
-                "litellm.proxy.proxy_server.premium_user",
-                True,
-            ):
-                with patch(
-                    "litellm.proxy.pass_through_endpoints.pass_through_endpoints.set_env_variables_in_header"
-                ) as mock_set_env:
-                    mock_set_env.return_value = {}
+                "litellm.proxy.pass_through_endpoints.pass_through_endpoints.set_env_variables_in_header"
+            ) as mock_set_env:
+                mock_set_env.return_value = {}
 
-                    # Test endpoint with include_subpath=False (default)
-                    endpoints = [
-                        {
-                            "path": "/test/endpoint",
-                            "target": "http://example.com",
-                            "include_subpath": False,
-                        }
-                    ]
+                # Test endpoint with include_subpath=False (default)
+                endpoints = [
+                    {
+                        "path": "/test/endpoint",
+                        "target": "http://example.com",
+                        "include_subpath": False,
+                    }
+                ]
 
-                    await initialize_pass_through_endpoints(endpoints)
+                await initialize_pass_through_endpoints(endpoints)
 
-                    # Should be called only once for exact path
-                    mock_add_exact_route.assert_called_once()
-                    mock_add_subpath_route.assert_not_called()
+                # Should be called only once for exact path
+                mock_add_exact_route.assert_called_once()
+                mock_add_subpath_route.assert_not_called()
 
-                    # Verify exact path route call
-                    exact_call_args = mock_add_exact_route.call_args[1]
-                    assert exact_call_args["path"] == "/test/endpoint"
-                    assert exact_call_args["target"] == "http://example.com"
+                # Verify exact path route call
+                exact_call_args = mock_add_exact_route.call_args[1]
+                assert exact_call_args["path"] == "/test/endpoint"
+                assert exact_call_args["target"] == "http://example.com"
 
 
 def test_set_cost_per_request():
@@ -3707,7 +3699,6 @@ class TestStaleRouteCleanupOnReload:
                 "litellm.proxy.pass_through_endpoints.pass_through_endpoints.SafeRouteAdder.add_api_route_if_not_exists"
             )
         )
-        stack.enter_context(patch("litellm.proxy.proxy_server.premium_user", True))
         mock_set_env = stack.enter_context(
             patch("litellm.proxy.pass_through_endpoints.pass_through_endpoints.set_env_variables_in_header")
         )

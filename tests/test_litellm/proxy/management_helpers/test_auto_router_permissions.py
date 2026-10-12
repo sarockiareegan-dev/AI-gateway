@@ -12,6 +12,7 @@ from litellm.proxy._types import (
     Member,
     UserAPIKeyAuth,
 )
+from litellm.proxy.auth.entitlements import EntitlementService
 from litellm.proxy.management_helpers.auto_router_permissions import (
     authorize_member_auto_router_dependencies,
     authorize_member_auto_router_team,
@@ -20,6 +21,13 @@ from litellm.proxy.management_helpers.auto_router_permissions import (
 )
 from litellm.router import Router
 from litellm.types.router import Deployment, LiteLLM_Params, ModelInfo, updateDeployment
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
+
+AUTO_ROUTER_LICENCE: Final = licensed_entitlements(features=("auto_router",))
 
 
 class _ReadTable:
@@ -68,36 +76,40 @@ def catalog() -> Router:
 
 
 @pytest.mark.parametrize(
-    "actor_updates,team_updates,premium,allowed",
+    "actor_updates,team_updates,entitlements,allowed",
     [
-        ({}, {}, True, True),
-        ({"team_id": UI_TEAM_ID}, {}, True, True),
-        ({"team_id": "team-a"}, {}, True, True),
-        ({"user_role": LitellmUserRoles.TEAM}, {}, True, True),
-        ({"user_role": LitellmUserRoles.ORG_ADMIN}, {}, True, True),
-        ({"team_id": "team-b"}, {}, True, False),
-        ({"user_id": None}, {}, True, False),
-        ({"user_id": ""}, {}, True, False),
-        ({"user_id": "peer"}, {}, True, False),
-        ({"user_role": LitellmUserRoles.INTERNAL_USER_VIEW_ONLY}, {}, True, False),
-        ({"user_role": LitellmUserRoles.CUSTOMER}, {}, True, False),
-        ({}, {"team_member_permissions": []}, True, False),
-        ({}, {"team_member_permissions": None}, True, False),
-        ({}, {"blocked": True}, True, False),
-        ({}, {}, False, False),
+        ({}, {}, AUTO_ROUTER_LICENCE, True),
+        ({"team_id": UI_TEAM_ID}, {}, AUTO_ROUTER_LICENCE, True),
+        ({"team_id": "team-a"}, {}, AUTO_ROUTER_LICENCE, True),
+        ({"user_role": LitellmUserRoles.TEAM}, {}, AUTO_ROUTER_LICENCE, True),
+        ({"user_role": LitellmUserRoles.ORG_ADMIN}, {}, AUTO_ROUTER_LICENCE, True),
+        ({"team_id": "team-b"}, {}, AUTO_ROUTER_LICENCE, False),
+        ({"user_id": None}, {}, AUTO_ROUTER_LICENCE, False),
+        ({"user_id": ""}, {}, AUTO_ROUTER_LICENCE, False),
+        ({"user_id": "peer"}, {}, AUTO_ROUTER_LICENCE, False),
+        ({"user_role": LitellmUserRoles.INTERNAL_USER_VIEW_ONLY}, {}, AUTO_ROUTER_LICENCE, False),
+        ({"user_role": LitellmUserRoles.CUSTOMER}, {}, AUTO_ROUTER_LICENCE, False),
+        ({}, {"team_member_permissions": []}, AUTO_ROUTER_LICENCE, False),
+        ({}, {"team_member_permissions": None}, AUTO_ROUTER_LICENCE, False),
+        ({}, {"blocked": True}, AUTO_ROUTER_LICENCE, False),
+        ({}, {}, licensed_entitlements(features=("sso",)), False),
+        ({}, {}, unlicensed_entitlements(), False),
     ],
 )
 def test_opt_in_requires_live_named_membership_and_write_role(
-    actor_updates: Mapping[str, object], team_updates: Mapping[str, object], premium: bool, allowed: bool
+    actor_updates: Mapping[str, object],
+    team_updates: Mapping[str, object],
+    entitlements: EntitlementService,
+    allowed: bool,
 ) -> None:
     if allowed:
         authorize_member_auto_router_team(
-            user_api_key_dict=_actor(**actor_updates), team=_team(**team_updates), premium_user=premium
+            user_api_key_dict=_actor(**actor_updates), team=_team(**team_updates), entitlements=entitlements
         )
         return
     with pytest.raises(HTTPException) as denied:
         authorize_member_auto_router_team(
-            user_api_key_dict=_actor(**actor_updates), team=_team(**team_updates), premium_user=premium
+            user_api_key_dict=_actor(**actor_updates), team=_team(**team_updates), entitlements=entitlements
         )
     assert denied.value.status_code == 403
 
@@ -183,6 +195,7 @@ async def test_member_updates_restrict_fields_and_preserve_an_inherited_default(
     from litellm.proxy.common_utils.encrypt_decrypt_utils import encrypt_value_helper
 
     monkeypatch.setenv("LITELLM_SALT_KEY", "member-router-test-salt")
+    install_entitlements(monkeypatch, AUTO_ROUTER_LICENCE)
     existing: Final = Deployment(
         model_name="model_name_team-a_uuid",
         litellm_params=LiteLLM_Params(
@@ -201,7 +214,6 @@ async def test_member_updates_restrict_fields_and_preserve_an_inherited_default(
         existing=existing,
         user_api_key_dict=_actor(),
         team=_team(),
-        premium_user=True,
         prisma_client=_Client(),
         llm_router=catalog,
     )

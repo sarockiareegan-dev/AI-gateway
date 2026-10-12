@@ -410,13 +410,14 @@ class TestToolManagementEndpoints:
         assert "Invalid date format" in resp.json()["detail"]
         prisma.db.litellm_dailytoolspend.group_by.assert_not_awaited()
 
-    def test_tool_spend_non_admin_returns_403(self):
-        from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+    @pytest.mark.parametrize("role", ["internal_user", "proxy_admin_viewer"])
+    def test_tool_spend_non_admin_returns_403(self, role):
+        from litellm.proxy._types import UserAPIKeyAuth
         from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 
         app = _make_app()
         app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(
-            api_key="sk-user", user_id="u1", user_role=LitellmUserRoles.INTERNAL_USER
+            api_key="sk-user", user_id="u1", user_role=role
         )
         client = TestClient(app, raise_server_exceptions=True)
         prisma = _rollup_prisma([])

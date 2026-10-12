@@ -51,6 +51,7 @@ from litellm.proxy._types import (
     LitellmDataForBackendLLMCall,
     LiteLLMRoutes,
     LitellmUserRoles,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     SpecialHeaders,
@@ -58,6 +59,7 @@ from litellm.proxy._types import (
     UserAPIKeyAuth,
 )
 from litellm.proxy.auth.auth_utils import get_request_route
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.route_checks import RouteChecks
 from litellm.proxy.common_utils.callback_utils import (
     decrypt_callback_vars,
@@ -1041,15 +1043,12 @@ def _dynamically_disabled_backends(
 ) -> frozenset[str]:
     """The callbacks this request turned off, read the way dispatch reads them.
 
-    Same sources, precedence, and premium gate ``EnterpriseCallbackControls`` applies
-    before it skips a callback: the ``x-litellm-disable-callbacks`` header wins over the
-    key's stored list, team settings are not a source, and a non-premium proxy honours
-    neither. A destination has to agree with that decision, or a backend the key turned
+    The ``x-litellm-disable-callbacks`` header wins over the key's stored list, team
+    settings are not a source, and a proxy without the ``logging_integrations`` licence
+    feature honours neither. A destination has to agree with that decision, or a backend the key turned
     off would still be exported to, now through the fan-out instead of the callback.
     """
-    from litellm.proxy.proxy_server import premium_user
-
-    if litellm.allow_dynamic_callback_disabling is not True or not premium_user:
+    if litellm.allow_dynamic_callback_disabling is not True or not is_licensed(LicenseFeature.LOGGING_INTEGRATIONS):
         return frozenset()
     header: Final = (request_headers if request_headers is not None else _NO_REQUEST_HEADERS).get(
         X_LITELLM_DISABLE_CALLBACKS
@@ -1970,7 +1969,7 @@ async def add_litellm_data_to_request(
 
     """
 
-    from litellm.proxy.proxy_server import llm_router, premium_user
+    from litellm.proxy.proxy_server import llm_router
     from litellm.types.proxy.litellm_pre_call_utils import RedactedDict, SecretFields
 
     # Strip internal-only keys from user input before the proxy sets its own.
@@ -2510,7 +2509,6 @@ async def add_litellm_data_to_request(
         request_body=data,
         general_settings=general_settings,
         user_api_key_dict=user_api_key_dict,
-        premium_user=premium_user,
     )
 
     end_time: Final = time.time()
@@ -2891,7 +2889,7 @@ def _enforced_params_check(
     request_body: dict,
     general_settings: dict | None,
     user_api_key_dict: UserAPIKeyAuth,
-    premium_user: bool,
+    entitlements: EntitlementService | None = None,
 ) -> bool:
     """
     If enforced params are set, check if the request body contains the enforced params.
@@ -2901,9 +2899,13 @@ def _enforced_params_check(
     )
     if enforced_params is None:
         return True
-    if enforced_params and premium_user is not True:
-        raise ValueError(
-            f"Enforced Params is an Enterprise feature. Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
+    if enforced_params and not is_licensed(LicenseFeature.ENFORCED_PARAMS, entitlements):
+        raise HTTPException(
+            status_code=403,
+            detail=ProxyErrorDetail(
+                error="Enforced params need the 'enforced_params' feature on the Agami license. "
+                f"Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
+            ),
         )
 
     for enforced_param in enforced_params:
@@ -2946,7 +2948,7 @@ def _add_guardrails_from_key_or_team_metadata(
         project_metadata: The project metadata dictionary to check for guardrails
 
     """
-    from litellm.proxy.utils import _premium_user_check
+    from litellm.proxy.utils import require_license_feature
 
     # Initialize guardrails set (avoiding duplicates)
     combined_guardrails: Final = set()
@@ -2954,19 +2956,19 @@ def _add_guardrails_from_key_or_team_metadata(
     # Add key-level guardrails first
     if key_metadata and "guardrails" in key_metadata:
         if isinstance(key_metadata["guardrails"], list) and len(key_metadata["guardrails"]) > 0:
-            _premium_user_check()
+            require_license_feature(LicenseFeature.GUARDRAILS, "guardrails")
             combined_guardrails.update(key_metadata["guardrails"])
 
     # Add team-level guardrails (set automatically handles duplicates)
     if team_metadata and "guardrails" in team_metadata:
         if isinstance(team_metadata["guardrails"], list) and len(team_metadata["guardrails"]) > 0:
-            _premium_user_check()
+            require_license_feature(LicenseFeature.GUARDRAILS, "guardrails")
             combined_guardrails.update(team_metadata["guardrails"])
 
     # Add project-level guardrails (set automatically handles duplicates)
     if project_metadata and "guardrails" in project_metadata:
         if isinstance(project_metadata["guardrails"], list) and len(project_metadata["guardrails"]) > 0:
-            _premium_user_check()
+            require_license_feature(LicenseFeature.GUARDRAILS, "guardrails")
             combined_guardrails.update(project_metadata["guardrails"])
 
     # Set combined guardrails in metadata as list
@@ -2999,7 +3001,7 @@ def _add_guardrails_from_policies_in_metadata(
     from litellm._logging import verbose_proxy_logger
     from litellm.proxy.policy_engine.policy_registry import get_policy_registry
     from litellm.proxy.policy_engine.policy_resolver import PolicyResolver
-    from litellm.proxy.utils import _premium_user_check
+    from litellm.proxy.utils import require_license_feature
     from litellm.types.proxy.policy_engine import PolicyMatchContext
 
     # Collect policy names from key and team metadata
@@ -3008,19 +3010,19 @@ def _add_guardrails_from_policies_in_metadata(
     # Add key-level policies first
     if key_metadata and "policies" in key_metadata:
         if isinstance(key_metadata["policies"], list) and len(key_metadata["policies"]) > 0:
-            _premium_user_check()
+            require_license_feature(LicenseFeature.GUARDRAILS, "policies")
             policy_names.update(key_metadata["policies"])
 
     # Add team-level policies
     if team_metadata and "policies" in team_metadata:
         if isinstance(team_metadata["policies"], list) and len(team_metadata["policies"]) > 0:
-            _premium_user_check()
+            require_license_feature(LicenseFeature.GUARDRAILS, "policies")
             policy_names.update(team_metadata["policies"])
 
     # Add project-level policies
     if project_metadata and "policies" in project_metadata:
         if isinstance(project_metadata["policies"], list) and len(project_metadata["policies"]) > 0:
-            _premium_user_check()
+            require_license_feature(LicenseFeature.GUARDRAILS, "policies")
             policy_names.update(project_metadata["policies"])
 
     if not policy_names:

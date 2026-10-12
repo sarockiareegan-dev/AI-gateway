@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import ORJSONResponse
 
 import litellm
+from agami.routing.org_models import GLOBAL_MODELS_ONLY
 from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy.auth.agami_access import key_model_visibility
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
 from litellm.proxy.common_utils.openai_endpoint_utils import (
@@ -116,7 +118,9 @@ async def _update_request_data_with_managed_file_id(
 
                 # Get credentials for the model
                 if llm_router:
-                    credentials = llm_router.get_deployment_credentials_with_provider(model_id=routing_model)
+                    credentials = llm_router.get_deployment_credentials_with_provider(
+                        model_id=routing_model, visibility=key_model_visibility(user_api_key_dict)
+                    )
                     if credentials:
                         prepare_data_with_credentials(
                             data=data,
@@ -229,6 +233,7 @@ async def _update_request_data_with_model_routing_hint(
     should_authorize_model_hint: Final = isinstance(model_hint, str) and model_hint == user_controlled_model_hint
 
     caller_team_id: Final = getattr(user_api_key_dict, "team_id", None) if user_api_key_dict else None
+    visibility: Final = key_model_visibility(user_api_key_dict) if user_api_key_dict else GLOBAL_MODELS_ONLY
 
     should_route = False
     credentials = None
@@ -241,7 +246,7 @@ async def _update_request_data_with_model_routing_hint(
                     user_api_key_dict=user_api_key_dict,
                 )
             credentials = llm_router.get_deployment_credentials_with_provider(
-                model_id=model_hint, team_id=caller_team_id
+                model_id=model_hint, team_id=caller_team_id, visibility=visibility
             )
             should_route = credentials is not None
     elif isinstance(model_hint, str):
@@ -251,7 +256,7 @@ async def _update_request_data_with_model_routing_hint(
                 llm_router=llm_router,
                 user_api_key_dict=user_api_key_dict,
             )
-        credentials = get_credentials_for_model(llm_router=llm_router, model_id=model_hint)
+        credentials = get_credentials_for_model(llm_router=llm_router, model_id=model_hint, visibility=visibility)
         should_route = True
 
     if should_route and credentials is not None:
@@ -280,7 +285,9 @@ async def _update_request_data_with_model_routing_hint(
 
     openai_credentials = None
     for model_name in model_names_to_check:
-        credentials = llm_router.get_deployment_credentials_with_provider(model_id=model_name, team_id=caller_team_id)
+        credentials = llm_router.get_deployment_credentials_with_provider(
+            model_id=model_name, team_id=caller_team_id, visibility=visibility
+        )
         if credentials is None:
             continue
 

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.proxy._types import *
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
 from litellm.proxy.openai_files_endpoints.common_utils import (
@@ -100,7 +101,6 @@ async def create_fine_tuning_job(
     from litellm.proxy.proxy_server import (
         general_settings,
         llm_router,
-        premium_user,
         proxy_config,
         proxy_logging_obj,
         version,
@@ -108,7 +108,7 @@ async def create_fine_tuning_job(
 
     data = fine_tuning_request.model_dump(exclude_none=True)
     try:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.FINE_TUNING):
             raise ValueError(f"Only premium users can use this endpoint + {CommonProxyErrors.not_premium_user.value}")
         # Convert Pydantic model to dict
 
@@ -249,7 +249,6 @@ async def retrieve_fine_tuning_job(
     from litellm.proxy.proxy_server import (
         general_settings,
         llm_router,
-        premium_user,
         proxy_config,
         proxy_logging_obj,
         version,
@@ -257,7 +256,7 @@ async def retrieve_fine_tuning_job(
 
     data: dict = {"fine_tuning_job_id": fine_tuning_job_id}
     try:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.FINE_TUNING):
             raise ValueError(f"Only premium users can use this endpoint + {CommonProxyErrors.not_premium_user.value}")
         await validate_managed_id_requirement(
             resource_id=fine_tuning_job_id,
@@ -401,7 +400,6 @@ async def list_fine_tuning_jobs(
     from litellm.proxy.proxy_server import (
         general_settings,
         llm_router,
-        premium_user,
         proxy_config,
         proxy_logging_obj,
         version,
@@ -409,7 +407,7 @@ async def list_fine_tuning_jobs(
 
     data: dict = {}
     try:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.FINE_TUNING):
             raise ValueError(f"Only premium users can use this endpoint + {CommonProxyErrors.not_premium_user.value}")
         # Include original request and headers in the data
         base_llm_response_processor: Final = ProxyBaseLLMRequestProcessing(data=data)
@@ -522,7 +520,6 @@ async def cancel_fine_tuning_job(
     from litellm.proxy.proxy_server import (
         general_settings,
         llm_router,
-        premium_user,
         proxy_config,
         proxy_logging_obj,
         version,
@@ -530,7 +527,7 @@ async def cancel_fine_tuning_job(
 
     data: dict = {"fine_tuning_job_id": fine_tuning_job_id}
     try:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.FINE_TUNING):
             raise ValueError(f"Only premium users can use this endpoint + {CommonProxyErrors.not_premium_user.value}")
         await validate_managed_id_requirement(
             resource_id=fine_tuning_job_id,

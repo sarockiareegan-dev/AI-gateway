@@ -42,6 +42,11 @@ from litellm.proxy._types import (
 )
 from litellm.proxy.auth.login_throttle import LoginThrottle
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 from litellm.proxy.hooks.parallel_request_limiter_v3 import RequestRateLimiterStash
 from litellm.proxy.proxy_server import app, initialize, openai_exception_handler
 from litellm.utils import _invalidate_model_cost_lowercase_map
@@ -121,7 +126,6 @@ def test_login_v2_returns_redirect_url_and_sets_cookie(monkeypatch):
     monkeypatch.setattr("jwt.encode", mock_jwt_encode)
     monkeypatch.setattr("litellm.proxy.proxy_server.master_key", "test-master-key")
     monkeypatch.setattr("litellm.proxy.proxy_server.general_settings", {})
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     monkeypatch.setattr("litellm.proxy.utils.get_server_root_path", lambda: "")
     monkeypatch.setattr("litellm.proxy.utils.get_proxy_base_url", lambda: None)
@@ -150,7 +154,6 @@ def test_login_v2_returns_redirect_url_and_sets_cookie(monkeypatch):
     mock_create_ui_token_object.assert_called_once_with(
         login_result=mock_login_result,
         general_settings={},
-        premium_user=False,
     )
     mock_jwt_encode.assert_called_once()
     payload, secret = mock_jwt_encode.call_args.args
@@ -174,7 +177,6 @@ def _mock_login_v2_deps(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr("jwt.encode", MagicMock(return_value="signed-token"))
     monkeypatch.setattr("litellm.proxy.proxy_server.master_key", "test-master-key")
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MagicMock())
     monkeypatch.setattr("litellm.proxy.utils.get_server_root_path", lambda: "")
     monkeypatch.setattr("litellm.proxy.utils.get_proxy_base_url", lambda: None)
@@ -369,7 +371,6 @@ def test_login_v3_returns_code(monkeypatch):
         "litellm.proxy.proxy_server.general_settings",
         {"control_plane_url": "https://cp.example.com"},
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -407,7 +408,6 @@ def test_login_v3_exchange_happy_path(monkeypatch):
         "litellm.proxy.proxy_server.general_settings",
         {"control_plane_url": "https://cp.example.com"},
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -459,7 +459,6 @@ def test_login_v3_exchange_sets_secure_cookie_behind_trusted_tls_terminating_pro
             "mcp_trusted_proxy_ranges": ["10.0.0.0/8"],
         },
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -499,7 +498,6 @@ def test_login_v3_exchange_single_use(monkeypatch):
         "litellm.proxy.proxy_server.general_settings",
         {"control_plane_url": "https://cp.example.com"},
     )
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
     monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
     mock_config = MagicMock()
     mock_config.worker_registry = []
@@ -669,11 +667,6 @@ def test_sso_key_generate_shows_deprecation_banner(client_no_auth, monkeypatch):
     monkeypatch.setattr(
         "litellm.proxy.management_endpoints.ui_sso.SSOAuthenticationHandler.should_use_sso_handler",
         lambda *args, **kwargs: False,
-    )
-    # Mock premium_user to bypass enterprise check (prevents 403 Forbidden)
-    monkeypatch.setattr(
-        "litellm.proxy.proxy_server.premium_user",
-        True,
     )
     monkeypatch.setenv("UI_USERNAME", "admin")
 
@@ -2466,14 +2459,7 @@ async def test_filter_models_by_team_id_allows_team_member():
 
 
 @pytest.mark.asyncio
-async def test_caller_byok_team_scope_treats_view_only_admin_as_unscoped():
-    """
-    Regression test: `PROXY_ADMIN_VIEW_ONLY` is an admin role
-    ("can login, view all own keys, view all spend"). Search results for
-    this role must show BYOK rows across all teams, not be silently scoped
-    to the user-id's `teams` field — that path narrows results to whatever
-    teams the admin happens to be a member of, regressing pre-PR behavior.
-    """
+async def test_caller_byok_team_scope_limits_view_only_admin_to_its_own_teams():
     from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
     from litellm.proxy.proxy_server import _get_caller_byok_team_scope
 
@@ -2482,11 +2468,13 @@ async def test_caller_byok_team_scope_treats_view_only_admin_as_unscoped():
         user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
         api_key="sk-test",
     )
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_usertable.find_unique = AsyncMock(return_value=MagicMock(teams=["team-mine"]))
     scope = await _get_caller_byok_team_scope(
         user_api_key_dict=caller,
-        prisma_client=MagicMock(),
+        prisma_client=prisma_client,
     )
-    assert scope is None, "PROXY_ADMIN_VIEW_ONLY must be unscoped, like PROXY_ADMIN"
+    assert scope == {"team-mine"}
 
 
 @pytest.mark.asyncio
@@ -3700,39 +3688,25 @@ async def test_load_environment_variables_direct_and_os_environ():
 
 
 @pytest.mark.asyncio
-async def test_load_environment_variables_litellm_license_and_edge_cases():
-    """
-    Test _load_environment_variables method with LITELLM_LICENSE special handling and edge cases
-    """
-    from unittest.mock import MagicMock, patch
-
+async def test_load_environment_variables_agami_license_and_edge_cases():
+    import litellm.proxy.proxy_server as proxy_server_module
     from litellm.proxy.proxy_server import ProxyConfig
+    from tests.test_litellm.proxy.auth.license_test_helpers import issue_test_license, unlicensed_entitlements
 
     proxy_config = ProxyConfig()
+    token = issue_test_license()
+    license_check = unlicensed_entitlements()
 
-    # Test Case 1: LITELLM_LICENSE in environment_variables
-    test_config_with_license = {
-        "environment_variables": {
-            "LITELLM_LICENSE": "test_license_key",
-            "OTHER_VAR": "other_value",
-        }
-    }
+    with (
+        patch("litellm.proxy.proxy_server._license_check", license_check),
+        patch.dict(os.environ, {}, clear=False),
+    ):
+        proxy_config._load_environment_variables(
+            {"environment_variables": {"AGAMI_LICENSE": token, "OTHER_VAR": "other_value"}}
+        )
 
-    # Mock _license_check
-    mock_license_check = MagicMock()
-    mock_license_check.is_premium.return_value = True
-
-    with patch("litellm.proxy.proxy_server._license_check", mock_license_check):
-        with patch.dict(os.environ, {}, clear=False):
-            # Call the method under test
-            proxy_config._load_environment_variables(test_config_with_license)
-
-            # Verify LITELLM_LICENSE was set in environment
-            assert os.environ["LITELLM_LICENSE"] == "test_license_key"
-
-            # Verify license check was updated
-            assert mock_license_check.license_str == "test_license_key"
-            mock_license_check.is_premium.assert_called_once()
+        assert os.environ["AGAMI_LICENSE"] == token
+        assert license_check.is_premium()
 
     # Test Case 2: No environment_variables in config
     test_config_no_env_vars = {}
@@ -5557,12 +5531,9 @@ async def test_model_info_v1_oci_secrets_not_leaked():
     from litellm.proxy._types import UserAPIKeyAuth
     from litellm.proxy.proxy_server import model_info_v1
 
-    # Mock user authentication
-    mock_user_api_key_dict = MagicMock(spec=UserAPIKeyAuth)
-    mock_user_api_key_dict.user_id = "test-user"
-    mock_user_api_key_dict.api_key = "test-key"
-    mock_user_api_key_dict.team_models = []
-    mock_user_api_key_dict.models = ["oci-grok-test"]
+    mock_user_api_key_dict = UserAPIKeyAuth(
+        user_id="test-user", api_key="test-key", team_models=[], models=["oci-grok-test"]
+    )
 
     # Mock model data with OCI sensitive information
     mock_model_data = {
@@ -8107,44 +8078,6 @@ async def test_update_general_settings_store_model_in_db_none_keeps_current():
         import litellm.proxy.proxy_server as ps
 
         assert ps.store_model_in_db is False
-
-
-@pytest.mark.asyncio
-async def test_batch_cost_poller_is_confirmed_before_serving(monkeypatch):
-    monkeypatch.delenv("STORE_MODEL_IN_DB", raising=False)
-    from litellm.proxy.openai_files_endpoints.common_utils import batch_cost_poller_is_active
-    from litellm.proxy.proxy_server import ProxyStartupEvent
-    from litellm.proxy.utils import ProxyLogging
-
-    mock_prisma_client = MagicMock()
-    mock_prisma_client.db.litellm_config.find_first = AsyncMock(return_value=None)
-    mock_prisma_client.db.litellm_managedobjecttable.find_first = AsyncMock(return_value=None)
-    mock_proxy_logging = MagicMock(spec=ProxyLogging)
-    mock_proxy_logging.slack_alerting_instance = MagicMock()
-    mock_proxy_logging.db_spend_update_writer = MagicMock()
-
-    with (
-        patch("litellm.proxy.proxy_server.proxy_config", _mock_scheduled_proxy_config()),
-        patch("litellm.proxy.proxy_server.store_model_in_db", False),
-        patch("litellm.proxy.proxy_server.llm_router", MagicMock()),
-        patch("litellm.proxy.proxy_server.PROXY_BATCH_POLLING_ENABLED", True),
-        patch("litellm.constants.PROXY_BATCH_POLLING_ENABLED", True),
-        patch("litellm.proxy.proxy_server.get_secret_bool", return_value=False),
-    ):
-        await ProxyStartupEvent.initialize_scheduled_background_jobs(
-            general_settings={},
-            prisma_client=mock_prisma_client,
-            proxy_budget_rescheduler_min_time=1,
-            proxy_budget_rescheduler_max_time=2,
-            proxy_batch_write_at=5,
-            proxy_logging_obj=mock_proxy_logging,
-        )
-
-        poller = proxy_server_module.scheduler.get_job("check_batch_cost_job").func.__self__
-        assert poller.batch_processed_support_confirmed is True
-        assert batch_cost_poller_is_active() is True
-        probe_where = mock_prisma_client.db.litellm_managedobjecttable.find_first.call_args[1]["where"]
-        assert probe_where["batch_processed"] is False
 
 
 @pytest.mark.asyncio
@@ -11934,26 +11867,16 @@ def _config_field_info_client(monkeypatch, user_role):
     return TestClient(app)
 
 
-def test_config_field_info_redacts_secrets_for_view_only_admin(monkeypatch):
-    """/config/field/info gates on _user_has_admin_view, which also grants
-    PROXY_ADMIN_VIEW_ONLY. A view-only admin reading master_key/database_url verbatim is
-    effectively a full admin. Secret-bearing fields must come back REDACTED for anyone who
-    is not a FULL PROXY_ADMIN, while non-secret fields stay readable."""
+def test_config_field_info_refuses_view_only_admin(monkeypatch):
     from litellm.proxy._types import LitellmUserRoles
 
     client = _config_field_info_client(monkeypatch, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY)
     try:
-        for secret_field in ("master_key", "database_url", "pass_through_endpoints"):
-            resp = client.get("/config/field/info", params={"field_name": secret_field})
-            assert resp.status_code == 200, resp.text
-            body = resp.json()
-            assert body["field_value"] == "REDACTED"
-            assert "secret" not in str(body["field_value"])
-            assert "p4ssw0rd" not in str(body["field_value"])
-
-        resp = client.get("/config/field/info", params={"field_name": "max_parallel_requests"})
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["field_value"] == 100
+        for field in ("master_key", "database_url", "pass_through_endpoints", "max_parallel_requests"):
+            resp = client.get("/config/field/info", params={"field_name": field})
+            assert resp.status_code in (400, 401, 403), resp.text
+            assert "sk-super-secret-master" not in resp.text
+            assert "p4ssw0rd" not in resp.text
     finally:
         app.dependency_overrides.clear()
 
@@ -12016,8 +11939,8 @@ async def test_create_config_audit_log_writes_redacted_entry(monkeypatch):
 
     fake = _fake_prisma_with_config({})
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     caller = UserAPIKeyAuth(api_key="hashed-key-abc", user_id="admin-7")
     await create_config_audit_log(
@@ -12053,7 +11976,6 @@ async def test_create_config_audit_log_noop_when_store_audit_logs_disabled(monke
 
     fake = _fake_prisma_with_config({})
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", False)
 
     await create_config_audit_log(
@@ -12090,8 +12012,8 @@ async def test_update_config_general_settings_emits_audit_log(monkeypatch):
     existing = {"max_parallel_requests": 5, "some_api_key": "sk-stored-secret"}
     fake = _fake_prisma_with_config(existing)
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     admin = UserAPIKeyAuth(
         api_key="hashed-admin",
@@ -12484,8 +12406,8 @@ async def test_delete_config_general_settings_emits_deleted_audit_log(monkeypatc
     existing = {"max_parallel_requests": 5}
     fake = _fake_prisma_with_config(existing)
     monkeypatch.setattr(proxy_server_module, "prisma_client", fake)
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     admin = UserAPIKeyAuth(
         api_key="hashed-admin",
@@ -12519,8 +12441,8 @@ def test_update_config_audits_every_written_section(_update_config_setup, monkey
     client, prisma, restore = _update_config_setup(initial_rows={"litellm_settings": {"drop_params": True}})
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     try:
         resp = client.post(
             "/config/update",
@@ -12561,8 +12483,8 @@ def test_delete_callback_audits_litellm_settings_deletion(_update_config_setup, 
     client, prisma, restore = _update_config_setup()
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     from litellm.proxy.proxy_server import proxy_config as real_proxy_config
 
@@ -12594,8 +12516,8 @@ def test_delete_callback_audits_before_reload_failure(_update_config_setup, monk
     client, prisma, restore = _update_config_setup()
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
 
     from litellm.proxy.proxy_server import proxy_config as real_proxy_config
 
@@ -12636,8 +12558,8 @@ def test_update_config_redacts_all_environment_variable_values(_update_config_se
     )
     audit_create = AsyncMock()
     prisma.db.litellm_auditlog.create = audit_create
-    monkeypatch.setattr(proxy_server_module, "premium_user", True)
     monkeypatch.setattr(litellm, "store_audit_logs", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",)))
     try:
         resp = client.post(
             "/config/update",
@@ -14912,3 +14834,42 @@ async def test_initialize_jwt_auth_leaves_the_declared_jwtauth_mapping_unresolve
 
     assert declared["team_id_jwt_field"] == "os.environ/JWT_TEAM_FIELD"
     assert proxy_server_module.jwt_handler.litellm_jwtauth.team_id_jwt_field == "resolved-team-field"
+
+
+@pytest.mark.parametrize(
+    ("service", "enabled"),
+    [
+        (licensed_entitlements(features=("request_limits",)), True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+def test_request_size_limit_middleware_follows_the_request_limits_licence_feature(monkeypatch, service, enabled):
+    from litellm.proxy.middleware.request_size_limit_middleware import RequestSizeLimitMiddleware
+
+    install_entitlements(monkeypatch, service)
+    middleware: Final = next(m for m in proxy_server_module.app.user_middleware if m.cls is RequestSizeLimitMiddleware)
+
+    assert middleware.kwargs["is_request_size_limit_enabled"]() is enabled
+
+
+@pytest.mark.parametrize(
+    ("setting", "value", "feature"),
+    [("enforced_params", ["user"], "enforced_params"), ("allowed_ips", ["127.0.0.1"], "access_control")],
+)
+@pytest.mark.parametrize("licensed", [True, False])
+def test_licence_gated_config_settings_follow_the_licence_in_the_same_config(setting, value, feature, licensed):
+    from tests.test_litellm.proxy.auth.license_test_helpers import issue_test_license
+
+    service: Final = unlicensed_entitlements()
+    general_settings: Final = {
+        "agami_license": issue_test_license(features=(feature,) if licensed else ("sso",)),
+        setting: value,
+    }
+
+    if licensed:
+        proxy_server_module._apply_config_licence(general_settings, service)
+        assert service.grants_feature(feature)
+        return
+    with pytest.raises(ValueError, match=f"'{feature}' feature"):
+        proxy_server_module._apply_config_licence(general_settings, service)

@@ -26,13 +26,7 @@ async def check_feature_access_for_user(
         user_api_key_dict: The authenticated user.
         feature_name: Either "agents" or "vector_stores".
     """
-    # Proxy admins (and view-only admins) are never blocked.
-    if user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-        LitellmUserRoles.PROXY_ADMIN.value,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
-    ):
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return
 
     from litellm.proxy.proxy_server import (

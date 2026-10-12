@@ -230,14 +230,9 @@ class TestPromptVersionsEndpoint:
             assert "No versions found" in exc_info.value.detail
 
 
-class TestAdminViewerReadAccess:
-    """
-    proxy_admin_viewer has READ parity with proxy_admin on the prompt read endpoints
-    """
-
+class TestAdminViewerHasNoProxyWideRead:
     @pytest.mark.asyncio
-    async def test_list_prompts_returns_all_prompts_for_admin_viewer(self):
-        """A role without admin view falls through to the empty-list branch here."""
+    async def test_list_prompts_returns_nothing_for_admin_viewer(self):
         from unittest.mock import patch
 
         from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
@@ -284,14 +279,13 @@ class TestAdminViewerReadAccess:
 
             response = await list_prompts(user_api_key_dict=viewer)
 
-        assert sorted(p.prompt_id for p in response.prompts) == ["jack", "jane"]
-        jack = next(p for p in response.prompts if p.prompt_id == "jack")
-        assert jack.litellm_params.dotprompt_content == "v2"
+        assert response.prompts == []
 
     @pytest.mark.asyncio
-    async def test_get_prompt_versions_allows_admin_viewer(self):
-        """Version history used to 403 anyone who was not exactly proxy_admin."""
+    async def test_get_prompt_versions_refuses_admin_viewer(self):
         from unittest.mock import patch
+
+        from fastapi import HTTPException
 
         from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
         from litellm.proxy.prompts.prompt_endpoints import get_prompt_versions
@@ -329,16 +323,16 @@ class TestAdminViewerReadAccess:
         ):
             mock_registry.IN_MEMORY_PROMPTS = mock_prompts
 
-            response = await get_prompt_versions(
-                prompt_id="jack", user_api_key_dict=viewer
-            )
+            with pytest.raises(HTTPException) as exc_info:
+                await get_prompt_versions(prompt_id="jack", user_api_key_dict=viewer)
 
-        assert [p.version for p in response.prompts] == [2, 1]
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_get_prompt_info_allows_admin_viewer(self):
-        """Prompt info used to 403 anyone who was not exactly proxy_admin."""
+    async def test_get_prompt_info_refuses_admin_viewer(self):
         from unittest.mock import patch
+
+        from fastapi import HTTPException
 
         from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
         from litellm.proxy.prompts.prompt_endpoints import get_prompt_info
@@ -364,10 +358,10 @@ class TestAdminViewerReadAccess:
             )
             mock_registry.get_prompt_callback_for_prompt.return_value = None
 
-            response = await get_prompt_info(prompt_id="jack", user_api_key_dict=viewer)
+            with pytest.raises(HTTPException) as exc_info:
+                await get_prompt_info(prompt_id="jack", user_api_key_dict=viewer)
 
-        assert response.prompt_spec.prompt_id == "jack"
-        assert response.prompt_spec.version == 2
+        assert exc_info.value.status_code == 403
 
 
 class TestConfigPromptInfoWithEnvironment:

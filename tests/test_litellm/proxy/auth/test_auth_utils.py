@@ -4,17 +4,19 @@ Unit tests for auth_utils functions related to rate limiting and customer ID ext
 
 import base64
 import logging
-from typing import Optional
+from typing import Final, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import Request
 
-from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.proxy.auth.auth_utils import (
     _get_customer_id_from_standard_headers,
     abbreviate_api_key,
     check_complete_credentials,
+    check_if_request_size_is_safe,
+    check_response_size_is_safe,
     custom_auth_common_checks_warning,
     log_once_if_budget_reservation_disabled,
     warn_once_if_custom_auth_skips_common_checks,
@@ -29,6 +31,11 @@ from litellm.proxy.auth.auth_utils import (
     get_project_model_tpm_limit,
     get_request_route_template,
     is_request_body_safe,
+)
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
 )
 
 
@@ -3918,3 +3925,54 @@ class TestIsRequestBodySafeBlocksAwsIdentitySelectors:
             )
             is True
         )
+
+
+_TWO_MB: Final = 2 * 1024 * 1024
+_SIZE_LIMIT_LICENCES: Final = pytest.mark.parametrize(
+    ("service", "enforced"),
+    [
+        (licensed_entitlements(features=("request_limits",)), True),
+        (licensed_entitlements(features=("sso",)), False),
+        (unlicensed_entitlements(), False),
+    ],
+)
+
+
+@pytest.mark.asyncio
+@_SIZE_LIMIT_LICENCES
+async def test_request_size_limit_needs_the_request_limits_licence_feature(monkeypatch, service, enforced):
+    import litellm.proxy.proxy_server as proxy_server
+
+    monkeypatch.setitem(proxy_server.general_settings, "max_request_size_mb", 1)
+    install_entitlements(monkeypatch, service)
+    request: Final = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/chat/completions",
+            "headers": [(b"content-length", str(_TWO_MB).encode())],
+            "query_string": b"",
+        }
+    )
+
+    if not enforced:
+        assert await check_if_request_size_is_safe(request) is True
+        return
+    with pytest.raises(ProxyException, match="Request size is too large"):
+        await check_if_request_size_is_safe(request)
+
+
+@pytest.mark.asyncio
+@_SIZE_LIMIT_LICENCES
+async def test_response_size_limit_needs_the_request_limits_licence_feature(monkeypatch, service, enforced):
+    import litellm.proxy.proxy_server as proxy_server
+
+    monkeypatch.setitem(proxy_server.general_settings, "max_response_size_mb", 1)
+    install_entitlements(monkeypatch, service)
+    response: Final = "x" * _TWO_MB
+
+    if not enforced:
+        assert await check_response_size_is_safe(response) is True
+        return
+    with pytest.raises(ProxyException, match="Response size is too large"):
+        await check_response_size_is_safe(response)

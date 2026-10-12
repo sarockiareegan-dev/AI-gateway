@@ -32,6 +32,7 @@ from typing import (
     Union,
     cast,
     overload,
+    runtime_checkable,
 )
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -82,6 +83,7 @@ from litellm.proxy._types import (
     NewTeamRequest,
     NewUserRequest,
     NewUserResponse,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     SSOUserDefinedValues,
@@ -93,6 +95,7 @@ from litellm.proxy.auth.auth_utils import (
     _get_request_ip_address,
     has_user_setup_sso,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, has_valid_license, is_licensed
 from litellm.proxy.auth.handle_jwt import JWTHandler
 from litellm.proxy.auth.ip_address_utils import IPAddressUtils
 from litellm.proxy.auth.team_grants import TeamModelAliasTable
@@ -129,6 +132,7 @@ from litellm.proxy.utils import (
     ProxyLogging,
     get_custom_url,
     get_server_root_path,
+    require_license_feature,
 )
 from litellm.repositories.prisma_protocols import TableActions
 from litellm.repositories.table_repositories import SSOConfigRepository
@@ -148,6 +152,7 @@ from litellm.types.proxy.ui_sso import ParsedOpenIDResult
 
 if TYPE_CHECKING:
     from fastapi_sso.sso.base import OpenID
+    from fastapi_sso.sso.base import OpenID as SSOOpenID
 else:
     from typing import Any as OpenID
 
@@ -974,25 +979,74 @@ def _merge_sso_token_claims(
     )
 
 
-async def _raise_if_sso_exceeds_free_user_limit(premium_user: bool, prisma_client: PrismaClient | None) -> None:
-    """Free tier allows SSO for up to 5 billable users; beyond that requires an Enterprise license."""
-    if premium_user is True:
+async def _raise_if_sso_exceeds_free_user_limit(
+    prisma_client: PrismaClient | None, entitlements: EntitlementService | None = None
+) -> None:
+    """Free tier allows SSO for up to 5 billable users; beyond that requires the `sso` license feature."""
+    if is_licensed(LicenseFeature.SSO, entitlements):
         return
     if prisma_client is None:
         raise ProxyException(
             message=CommonProxyErrors.db_not_connected_error.value,
             type=ProxyErrorTypes.auth_error,
-            param="premium_user",
+            param="license",
             code=status.HTTP_403_FORBIDDEN,
         )
     billable_users: Final = await UserRepository(prisma_client).count_billable_users()
     if billable_users and billable_users > 5:
         raise ProxyException(
-            message="You must be a LiteLLM Enterprise user to use SSO for more than 5 users. If you have a license please set `LITELLM_LICENSE` in your env. If you want to obtain a license meet with us here: https://enterprise.litellm.ai/demo You are seeing this error message because You configured SSO (one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GENERIC_CLIENT_ID`, or SAML) in your env. Please unset it",
+            message="SSO for more than 5 users is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you configured SSO (one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GENERIC_CLIENT_ID`, or SAML) in your env. Please unset it",
             type=ProxyErrorTypes.auth_error,
-            param="premium_user",
+            param="license",
             code=status.HTTP_403_FORBIDDEN,
         )
+
+
+@runtime_checkable
+class CustomUISSOSignInHandler(Protocol):
+    async def handle_custom_ui_sso_sign_in(self, request: Request) -> "SSOOpenID": ...
+
+
+class _CompleteSignIn(Protocol):
+    async def __call__(
+        self,
+        *,
+        result: "SSOOpenID",
+        request: Request,
+        ui_access_mode: dict | None,
+        jwt_handler: JWTHandler | None,
+        return_to: str | None,
+    ) -> RedirectResponse: ...
+
+
+async def _sign_in_with_custom_ui_sso_handler(
+    handler: object,
+    request: Request,
+    return_to: str | None,
+    complete_sign_in: _CompleteSignIn | None = None,
+) -> RedirectResponse:
+    from litellm.proxy.auth.trusted_proxy_utils import require_trusted_proxy_request
+    from litellm.proxy.proxy_server import general_settings, jwt_handler
+
+    require_license_feature(LicenseFeature.SSO, "Custom UI SSO sign-in")
+    if not isinstance(handler, CustomUISSOSignInHandler):
+        raise ValueError(
+            "general_settings.custom_ui_sso_sign_in_handler must point to an object with "
+            "an async handle_custom_ui_sso_sign_in(request) method"
+        )
+    try:
+        require_trusted_proxy_request(request=request, general_settings=general_settings, feature_name="Custom UI SSO")
+    except ValueError as untrusted:
+        raise HTTPException(status_code=403, detail=ProxyErrorDetail(error=str(untrusted))) from untrusted
+    result: Final = await handler.handle_custom_ui_sso_sign_in(request)
+    finish: Final = complete_sign_in or SSOAuthenticationHandler.get_redirect_response_from_openid
+    return await finish(
+        result=result,
+        request=request,
+        ui_access_mode=general_settings.get("ui_access_mode", None),
+        jwt_handler=jwt_handler,
+        return_to=return_to if return_to and SSOAuthenticationHandler._validate_return_to(return_to) else None,
+    )
 
 
 @router.get("/sso/key/generate", tags=["experimental"], include_in_schema=False)
@@ -1012,7 +1066,6 @@ async def google_login(
     from litellm.proxy.proxy_server import (
         cli_sso_session_cache,
         general_settings,
-        premium_user,
         prisma_client,
         user_api_key_cache,
         user_custom_ui_sso_sign_in_handler,
@@ -1036,7 +1089,7 @@ async def google_login(
         or generic_client_id is not None
         or SAMLAuthHandler.is_saml_configured()
     ):
-        await _raise_if_sso_exceeds_free_user_limit(premium_user, prisma_client)
+        await _raise_if_sso_exceeds_free_user_limit(prisma_client)
 
     ####### Detect DB + MASTER KEY in .env #######
     missing_env_vars: Final = show_missing_vars_in_env()
@@ -1059,20 +1112,10 @@ async def google_login(
         user_code=(user_code if _cli_sso_verification_uri_complete_enabled() else None),
     )
 
-    # check if user defined a custom auth sso sign in handler, if yes, use it
     if user_custom_ui_sso_sign_in_handler is not None:
-        try:
-            from litellm_enterprise.proxy.auth.custom_sso_handler import (
-                EnterpriseCustomSSOHandler,
-            )
-
-            return await EnterpriseCustomSSOHandler.handle_custom_ui_sso_sign_in(
-                request=request,
-            )
-        except ImportError:
-            raise ValueError(
-                "Enterprise features are not available. Custom UI SSO sign-in requires LiteLLM Enterprise."
-            )
+        return await _sign_in_with_custom_ui_sso_handler(
+            handler=user_custom_ui_sso_sign_in_handler, request=request, return_to=return_to
+        )
 
     if (
         microsoft_client_id is None
@@ -2145,7 +2188,6 @@ async def saml_callback(request: Request):
         general_settings,
         jwt_handler,
         master_key,
-        premium_user,
         prisma_client,
         user_api_key_cache,
     )
@@ -2170,7 +2212,7 @@ async def saml_callback(request: Request):
 
     result: Final = await SAMLAuthHandler.handle_acs(request=request, cache=user_api_key_cache, post_data=post_data)
 
-    await _raise_if_sso_exceeds_free_user_limit(premium_user, prisma_client)
+    await _raise_if_sso_exceeds_free_user_limit(prisma_client)
 
     ui_access_mode: Final = general_settings.get("ui_access_mode", None)
     relay_state: Final = post_data.get("RelayState")
@@ -3504,7 +3546,6 @@ class SSOAuthenticationHandler:
             general_settings,
             generate_key_helper_fn,
             master_key,
-            premium_user,
             proxy_logging_obj,
             redis_usage_cache,
             user_api_key_cache,
@@ -3661,7 +3702,7 @@ class SSOAuthenticationHandler:
             user_email=user_email,
             user_role=user_role or LitellmUserRoles.INTERNAL_USER_VIEW_ONLY.value,
             login_method="sso",
-            premium_user=premium_user,
+            premium_user=has_valid_license(),
             auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
             disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
             server_root_path=get_server_root_path(),
@@ -4624,19 +4665,17 @@ async def debug_sso_login(request: Request):
     PROXY_BASE_URL should be the your deployed proxy endpoint, e.g. PROXY_BASE_URL="https://litellm-production-7002.up.railway.app/"
     Example:
     """
-    from litellm.proxy.proxy_server import premium_user
-
     microsoft_client_id: Final = os.getenv("MICROSOFT_CLIENT_ID", None)
     google_client_id: Final = os.getenv("GOOGLE_CLIENT_ID", None)
     generic_client_id: Final = os.getenv("GENERIC_CLIENT_ID", None)
 
     ####### Check if user is a Enterprise / Premium User #######
     if microsoft_client_id is not None or google_client_id is not None or generic_client_id is not None:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.SSO):
             raise ProxyException(
-                message="You must be a LiteLLM Enterprise user to use SSO. If you have a license please set `LITELLM_LICENSE` in your env. If you want to obtain a license meet with us here: https://enterprise.litellm.ai/demo You are seeing this error message because You set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
+                message="SSO is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
                 type=ProxyErrorTypes.auth_error,
-                param="premium_user",
+                param="license",
                 code=status.HTTP_403_FORBIDDEN,
             )
 

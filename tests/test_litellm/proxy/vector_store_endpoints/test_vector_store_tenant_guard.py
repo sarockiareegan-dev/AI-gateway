@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException, Request, Response
 
 import litellm
+from agami.routing.org_models import GLOBAL_MODELS_ONLY
 from litellm.proxy._types import LiteLLM_ManagedVectorStoresTable, UserAPIKeyAuth
 
 
@@ -138,7 +139,7 @@ async def test_vector_store_file_list_resolves_managed_vector_store_before_team_
 
     llm_router = MagicMock()
 
-    def get_credentials(model_id):
+    def get_credentials(model_id, visibility):
         return {
             "api_key": f"sk-{model_id}",
             "api_base": "https://api.openai.com/v1",
@@ -171,7 +172,7 @@ async def test_vector_store_file_list_resolves_managed_vector_store_before_team_
     assert captured_data["api_key"] == "sk-managed-deployment"
     assert captured_data["model"] == "openai/managed-deployment"
     llm_router.get_deployment_credentials_with_provider.assert_called_once_with(
-        model_id="managed-deployment"
+        model_id="managed-deployment", visibility=GLOBAL_MODELS_ONLY
     )
 
 

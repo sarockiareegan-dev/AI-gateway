@@ -30,6 +30,7 @@ from litellm.litellm_core_utils.url_utils import (
 from litellm.llms.azure.passthrough.transformation import azure_router_model_in_endpoint
 from litellm.llms.nvidia_nim.passthrough.transformation import nvidia_nim_model_group_in_path
 from litellm.proxy._types import *
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.common_utils.http_parsing_utils import extract_nested_form_metadata
 from litellm.types.passthrough_endpoints.pass_through_endpoints import (
     LITELLM_PASS_THROUGH_ENDPOINT_MARKER,
@@ -570,7 +571,7 @@ async def pre_db_read_auth_checks(
     Raises:
     - HTTPException if request fails initial auth checks
     """
-    from litellm.proxy.proxy_server import general_settings, llm_router, premium_user
+    from litellm.proxy.proxy_server import general_settings, llm_router
 
     # Check 1. request size
     await check_if_request_size_is_safe(request=request)
@@ -599,11 +600,6 @@ async def pre_db_read_auth_checks(
     # Check 4. Check if request route is an allowed route on the proxy
     if "allowed_routes" in general_settings:
         _allowed_routes: Final = general_settings["allowed_routes"]
-        if premium_user is not True:
-            verbose_proxy_logger.error(
-                "Trying to set allowed_routes. This is an Enterprise feature. %s",
-                CommonProxyErrors.not_premium_user.value,
-            )
         if route not in _allowed_routes:
             verbose_proxy_logger.error("Route %s not in allowed_routes=%s", route, _allowed_routes)
             raise HTTPException(
@@ -634,10 +630,10 @@ def route_in_additonal_public_routes(current_route: str):
     ```
     """
     from litellm.proxy.auth.route_checks import RouteChecks
-    from litellm.proxy.proxy_server import general_settings, premium_user
+    from litellm.proxy.proxy_server import general_settings
 
     try:
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.ACCESS_CONTROL):
             return False
         if general_settings is None:
             return False
@@ -846,15 +842,14 @@ async def check_if_request_size_is_safe(request: Request) -> bool:
         ProxyException: If the request size is too large
 
     """
-    from litellm.proxy.proxy_server import general_settings, premium_user
+    from litellm.proxy.proxy_server import general_settings
 
     max_request_size_mb: Final = general_settings.get("max_request_size_mb", None)
 
     if max_request_size_mb is not None:
-        # Check if premium user
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             verbose_proxy_logger.warning(
-                "using max_request_size_mb - not checking -  this is an enterprise only feature. %s",
+                "max_request_size_mb is not enforced: it needs the 'request_limits' feature on the Agami license. %s",
                 CommonProxyErrors.not_premium_user.value,
             )
             return True
@@ -908,14 +903,13 @@ async def check_response_size_is_safe(response: Any) -> bool:
 
     """
 
-    from litellm.proxy.proxy_server import general_settings, premium_user
+    from litellm.proxy.proxy_server import general_settings
 
     max_response_size_mb: Final = general_settings.get("max_response_size_mb", None)
     if max_response_size_mb is not None:
-        # Check if premium user
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             verbose_proxy_logger.warning(
-                "using max_response_size_mb - not checking -  this is an enterprise only feature. %s",
+                "max_response_size_mb is not enforced: it needs the 'request_limits' feature on the Agami license. %s",
                 CommonProxyErrors.not_premium_user.value,
             )
             return True

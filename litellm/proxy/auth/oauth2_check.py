@@ -10,6 +10,7 @@ from litellm.llms.custom_httpx.http_handler import (
     httpxSpecialProvider,
 )
 from litellm.proxy._types import CommonProxyErrors, LitellmUserRoles, UserAPIKeyAuth
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 
 
 class Oauth2Handler:
@@ -126,11 +127,10 @@ class Oauth2Handler:
         Raises:
             ValueError: If the token is invalid, the request fails, or the token info endpoint is not set.
         """
-        from litellm.proxy.proxy_server import premium_user
-
-        if premium_user is not True:
+        if not is_licensed(LicenseFeature.JWT_AUTH):
             raise ValueError(
-                "Oauth2 token validation is only available for premium users" + CommonProxyErrors.not_premium_user.value
+                "OAuth2 token validation needs the 'jwt_auth' feature on the Agami license. "
+                + CommonProxyErrors.not_premium_user.value
             )
 
         verbose_proxy_logger.debug("Oauth2 token validation for token=[set=%s]", token is not None)

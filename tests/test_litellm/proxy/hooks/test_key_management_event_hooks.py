@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
 
 from litellm.proxy.hooks.key_management_event_hooks import KeyManagementEventHooks
 
@@ -156,19 +158,19 @@ class TestKeyManagementEventHooksIndependentOperations:
 
 
 @pytest.mark.parametrize(
-    ("premium_user", "expected_audit_log_calls"),
+    ("licensed", "expected_audit_log_calls"),
     ((True, 1), (False, 0)),
 )
 @pytest.mark.asyncio
 async def test_key_generated_audit_log_uses_license_default(
     monkeypatch: pytest.MonkeyPatch,
-    premium_user: bool,
+    licensed: bool,
     expected_audit_log_calls: int,
 ):
     from litellm.proxy._types import GenerateKeyRequest, GenerateKeyResponse, UserAPIKeyAuth
 
     monkeypatch.setattr("litellm.store_audit_logs", None)
-    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", premium_user)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("audit_logs",) if licensed else ("sso",)))
     monkeypatch.delenv("LITELLM_STORE_AUDIT_LOGS", raising=False)
 
     response = GenerateKeyResponse(key="sk-test-key", token_id="token-123")
@@ -393,11 +395,6 @@ class TestRotateVirtualKeyInSecretManager:
                 new_callable=AsyncMock,
             ) as mock_rotate,
             patch("litellm.store_audit_logs", False),
-            patch.object(
-                KeyManagementEventHooks,
-                "_send_key_rotated_email",
-                new_callable=AsyncMock,
-            ),
         ):
             await KeyManagementEventHooks.async_key_rotated_hook(
                 data=data,

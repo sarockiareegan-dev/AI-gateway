@@ -17,6 +17,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, cast
 
 import litellm
+from agami.routing.org_models import deployment_org_model_name, org_model_name
 
 if TYPE_CHECKING:
     from litellm.router import Router
@@ -177,6 +178,11 @@ class TeamModelNameTranslator:
         if not isinstance(model_info_raw, Mapping):
             return None
         model_info: Final = cast(Mapping[str, object], model_info_raw)  # any-ok: checked
+        organization_owner: Final = deployment_org_model_name(model_dict)
+        if organization_owner is not None:
+            return org_model_name(organization_owner.organization_id, organization_owner.public_name), (
+                organization_owner.public_name
+            )
         team_id: Final = model_info.get("team_id")
         team_public: Final = model_info.get("team_public_model_name")
         name: Final = model_dict.get("model_name")

@@ -66,6 +66,23 @@ async def test_key_list_visibility(
     )
 
 
+@pytest.mark.parametrize(
+    "actor,expected_visible",
+    [
+        (Actor.ORG_ADMIN, frozenset(Actor) - {Actor.PROXY_ADMIN, Actor.CROSS_ORG_USER, Actor.ORG_B_ADMIN}),
+        (Actor.ORG_B_ADMIN, frozenset({Actor.ORG_B_ADMIN, Actor.CROSS_ORG_USER})),
+        (Actor.INTERNAL_USER, frozenset({Actor.INTERNAL_USER})),
+    ],
+    ids=["org_admin", "org_b_admin", "internal_user"],
+)
+async def test_key_list_include_team_keys_covers_the_callers_org(actor, expected_visible, proxy_client, world):
+    hashed_to_actor = {world.keys[a].hashed: a for a in Actor}
+
+    returned_hashes = await _list_hashes(proxy_client, world.keys[actor].cleartext, "include_team_keys=true")
+
+    assert {hashed_to_actor[h] for h in returned_hashes if h in hashed_to_actor} == set(expected_visible)
+
+
 async def _list_hashes(proxy_client, caller_cleartext: str, query: str) -> set:
     resp = await proxy_client.get(
         f"/key/list?{query}&size=100",

@@ -18,6 +18,7 @@ from litellm.litellm_core_utils.credential_accessor import CredentialAccessor
 from litellm.litellm_core_utils.litellm_logging import _get_masked_values
 from litellm.models.credentials import UpdateCredentialItem
 from litellm.proxy._types import CommonProxyErrors, UserAPIKeyAuth
+from litellm.proxy.auth.agami_access import key_model_visibility
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.encrypt_decrypt_utils import encrypt_value_helper
 from litellm.proxy.utils import handle_exception_on_proxy, jsonify_object
@@ -59,7 +60,9 @@ def get_llm_router() -> litellm.Router | None:
     return llm_router
 
 
-def _resolve_deployment_credentials(llm_router: litellm.Router | None, model_id: str) -> Mapping[str, object]:
+def _resolve_deployment_credentials(
+    llm_router: litellm.Router | None, model_id: str, user_api_key_dict: UserAPIKeyAuth
+) -> Mapping[str, object]:
     if llm_router is None:
         raise HTTPException(
             status_code=500,
@@ -67,7 +70,9 @@ def _resolve_deployment_credentials(llm_router: litellm.Router | None, model_id:
         )
     if llm_router.get_deployment(model_id) is None:
         raise HTTPException(status_code=404, detail="Model not found")
-    credential_values: Final = llm_router.get_deployment_credentials(model_id)
+    credential_values: Final = llm_router.get_deployment_credentials(
+        model_id, visibility=key_model_visibility(user_api_key_dict)
+    )
     if credential_values is None:
         raise HTTPException(status_code=404, detail="Model not found")
     return _CREDENTIAL_DICT_ADAPTER.validate_python(credential_values)
@@ -99,7 +104,7 @@ async def create_credential(
                 detail={"error": CommonProxyErrors.db_not_connected_error.value},
             )
         credential_values: Final = (
-            _resolve_deployment_credentials(llm_router, credential.model_id)
+            _resolve_deployment_credentials(llm_router, credential.model_id, user_api_key_dict)
             if credential.model_id
             else credential.credential_values
         )
@@ -227,7 +232,9 @@ async def get_credential_by_model(
         model: Final = llm_router.get_deployment(model_id)
         if model is None:
             raise HTTPException(status_code=404, detail="Model not found")
-        credential_values: Final = llm_router.get_deployment_credentials(model_id)
+        credential_values: Final = llm_router.get_deployment_credentials(
+            model_id, visibility=key_model_visibility(user_api_key_dict)
+        )
         if credential_values is None:
             raise HTTPException(status_code=404, detail="Model not found")
         masked_credential_values: Final = _get_masked_values(
@@ -353,7 +360,7 @@ async def update_credential(
             credential_name=credential.credential_name,
             credential_info=_CREDENTIAL_DICT_ADAPTER.validate_python(credential.credential_info),
             credential_values=_CREDENTIAL_DICT_ADAPTER.validate_python(
-                _resolve_deployment_credentials(llm_router, credential.model_id)
+                _resolve_deployment_credentials(llm_router, credential.model_id, user_api_key_dict)
                 if credential.model_id
                 else credential.credential_values or {}
             ),

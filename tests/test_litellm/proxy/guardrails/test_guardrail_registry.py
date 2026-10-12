@@ -949,6 +949,50 @@ async def test_update_guardrail_in_db_raises_when_row_missing():
         )
 
 
+@pytest.mark.asyncio
+async def test_add_guardrail_to_db_stores_the_owning_organization():
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_guardrailstable.create = AsyncMock(return_value=MagicMock(guardrail_id="g-1"))
+
+    await GuardrailRegistry().add_guardrail_to_db(
+        guardrail=Guardrail(
+            guardrail_name="org-guard",
+            litellm_params=LitellmParams(guardrail="bedrock", mode="pre_call"),
+        ),
+        prisma_client=prisma_client,
+        organization_id="org-a",
+    )
+
+    assert prisma_client.db.litellm_guardrailstable.create.await_args.kwargs["data"]["organization_id"] == "org-a"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "owner_change",
+    [
+        pytest.param({}, id="omitted-keeps-the-owner"),
+        pytest.param({"organization_id": "org-b"}, id="moved-to-another-org"),
+        pytest.param({"organization_id": None}, id="made-proxy-wide"),
+    ],
+)
+async def test_update_guardrail_in_db_writes_exactly_the_requested_owner_change(owner_change):
+    prisma_client = MagicMock()
+    prisma_client.db.litellm_guardrailstable.update = AsyncMock(return_value={"guardrail_id": "g-1"})
+
+    await GuardrailRegistry().update_guardrail_in_db(
+        guardrail_id="g-1",
+        guardrail=Guardrail(
+            guardrail_name="org-guard",
+            litellm_params=LitellmParams(guardrail="bedrock", mode="pre_call"),
+        ),
+        prisma_client=prisma_client,
+        owner_change=owner_change,
+    )
+
+    data = prisma_client.db.litellm_guardrailstable.update.await_args.kwargs["data"]
+    assert {k: v for k, v in data.items() if k == "organization_id"} == owner_change
+
+
 def test_reinitialize_guardrail_restores_previous_on_failure():
     """A reinitialization whose new params make the guardrail constructor raise must
     restore the previous instance instead of leaving the guardrail silently removed:

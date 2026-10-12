@@ -14,6 +14,12 @@ from unittest.mock import AsyncMock, MagicMock
 import jwt
 import pytest
 
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
+
 from .conftest import normalize
 
 
@@ -72,7 +78,12 @@ def _install_tx_context(mock_prisma):
 # ---------------------------------------------------------------------------
 
 
-def test_onboarding_get_token_happy(client, monkeypatch, mock_prisma):
+@pytest.mark.parametrize(
+    ("licence", "premium_user"),
+    [(licensed_entitlements(features=("sso",)), True), (unlicensed_entitlements(), False)],
+    ids=["licensed", "unlicensed"],
+)
+def test_onboarding_get_token_happy(client, monkeypatch, mock_prisma, licence, premium_user):
     """Valid invite link → returns dict with login_url, token, user_email."""
     from litellm.proxy import proxy_server as ps
 
@@ -84,7 +95,7 @@ def test_onboarding_get_token_happy(client, monkeypatch, mock_prisma):
     monkeypatch.setattr(ps, "prisma_client", mock_prisma)
     monkeypatch.setattr(ps, "master_key", "sk-master-test")
     monkeypatch.setattr(ps, "general_settings", {})
-    monkeypatch.setattr(ps, "premium_user", False)
+    install_entitlements(monkeypatch, licence)
 
     response = client.get("/onboarding/get_token", params={"invite_link": "inv-123"})
     assert response.status_code == 200
@@ -106,7 +117,7 @@ def test_onboarding_get_token_happy(client, monkeypatch, mock_prisma):
         "user_id": "user-abc",
         "user_email": "alice@example.com",
         "login_method": "username_password",
-        "premium_user": False,
+        "premium_user": premium_user,
     }
 
 
@@ -217,7 +228,6 @@ def test_claim_onboarding_link_happy(client, monkeypatch, mock_prisma):
     monkeypatch.setattr(ps, "prisma_client", mock_prisma)
     monkeypatch.setattr(ps, "master_key", "sk-master-test")
     monkeypatch.setattr(ps, "general_settings", {})
-    monkeypatch.setattr(ps, "premium_user", False)
 
     # Avoid hitting generate_key_helper_fn (touches DB / many globals); patch
     # the helper directly so we focus on the route's own behavior.
@@ -348,3 +358,25 @@ def test_claim_onboarding_link_bad_onboarding_jwt_401(
         response.json().get("detail", {}).get("error")
         == "Invalid onboarding session for invitation link."
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("licence", "premium_user"),
+    [(licensed_entitlements(features=("sso",)), True), (unlicensed_entitlements(), False)],
+    ids=["licensed", "unlicensed"],
+)
+async def test_claimed_onboarding_session_token_premium_flag_follows_the_licence(monkeypatch, licence, premium_user):
+    from litellm.proxy import proxy_server as ps
+
+    install_entitlements(monkeypatch, licence)
+    monkeypatch.setattr(ps, "generate_key_helper_fn", AsyncMock(return_value={"token": "sk-ui-session"}))
+    monkeypatch.setattr(ps, "master_key", "sk-master-test")
+    monkeypatch.setattr(ps, "general_settings", {})
+
+    token = await ps._generate_onboarding_ui_session_token(user_obj=_make_user_obj())
+
+    decoded = jwt.decode(token, "sk-master-test", algorithms=["HS256"])
+    assert decoded["premium_user"] is premium_user
+    assert decoded["key"] == "sk-ui-session"
+

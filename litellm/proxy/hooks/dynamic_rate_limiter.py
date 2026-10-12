@@ -3,7 +3,6 @@
 ## Tracks num active projects per minute
 
 import asyncio
-import os
 from collections.abc import Callable
 from datetime import datetime
 from typing import Final
@@ -15,6 +14,7 @@ from litellm.caching.caching import DualCache
 from litellm.exceptions import RateLimitType
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy.auth.entitlements import LICENSE_ENV_VAR, EntitlementService, get_entitlement_service
 from litellm.proxy.common_utils.proxy_rate_limit_error import ProxyRateLimitError
 from litellm.proxy.hooks.rate_limiter_utils import (
     convert_priority_to_percent,
@@ -76,7 +76,13 @@ class DynamicRateLimiterCache:
 
 class _PROXY_DynamicRateLimitHandler(CustomLogger):
     # Class variables or attributes
-    def __init__(self, internal_usage_cache: DualCache, time_fn: Callable[[], datetime] = get_utc_datetime):
+    def __init__(
+        self,
+        internal_usage_cache: DualCache,
+        time_fn: Callable[[], datetime] = get_utc_datetime,
+        entitlements: EntitlementService | None = None,
+    ):
+        self.entitlements: Final = entitlements or get_entitlement_service()
         self.internal_usage_cache = DynamicRateLimiterCache(cache=internal_usage_cache, time_fn=time_fn)
 
     def update_variables(self, llm_router: Router):
@@ -112,9 +118,11 @@ class _PROXY_DynamicRateLimitHandler(CustomLogger):
                     litellm.priority_reservation,
                 )
             elif priority is not None and litellm.priority_reservation is not None:
-                if os.getenv("LITELLM_LICENSE", None) is None:
+                if not self.entitlements.is_premium():
                     verbose_proxy_logger.error(
-                        "PREMIUM FEATURE: Reserving tpm/rpm by priority is a premium feature. Please add a 'LITELLM_LICENSE' to your .env to enable this.\nGet a license: https://docs.litellm.ai/docs/proxy/enterprise."
+                        "PREMIUM FEATURE: Reserving tpm/rpm by priority is a premium feature. "
+                        "Add a valid %s to your environment to enable it.",
+                        LICENSE_ENV_VAR,
                     )
                 else:
                     value: Final = litellm.priority_reservation[priority]

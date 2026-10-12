@@ -34,8 +34,7 @@ const renderAs = (userRole: string) => {
   return renderWithProviders(<GuardrailsMonitor />);
 };
 
-// `/guardrails/usage/*` aggregates across tenants and is listed in
-// admin_viewer_routes, so it is proxy-admin-only. Nothing on this page works
+// `/guardrails/usage/*` aggregates across tenants, so it is proxy-admin-only. Nothing on this page works
 // for a non-admin, hence the whole page is gated rather than a section of it.
 describe("Guardrails Monitor page access by role", () => {
   beforeEach(() => {

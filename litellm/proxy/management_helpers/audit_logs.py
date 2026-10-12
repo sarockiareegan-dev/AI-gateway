@@ -17,6 +17,7 @@ from litellm.proxy._types import (
     LitellmTableNames,
     UserAPIKeyAuth,
 )
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.repositories.table_repositories import AuditLogRepository
 from litellm.types.utils import StandardAuditLogPayload
 
@@ -35,9 +36,7 @@ def is_audit_logging_enabled(store_audit_logs: bool | None = None) -> bool:
     if environment_value is not None:
         return environment_value
 
-    from litellm.proxy.proxy_server import premium_user
-
-    return premium_user is True
+    return is_licensed(LicenseFeature.AUDIT_LOGS)
 
 
 def _allows_litellm_changed_by_header(user_api_key_dict: UserAPIKeyAuth) -> bool:
@@ -211,9 +210,9 @@ async def create_audit_log_for_update(request_data: LiteLLM_AuditLogs):
     if not is_audit_logging_enabled():
         return
 
-    from litellm.proxy.proxy_server import premium_user, prisma_client
+    from litellm.proxy.proxy_server import prisma_client
 
-    if premium_user is not True:
+    if not is_licensed(LicenseFeature.AUDIT_LOGS):
         return
 
     verbose_proxy_logger.debug("creating audit log for %s", request_data)

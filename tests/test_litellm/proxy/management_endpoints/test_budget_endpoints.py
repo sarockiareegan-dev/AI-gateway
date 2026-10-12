@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 import litellm.proxy.proxy_server as ps
 from litellm.proxy.proxy_server import app
 from litellm.proxy._types import UserAPIKeyAuth, LitellmUserRoles, CommonProxyErrors
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 
 
@@ -294,9 +295,7 @@ async def test_new_budget_invalid_model_max_budget(client_and_mocks, monkeypatch
     Test that /budget/new validates model_max_budget and returns 400 for invalid structure.
     Per-model budget implementation: validate_model_max_budget is called in new_budget.
     """
-    import litellm.proxy.proxy_server as ps
-
-    monkeypatch.setattr(ps, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
 
     client, _, _ = client_and_mocks
 
@@ -411,7 +410,7 @@ async def test_update_budget_duration_none_clears_obsolete_reset(client_and_mock
 async def test_update_budget_serializes_model_max_budget_for_prisma(
     client_and_mocks, monkeypatch
 ):
-    monkeypatch.setattr(ps, "premium_user", True)
+    install_entitlements(monkeypatch, licensed_entitlements(features=("budgets",)))
 
     client, _, mock_table = client_and_mocks
     captured: Final = _capture_update_data(mock_table)

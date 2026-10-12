@@ -4,10 +4,13 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 import httpx
 from fastapi import HTTPException, status
+from pydantic import TypeAdapter
 
 import litellm
+from agami.routing.org_models import ModelVisibility, org_model_name
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
-from litellm.router_utils.common_utils import _is_proxy_admin_request
+from litellm.proxy.auth.agami_access import key_model_visibility
+from litellm.router_utils.common_utils import _is_proxy_admin_request, get_request_organization_id
 
 # Client-supplied params that make the router or the call path fabricate a
 # failure or a delay instead of calling the provider. The ``mock_testing_*``
@@ -26,6 +29,7 @@ GATED_MOCK_PARAM_NAMES: Final[tuple[str, ...]] = (
 )
 
 MOCK_TESTING_CONFIG_KEY: Final = "dangerously_allow_mock_testing_request_params"
+_REQUEST_BODY: Final[TypeAdapter[dict[str, object]]] = TypeAdapter(dict[str, object])
 
 if TYPE_CHECKING:
     from litellm.router import Router as _Router
@@ -71,6 +75,16 @@ def _raise_if_model_fully_blocked(llm_router: LitellmRouter, model_name: object,
                 request=httpx.Request(method="POST", url="https://github.com/BerriAI/litellm"),
             ),
         )
+
+
+def _organization_model_name(llm_router: LitellmRouter, data: Mapping[str, object]) -> str | None:
+    """The caller's own organization model behind the public name they asked for, if their organization has one."""
+    requested_model: Final = data.get("model")
+    organization_id: Final = get_request_organization_id(data)
+    if organization_id is None or not isinstance(requested_model, str) or not requested_model:
+        return None
+    candidate: Final = org_model_name(organization_id, requested_model)
+    return candidate if candidate in llm_router.model_name_to_deployment_indices else None
 
 
 ROUTE_ENDPOINT_MAPPING: Final = {
@@ -557,9 +571,15 @@ async def _route_request_single_attempt(  # noqa: ANN202  # returns unawaited pr
             # If a model is provided, get its credentials from the router
             model: Final = data.get("model")
             if model and llm_router:
+                request_data: Final = _REQUEST_BODY.validate_python(data)
+                visibility: Final = (
+                    key_model_visibility(user_api_key_dict)
+                    if user_api_key_dict is not None
+                    else ModelVisibility.for_key(get_request_organization_id(request_data), is_super_admin=False)
+                )
                 try:
                     # Try to get deployment credentials for this model
-                    deployment_creds = llm_router.get_deployment_credentials(model_id=model)
+                    deployment_creds = llm_router.get_deployment_credentials(model_id=model, visibility=visibility)
                     if not deployment_creds:
                         # Try by model group name
                         deployment: Final = llm_router.get_deployment_by_model_group_name(model_group_name=model)
@@ -567,6 +587,7 @@ async def _route_request_single_attempt(  # noqa: ANN202  # returns unawaited pr
                             deployment
                             and deployment.litellm_params
                             and not llm_router._is_deployment_blocked(deployment)
+                            and visibility.allows_owner(deployment.model_info.organization_id)
                         ):
                             deployment_creds = deployment.litellm_params.model_dump(exclude_none=True)
 
@@ -630,9 +651,12 @@ async def _route_request_single_attempt(  # noqa: ANN202  # returns unawaited pr
             # These endpoints don't need a model, use custom_llm_provider directly
             return getattr(litellm, f"{route_type}")(**data)
 
-        team_model_name: Final = llm_router.map_team_model(data["model"], team_id) if team_id is not None else None
-        if team_model_name is not None:
-            data["model"] = team_model_name
+        owned_model_name: Final = (
+            llm_router.map_team_model(data["model"], team_id) if team_id is not None else None
+        ) or _organization_model_name(llm_router, data)
+        if owned_model_name is not None:
+            _raise_if_model_fully_blocked(llm_router=llm_router, model_name=owned_model_name, team_id=team_id)
+            data["model"] = owned_model_name
             return getattr(llm_router, f"{route_type}")(**data)
 
         elif (

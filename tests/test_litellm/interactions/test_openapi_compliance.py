@@ -9,6 +9,7 @@ Run with: pytest tests/test_litellm/interactions/test_openapi_compliance.py -v
 
 import json
 import os
+import re
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
@@ -37,6 +38,30 @@ def _load_openapi_spec_dict() -> Dict[str, Any]:
         )
 
 
+def _resolve(spec_dict: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    ref = schema.get("$ref")
+    return spec_dict["components"]["schemas"][ref.split("/")[-1]] if ref else schema
+
+
+def _model_interaction_request_schema(spec_dict: dict[str, Any]) -> dict[str, Any]:
+    """The create-interaction request variant that takes a `model`, whatever the spec names it."""
+    create_path = next(path for path in spec_dict["paths"] if re.search(r"/interactions/?$", path))
+    body = spec_dict["paths"][create_path]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    variants = tuple(_resolve(spec_dict, variant) for variant in body.get("oneOf", (body,)))
+    return next(variant for variant in variants if "model" in variant.get("required", ()))
+
+
+def _single_interaction_path(spec_dict: dict[str, Any], method: str) -> str | None:
+    return next(
+        (
+            path
+            for path, methods in spec_dict["paths"].items()
+            if re.search(r"/interactions/\{[^}/]+\}$", path) and method in methods
+        ),
+        None,
+    )
+
+
 def _declared_type_value(variant_schema: Dict[str, Any]) -> Any:
     """The single `type` value a union variant pins, whether spelled as a const or a 1-item enum."""
     type_property = variant_schema.get("properties", {}).get("type", {})
@@ -60,15 +85,13 @@ class TestRequestCompliance:
     """Tests that our request bodies match the OpenAPI spec."""
 
     def test_create_model_interaction_request_schema(self, spec_dict):
-        """Verify CreateModelInteractionParams schema fields."""
-        schema = spec_dict["components"]["schemas"]["CreateModelInteractionParams"]
+        """Verify the model-interaction request schema fields."""
+        schema = _model_interaction_request_schema(spec_dict)
 
-        # Required fields per spec
         assert "model" in schema["required"]
-        assert "input" in schema["required"]
 
-        # Check our supported optional fields exist in spec
         our_optional_fields = [
+            "input",
             "tools",
             "system_instruction",
             "generation_config",
@@ -88,7 +111,7 @@ class TestRequestCompliance:
 
     def test_input_types_match_spec(self, spec_dict):
         """Verify input field supports string, Content, Content[], Turn[]."""
-        schema = spec_dict["components"]["schemas"]["CreateModelInteractionParams"]
+        schema = _model_interaction_request_schema(spec_dict)
         input_schema = schema["properties"]["input"]
 
         # The input property may be inline oneOf or a $ref to InteractionsInput
@@ -309,27 +332,13 @@ class TestEndpointCompliance:
 
     def test_get_endpoint_exists(self, spec_dict):
         """Verify GET /interactions/{id} endpoint exists."""
-        paths = spec_dict["paths"]
-
-        get_path = None
-        for path, methods in paths.items():
-            if "{id}" in path and "interactions" in path and "get" in methods:
-                get_path = path
-                break
-
+        get_path = _single_interaction_path(spec_dict, "get")
         assert get_path is not None, "GET /interactions/{id} endpoint not found"
         print(f"✓ Get endpoint: GET {get_path}")
 
     def test_delete_endpoint_exists(self, spec_dict):
         """Verify DELETE /interactions/{id} endpoint exists."""
-        paths = spec_dict["paths"]
-
-        delete_path = None
-        for path, methods in paths.items():
-            if "{id}" in path and "interactions" in path and "delete" in methods:
-                delete_path = path
-                break
-
+        delete_path = _single_interaction_path(spec_dict, "delete")
         assert delete_path is not None, "DELETE /interactions/{id} endpoint not found"
         print(f"✓ Delete endpoint: DELETE {delete_path}")
 

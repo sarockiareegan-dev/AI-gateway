@@ -205,7 +205,6 @@ async def test_bedrock_guardrails_with_streaming():
     async def _stream_through_guardrail():
         proxy_logging_obj = ProxyLogging(
             user_api_key_cache=mock_user_api_key_cache,
-            premium_user=True,
         )
 
         guardrail = BedrockGuardrail(
@@ -252,7 +251,6 @@ async def test_bedrock_guardrails_with_streaming_no_violation():
 
     proxy_logging_obj = ProxyLogging(
         user_api_key_cache=mock_user_api_key_cache,
-        premium_user=True,
     )
 
     guardrail = BedrockGuardrail(

@@ -31,6 +31,7 @@ from litellm._uuid import uuid
 from litellm.litellm_core_utils.safe_json_dumps import safe_dumps
 from litellm.models.user import SCIMPlaceholder
 from litellm.proxy._types import (
+    CommonProxyErrors,
     LiteLLM_TeamTable,
     LiteLLM_UserTable,
     LitellmUserRoles,
@@ -38,6 +39,7 @@ from litellm.proxy._types import (
     NewTeamRequest,
     NewUserRequest,
     NewUserResponse,
+    ProxyErrorDetail,
     ProxyErrorTypes,
     ProxyException,
     TeamMemberAddRequest,
@@ -45,6 +47,7 @@ from litellm.proxy._types import (
     UserAPIKeyAuth,
 )
 from litellm.proxy.auth.auth_checks import _delete_cache_key_object
+from litellm.proxy.auth.entitlements import LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.http_parsing_utils import _safe_get_request_headers
 from litellm.proxy.management_endpoints.internal_user_endpoints import new_user
@@ -58,7 +61,6 @@ from litellm.proxy.management_endpoints.team_endpoints import (
 )
 from litellm.proxy.utils import (
     PrismaClient,
-    _premium_user_check,
     handle_exception_on_proxy,
 )
 from litellm.repositories.table_repositories import (
@@ -258,10 +260,22 @@ class GroupMemberExtractionResult(BaseModel):
     all_member_ids: list[str]  # existing + newly created
 
 
+def require_scim_licence() -> None:
+    if is_licensed(LicenseFeature.SSO):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=ProxyErrorDetail(
+            error="SCIM provisioning needs the 'sso' feature on the Agami license. "
+            f"{CommonProxyErrors.not_premium_user.value}"
+        ),
+    )
+
+
 scim_router: Final = APIRouter(
     prefix="/scim/v2",
     tags=["✨ SCIM v2 (Enterprise Only)"],
-    dependencies=[Depends(_premium_user_check)],
+    dependencies=[Depends(require_scim_licence)],
 )
 
 SCIM_MAX_PAGE_SIZE: Final = 100

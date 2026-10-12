@@ -3117,7 +3117,6 @@ def _get_combined_pass_through_endpoints(
 async def _register_pass_through_endpoint(
     endpoint: dict[str, object] | PassThroughGenericEndpoint,
     app: FastAPI,
-    premium_user: bool,
     visited_endpoints: set[str],
     config_file_path: str | None = None,
 ) -> None:
@@ -3238,7 +3237,6 @@ async def initialize_pass_through_endpoints(
     from litellm.proxy.proxy_server import (
         app,
         config_passthrough_endpoints,
-        premium_user,
     )
 
     ## get combined pass-through endpoints from db + config
@@ -3265,7 +3263,6 @@ async def initialize_pass_through_endpoints(
         await _register_pass_through_endpoint(
             endpoint=endpoint,
             app=app,
-            premium_user=premium_user,
             visited_endpoints=visited_endpoints,
             config_file_path=config_file_path,
         )

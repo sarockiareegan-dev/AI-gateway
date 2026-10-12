@@ -459,7 +459,6 @@ class TestBucketConfigIncludes:
 class TestGCSConfigBucketClient:
     @pytest.mark.asyncio
     async def test_reading_a_config_from_gcs_does_not_need_an_enterprise_license(self, monkeypatch):
-        monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
 
         bucket = gcs_config_bucket("litellm-configs")
 
@@ -468,7 +467,6 @@ class TestGCSConfigBucketClient:
 
     @pytest.mark.asyncio
     async def test_reading_a_config_from_gcs_starts_no_background_task(self, monkeypatch):
-        monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
         running_before = asyncio.all_tasks()
 
         gcs_config_bucket("litellm-configs")

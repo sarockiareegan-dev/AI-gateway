@@ -162,6 +162,7 @@ class TestGatewayDailyActivityEndpoint:
             LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
             LitellmUserRoles.TEAM,
             LitellmUserRoles.ORG_ADMIN,
+            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
         ],
     )
     async def test_refuses_every_non_admin_role(self, role):
@@ -173,14 +174,10 @@ class TestGatewayDailyActivityEndpoint:
         assert exc.value.status_code == 403
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "role",
-        [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY],
-    )
-    async def test_serves_both_admin_roles(self, role):
+    async def test_serves_the_proxy_admin(self):
         with patch("litellm.proxy.proxy_server.prisma_client", _prisma_returning([])):
             response = await get_gateway_daily_activity(
-                user_api_key_dict=UserAPIKeyAuth(api_key="sk-test", user_role=role),
+                user_api_key_dict=UserAPIKeyAuth(api_key="sk-test", user_role=LitellmUserRoles.PROXY_ADMIN),
             )
         assert response.total_successful_requests == 0
 

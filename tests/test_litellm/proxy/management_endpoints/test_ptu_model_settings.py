@@ -671,7 +671,6 @@ class TestAddNewModelPtuGate:
             patch(f"{proxy_server}.proxy_config", mock_proxy_config),
             patch(f"{proxy_server}.proxy_logging_obj", MagicMock()),
             patch(f"{proxy_server}.general_settings", {}),
-            patch(f"{proxy_server}.premium_user", True),
             patch(f"{proxy_server}.llm_router", mock_router),
             patch(
                 f"{endpoints}.ModelManagementAuthChecks.can_user_make_model_call",
@@ -912,7 +911,6 @@ class TestPtuDeploymentsAreNotBilledPerToken:
             )
             stack.enter_context(patch_ctx(f"{endpoints}._setup_new_team_model_assignment", setup_new))
             stack.enter_context(patch_ctx(f"{endpoints}._update_existing_team_model_assignment", update_existing))
-            stack.enter_context(patch_ctx("litellm.proxy.proxy_server.premium_user", True))
             with pytest.raises(HTTPException) as exc:
                 await _update_team_model_in_db(
                     db_model=db_model,

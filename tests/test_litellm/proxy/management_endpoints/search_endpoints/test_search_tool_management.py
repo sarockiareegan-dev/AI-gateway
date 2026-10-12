@@ -814,6 +814,24 @@ async def test_list_search_tools_admin_with_restricted_key_still_sees_all():
     assert names == {"db-tool-1", "db-tool-2", "db-tool-3"}
 
 
+@pytest.mark.asyncio
+async def test_list_search_tools_admin_viewer_is_held_to_its_key_allowlist():
+    viewer = UserAPIKeyAuth(
+        user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
+        user_id="viewer_user",
+        object_permission=LiteLLM_ObjectPermissionTable(
+            object_permission_id="op-viewer",
+            search_tools=["db-tool-1"],
+        ),
+    )
+
+    with _mock_search_tool_backend(_scoping_db_tools()), _override_auth(viewer):
+        response = TestClient(app).get("/search_tools/list")
+
+    assert response.status_code == 200
+    assert [t["search_tool_name"] for t in response.json()["search_tools"]] == ["db-tool-1"]
+
+
 def _search_tool_responses(*names: str) -> list[SearchToolInfoResponse]:
     return [
         SearchToolInfoResponse(

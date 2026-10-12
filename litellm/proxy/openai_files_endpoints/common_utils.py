@@ -15,6 +15,7 @@ from typing import (
     runtime_checkable,
 )
 
+from agami.routing.org_models import GLOBAL_MODELS_ONLY, ModelVisibility
 from litellm.batches.batch_utils import batch_cost_is_final
 from litellm.constants import MAX_FILE_LIST_LIMIT
 from litellm.proxy._types import ProxyException
@@ -352,6 +353,7 @@ def get_credentials_for_model(
     llm_router,  # Router instance
     model_id: str,
     operation_context: str = "file operation",
+    visibility: ModelVisibility = GLOBAL_MODELS_ONLY,
 ):
     """
     Retrieve API credentials for a model from the LLM Router.
@@ -381,7 +383,7 @@ def get_credentials_for_model(
             detail={"error": "Router not initialized. Cannot use model-based routing."},
         )
 
-    credentials: Final = llm_router.get_deployment_credentials_with_provider(model_id=model_id)
+    credentials: Final = llm_router.get_deployment_credentials_with_provider(model_id=model_id, visibility=visibility)
 
     if credentials is None:
         raise ProxyModelNotFoundError(
@@ -425,11 +427,14 @@ async def get_authorized_credentials_for_model(
     operation_context: str = "file operation",
 ) -> dict:  # mutable-ok: same contract as get_credentials_for_model, callers merge it into request data
     """``get_credentials_for_model`` gated by ``authorize_model_for_key``."""
+    from litellm.proxy.auth.agami_access import key_model_visibility
+
     await authorize_model_for_key(model_id=model_id, llm_router=llm_router, user_api_key_dict=user_api_key_dict)
     return get_credentials_for_model(
         llm_router=llm_router,
         model_id=model_id,
         operation_context=operation_context,
+        visibility=key_model_visibility(user_api_key_dict),
     )
 
 
@@ -463,9 +468,11 @@ def get_team_provider_credentials(
         return None
 
     from litellm.proxy._types import SpecialModelNames
+    from litellm.proxy.auth.agami_access import key_model_visibility
     from litellm.proxy.auth.model_checks import get_complete_model_list, get_key_models
 
     team_id: Final = user_api_key_dict.team_id
+    visibility: Final = key_model_visibility(user_api_key_dict)
     team_models: Final = user_api_key_dict.team_models or []
 
     proxy_model_list: Final = llm_router.get_model_names(team_id=team_id)
@@ -498,7 +505,9 @@ def get_team_provider_credentials(
         return public_model_name is not None and public_model_name in key_model_allowlist_set
 
     def _provider_credentials(model_id: str) -> dict | None:
-        credentials: Final = llm_router.get_deployment_credentials_with_provider(model_id=model_id, team_id=team_id)
+        credentials: Final = llm_router.get_deployment_credentials_with_provider(
+            model_id=model_id, team_id=team_id, visibility=visibility
+        )
         if credentials is not None and credentials.get("custom_llm_provider") == custom_llm_provider:
             return {key: value for key, value in credentials.items() if key != "model"}
         return None
@@ -579,6 +588,7 @@ def add_internal_model_credentials(
     data: dict,
     llm_router: "Router",
     model_id: str | None,
+    visibility: ModelVisibility = GLOBAL_MODELS_ONLY,
 ) -> None:
     """
     Attach the deployment's immutable server-side credential snapshot to a router-routed
@@ -592,7 +602,9 @@ def add_internal_model_credentials(
     if model_id is None:
         return
     try:
-        credentials: Final = llm_router.get_deployment_credentials_with_provider(model_id=model_id)
+        credentials: Final = llm_router.get_deployment_credentials_with_provider(
+            model_id=model_id, visibility=visibility
+        )
     except Exception:  # noqa: BLE001  # the snapshot only enables cost accounting; a batch whose deployment no longer resolves must still be retrievable
         return
     if credentials is None:
@@ -604,13 +616,18 @@ def add_deployment_model_info(
     data: dict,
     llm_router: Optional["Router"],
     model_id: str,
+    visibility: ModelVisibility = GLOBAL_MODELS_ONLY,
 ) -> None:
     """
     Stamp the resolved deployment's `model_info` onto a direct (non-router) batch call
     (in-place), the way the router does for routed calls, so the completed batch is
     priced by its deployment id instead of the published model rate.
     """
-    deployment: Final = llm_router.get_credential_deployment(model_id=model_id) if llm_router is not None else None
+    deployment: Final = (
+        llm_router.get_credential_deployment(model_id=model_id, visibility=visibility)
+        if llm_router is not None
+        else None
+    )
     if deployment is None:
         return
     data["litellm_metadata"] = {

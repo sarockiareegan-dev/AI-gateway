@@ -109,13 +109,10 @@ async def get_gateway_daily_activity(
     """
     from litellm.proxy.proxy_server import prisma_client
 
-    if user_api_key_dict.user_role not in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
+    if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
         raise HTTPException(
             status_code=403,
-            detail="Only proxy admin roles can view gateway request counts across the deployment",
+            detail="Only a proxy admin can view gateway request counts across the deployment",
         )
 
     if prisma_client is None:

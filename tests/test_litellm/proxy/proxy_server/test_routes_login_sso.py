@@ -37,12 +37,12 @@ def _install_login_mocks(monkeypatch, raise_on_auth: bool = False) -> None:
         fake.key = "sk-fake-ui-key"
         return fake
 
-    def _fake_token_object(login_result, general_settings, premium_user):
+    def _fake_token_object(login_result, general_settings):
         return {
             "user_id": "u-1",
             "user_email": "test@example.invalid",
             "user_role": "proxy_admin",
-            "premium_user": premium_user,
+            "premium_user": False,
             "key": "sk-fake-ui-key",
         }
 
@@ -50,7 +50,6 @@ def _install_login_mocks(monkeypatch, raise_on_auth: bool = False) -> None:
     monkeypatch.setattr("litellm.proxy.auth.login_utils.create_ui_token_object", _fake_token_object)
     monkeypatch.setattr(ps, "master_key", "sk-test-master")
     monkeypatch.setattr(ps, "general_settings", {})
-    monkeypatch.setattr(ps, "premium_user", False)
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +486,6 @@ def _install_real_auth(monkeypatch, **settings):
     monkeypatch.setenv("UI_PASSWORD", "right-password")
     monkeypatch.setattr(ps, "master_key", "sk-test-master")
     monkeypatch.setattr(ps, "prisma_client", None)
-    monkeypatch.setattr(ps, "premium_user", False)
     monkeypatch.setattr(ps, "general_settings", dict(settings))
 
 

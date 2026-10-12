@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 
-from litellm.proxy._types import LiteLLMRoutes, LitellmUserRoles
+from litellm.proxy._types import LitellmUserRoles
 from litellm.proxy.auth.user_api_key_auth import UserAPIKeyAuth, user_api_key_auth
 from litellm.proxy.list_api.common import (
     PROBLEM_TYPE_BASE,
@@ -253,6 +253,7 @@ def test_offsets_by_page(query_raw, as_proxy_admin):
         LitellmUserRoles.INTERNAL_USER,
         LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
         LitellmUserRoles.TEAM,
+        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
     ],
 )
 def test_refuses_a_caller_without_admin_view(query_raw, role):
@@ -271,10 +272,9 @@ def test_refuses_a_caller_without_admin_view(query_raw, role):
     query_raw.assert_not_called()
 
 
-@pytest.mark.parametrize("role", [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
-def test_admins_and_admin_viewers_may_read_every_budget(query_raw, role):
+def test_proxy_admins_may_read_every_budget(query_raw):
     _serve(query_raw, [_row("b-1")])
-    original = _as_role(role)
+    original = _as_role(LitellmUserRoles.PROXY_ADMIN)
     try:
         response = _get()
     finally:
@@ -518,11 +518,3 @@ def test_the_spec_serves_what_the_row_model_declares():
     assert BUDGETS_LIST_SPEC.sortable <= frozenset(BudgetListItem.model_fields)
     assert frozenset(BUDGETS_LIST_SPEC.filters) <= frozenset(BudgetListItem.model_fields)
 
-
-def test_is_reachable_by_the_roles_that_can_open_the_budgets_page():
-    """Route-level auth gate, which the dependency_overrides above bypass. The handler's
-    admin-view check is dead code if RouteChecks rejects the role first."""
-    assert BUDGETS_PATH in LiteLLMRoutes.admin_viewer_routes.value
-    assert ("/budget/list" in LiteLLMRoutes.admin_viewer_routes.value) == (
-        BUDGETS_PATH in LiteLLMRoutes.admin_viewer_routes.value
-    )

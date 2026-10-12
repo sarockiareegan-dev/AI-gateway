@@ -146,3 +146,10 @@ def test_aws_session_tags_round_trip_as_sts_shaped_pairs():
 def test_aws_session_tags_reject_shapes_sts_would_refuse(aws_session_tags):
     with pytest.raises(ValidationError, match="aws_session_tags"):
         LiteLLM_Params(model="bedrock/anthropic.claude-opus-5", aws_session_tags=aws_session_tags)
+
+
+def test_model_info_has_a_single_owner():
+    assert ModelInfo(id="x", team_id="team-1").organization_id is None
+    assert ModelInfo(id="x", organization_id="org-a").team_id is None
+    with pytest.raises(ValidationError, match="team or an organization, not both"):
+        ModelInfo(id="x", team_id="team-1", organization_id="org-a")

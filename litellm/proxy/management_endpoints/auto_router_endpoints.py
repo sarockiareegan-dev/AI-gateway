@@ -213,7 +213,7 @@ async def _authorize_router_dry_run(user_api_key_dict: UserAPIKeyAuth, team_id: 
     from litellm.proxy.management_endpoints.model_management_endpoints import (
         ModelManagementAuthChecks,
     )
-    from litellm.proxy.proxy_server import premium_user, prisma_client
+    from litellm.proxy.proxy_server import prisma_client
 
     if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return None
@@ -251,14 +251,9 @@ async def _authorize_router_dry_run(user_api_key_dict: UserAPIKeyAuth, team_id: 
             team_id=team_id,
             user_api_key_dict=user_api_key_dict,
             team_obj=team,
-            premium_user=premium_user,
         )
         return None
-    authorize_member_auto_router_team(
-        user_api_key_dict=user_api_key_dict,
-        team=team,
-        premium_user=premium_user,
-    )
+    authorize_member_auto_router_team(user_api_key_dict=user_api_key_dict, team=team)
     return team
 
 
@@ -764,7 +759,7 @@ async def get_auto_router_benchmarks(
     """
     from litellm.proxy.proxy_server import llm_router, prisma_client
 
-    _require_admin_viewer(user_api_key_dict, "view auto-router benchmarks across the deployment")
+    _require_proxy_admin(user_api_key_dict, "view auto-router benchmarks across the deployment")
     if prisma_client is None:
         raise HTTPException(status_code=500, detail=CommonProxyErrors.db_not_connected_error.value)
 
@@ -857,15 +852,7 @@ async def get_auto_router_session(
 # ---------------------------------------------------------------------------
 
 
-def _require_admin_viewer(user_api_key_dict: UserAPIKeyAuth, action: str) -> None:
-    if user_api_key_dict.user_role not in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
-        raise HTTPException(status_code=403, detail=f"Only proxy admin roles can {action}")
-
-
-def _require_admin_writer(user_api_key_dict: UserAPIKeyAuth, action: str) -> None:
+def _require_proxy_admin(user_api_key_dict: UserAPIKeyAuth, action: str) -> None:
     if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
         raise HTTPException(status_code=403, detail=f"Only a proxy admin can {action}")
 
@@ -1519,7 +1506,7 @@ async def start_shadow_eval(
     """
     from litellm.proxy.proxy_server import llm_router, prisma_client
 
-    _require_admin_writer(user_api_key_dict, "start a shadow eval")
+    _require_proxy_admin(user_api_key_dict, "start a shadow eval")
     if prisma_client is None:
         raise HTTPException(status_code=500, detail=CommonProxyErrors.db_not_connected_error.value)
     unconfigured: Final = tuple(
@@ -1727,7 +1714,7 @@ async def list_shadow_eval_jobs(
     is accurate. Judged counts, spend, and results ride the detail endpoint only."""
     from litellm.proxy.proxy_server import prisma_client
 
-    _require_admin_viewer(user_api_key_dict, "view shadow evals")
+    _require_proxy_admin(user_api_key_dict, "view shadow evals")
     if prisma_client is None:
         raise HTTPException(status_code=500, detail=CommonProxyErrors.db_not_connected_error.value)
     filter_type: Final = target_type if isinstance(target_type, str) else None
@@ -1770,7 +1757,7 @@ async def get_shadow_eval_job(
     """One job with derived counts, judge spend, latest error, and stratified results."""
     from litellm.proxy.proxy_server import prisma_client
 
-    _require_admin_viewer(user_api_key_dict, "view shadow evals")
+    _require_proxy_admin(user_api_key_dict, "view shadow evals")
     if prisma_client is None:
         raise HTTPException(status_code=500, detail=CommonProxyErrors.db_not_connected_error.value)
     legs: Final = _LEG_ROWS.validate_python(
@@ -1830,7 +1817,7 @@ async def stop_shadow_eval_job(
     the status the job actually holds."""
     from litellm.proxy.proxy_server import prisma_client
 
-    _require_admin_writer(user_api_key_dict, "stop a shadow eval")
+    _require_proxy_admin(user_api_key_dict, "stop a shadow eval")
     if prisma_client is None:
         raise HTTPException(status_code=500, detail=CommonProxyErrors.db_not_connected_error.value)
     stamp: Final = datetime.now(timezone.utc)

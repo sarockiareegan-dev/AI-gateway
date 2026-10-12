@@ -1,3 +1,4 @@
+import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -5,6 +6,11 @@ import pytest
 
 from litellm.integrations.gcs_bucket.gcs_bucket import GCSBucketLogger
 from litellm.integrations.gcs_bucket.gcs_bucket_base import GCSBucketBase
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 
 
 class TestGCSBucketBase:
@@ -132,30 +138,36 @@ class TestGCSBucketBase:
 
 class TestGCSBucketLoggerBucketName:
     @pytest.mark.asyncio
-    async def test_constructor_rejects_non_premium_user(self, monkeypatch):
-        monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
+    @pytest.mark.parametrize("features", [(), ("sso",)])
+    async def test_constructor_rejects_a_license_without_logging_integrations(self, monkeypatch, features):
+        install_entitlements(
+            monkeypatch, licensed_entitlements(features=features) if features else unlicensed_entitlements()
+        )
+        tasks_before = asyncio.all_tasks()
 
         with pytest.raises(ValueError, match="GCS Bucket logging is a premium feature"):
             GCSBucketLogger(bucket_name="config-bucket")
+
+        assert asyncio.all_tasks() == tasks_before
 
     @pytest.mark.asyncio
     async def test_the_bucket_name_it_is_constructed_with_survives(self, monkeypatch):
         """Reading config.yaml out of a GCS bucket asks for that bucket, not the logging one (LIT-6982)."""
         monkeypatch.setenv("GCS_BUCKET_NAME", "logging-bucket")
-        monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+        install_entitlements(monkeypatch, licensed_entitlements(features=("logging_integrations",)))
 
         assert GCSBucketLogger(bucket_name="config-bucket").BUCKET_NAME == "config-bucket"
 
     @pytest.mark.asyncio
     async def test_no_bucket_name_still_falls_back_to_the_environment(self, monkeypatch):
         monkeypatch.setenv("GCS_BUCKET_NAME", "logging-bucket")
-        monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+        install_entitlements(monkeypatch, licensed_entitlements(features=("logging_integrations",)))
 
         assert GCSBucketLogger().BUCKET_NAME == "logging-bucket"
 
     @pytest.mark.asyncio
-    async def test_async_logging_rejects_non_premium_user(self, monkeypatch):
-        monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", False)
+    async def test_async_logging_rejects_a_license_without_logging_integrations(self, monkeypatch):
+        install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
         logger = object.__new__(GCSBucketLogger)
 
         with pytest.raises(ValueError, match="GCS Bucket logging is a premium feature"):

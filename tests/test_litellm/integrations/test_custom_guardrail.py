@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, Optional
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
 from litellm.integrations.custom_guardrail import (
     DEFAULT_ADVISORY_MESSAGE,
@@ -20,9 +21,84 @@ from litellm.types.utils import (
     Message,
     ModelResponse,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+
+
+@pytest.mark.parametrize(
+    ("features", "expected"),
+    [(("guardrails",), {"policy_id": "p-1"}), (("budgets",), {})],
+    ids=["guardrails-licence", "other-feature"],
+)
+def test_dynamic_guardrail_extra_body_needs_the_guardrails_licence_feature(monkeypatch, features, expected):
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    guardrail: Final = CustomGuardrail(guardrail_name="judge")
+    request_data: Final = {"metadata": {"guardrails": [{"judge": {"extra_body": {"policy_id": "p-1"}}}]}}
+
+    assert guardrail.get_guardrail_dynamic_request_body_params(request_data) == expected
+
+
+_TAGGED_MODE: Final = Mode(tags={"audit": "logging_only", "strict": ["pre_call", "post_call"]}, default="pre_call")
+
+
+def _hooks_that_run(guardrail: CustomGuardrail, request_data: dict[str, object]) -> set[str]:
+    return {
+        hook.value
+        for hook in (GuardrailEventHooks.pre_call, GuardrailEventHooks.post_call, GuardrailEventHooks.logging_only)
+        if guardrail.should_run_guardrail(request_data, hook)
+    }
+
+
+@pytest.mark.parametrize(
+    ("request_data", "expected"),
+    [
+        ({"metadata": {"tags": ["audit"]}}, {"logging_only"}),
+        ({"metadata": {"tags": ["strict"]}}, {"pre_call", "post_call"}),
+        ({"metadata": {"tags": ["audit", "strict"]}}, {"logging_only", "pre_call", "post_call"}),
+        ({"litellm_metadata": {"tags": ["audit"]}}, {"logging_only"}),
+        ({"tags": ["strict"], "metadata": {}}, {"pre_call", "post_call"}),
+        ({"metadata": {"tags": ["unrelated"]}}, {"pre_call"}),
+        ({"metadata": {}}, {"pre_call"}),
+    ],
+    ids=["one-tag", "tag-with-hook-list", "tags-union", "litellm-metadata", "body-tags", "unmatched-tag", "untagged"],
+)
+@pytest.mark.parametrize("default_on", [True, False], ids=["default-on", "requested"])
+def test_tag_based_mode_picks_hooks_from_request_tags(
+    monkeypatch: pytest.MonkeyPatch, request_data: dict[str, object], expected: set[str], default_on: bool
+) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
+    guardrail: Final = CustomGuardrail(guardrail_name="tagged", event_hook=_TAGGED_MODE, default_on=default_on)
+    key: Final = "litellm_metadata" if "litellm_metadata" in request_data else "metadata"
+    metadata: Final = request_data[key]
+    assert isinstance(metadata, dict)
+    requested: Final = {**request_data, key: {**metadata, "guardrails": ["tagged"]}}
+
+    assert _hooks_that_run(guardrail, request_data if default_on else requested) == expected
+
+
+def test_tag_based_mode_without_a_default_skips_untagged_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
+    guardrail: Final = CustomGuardrail(
+        guardrail_name="tagged", event_hook=Mode(tags={"strict": "pre_call"}), default_on=True
+    )
+
+    assert _hooks_that_run(guardrail, {"metadata": {"tags": ["other"]}}) == set()
+    assert _hooks_that_run(guardrail, {"metadata": {"tags": ["strict"]}}) == {"pre_call"}
+
+
+def test_tag_based_mode_without_the_guardrails_feature_forbids_selected_hooks(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso",)))
+    guardrail: Final = CustomGuardrail(guardrail_name="tagged", event_hook=_TAGGED_MODE, default_on=True)
+    request_data: Final = {"metadata": {"tags": ["audit"]}}
+
+    assert guardrail.should_run_guardrail(request_data, GuardrailEventHooks.pre_call) is False
+    with pytest.raises(HTTPException) as exc_info:
+        guardrail.should_run_guardrail(request_data, GuardrailEventHooks.logging_only)
+
+    assert exc_info.value.status_code == 403
+    assert "guardrails" in str(exc_info.value.detail)
 
 
 class TestCustomGuardrailDeploymentHook:

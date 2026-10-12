@@ -18,13 +18,18 @@ from litellm.proxy.management_endpoints.team_endpoints import (
     TEAM_ADVISORY_LOCK_SQL,
     team_member_update,
 )
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 
 
 @pytest.mark.asyncio
-async def test_ateam_member_update_admin_requires_premium(monkeypatch):
-    # Arrange: patch prisma_client and premium_user
+@pytest.mark.parametrize("service", [unlicensed_entitlements(), licensed_entitlements(features=("sso",))])
+async def test_team_member_update_to_admin_needs_the_team_admin_roles_licence_feature(monkeypatch, service):
     monkeypatch.setattr(proxy_server, "prisma_client", object())
-    monkeypatch.setattr(proxy_server, "premium_user", False)
+    install_entitlements(monkeypatch, service)
 
     # Create a request body that tries to set role=admin
     data = TeamMemberUpdateRequest(
@@ -37,20 +42,26 @@ async def test_ateam_member_update_admin_requires_premium(monkeypatch):
     scope = {"type": "http", "method": "POST", "path": "/team/member_update"}
     request = Request(scope)
 
-    # We don't need a full auth object since premium check happens before auth is used
     auth = object()
 
-    # Act & Assert: expect HTTPException 400 with the exact premium feature message
     with pytest.raises(HTTPException) as exc_info:
         await team_member_update(data, request, auth)
 
     assert exc_info.value.status_code == 400
-    expected_msg = (
-        "Assigning team admins is a premium feature. You must be a LiteLLM Enterprise user to use this feature. "
-        "If you have a license please set `LITELLM_LICENSE` in your env. Get a 7 day trial key here: https://www.litellm.ai/#trial. "
-        "Pricing: https://www.litellm.ai/#pricing"
-    )
-    assert exc_info.value.detail == expected_msg
+    assert "'team_admin_roles' feature" in exc_info.value.detail
+    assert "AGAMI_LICENSE" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_team_member_update_to_admin_passes_the_licence_gate_with_team_admin_roles(
+    monkeypatch, happy_path_upsert
+):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("team_admin_roles",)))
+    data, request, auth = _member_update_request()
+
+    await team_member_update(data.model_copy(update={"role": "admin"}), request, auth)
+
+    happy_path_upsert.assert_awaited_once()
 
 
 @pytest.fixture
@@ -84,7 +95,6 @@ def happy_path_upsert(monkeypatch):
     prisma_client.tx = MagicMock(return_value=_FakeTx())
 
     monkeypatch.setattr(proxy_server, "prisma_client", prisma_client)
-    monkeypatch.setattr(proxy_server, "premium_user", False)
     monkeypatch.setattr(
         team_endpoints,
         "team_info",
@@ -169,7 +179,6 @@ async def test_team_member_update_rejects_invalid_budget_duration(
     """An invalid budget_duration must be rejected with a 400 before any DB
     write, so it can never be persisted and later break the budget reset job."""
     monkeypatch.setattr(proxy_server, "prisma_client", object())
-    monkeypatch.setattr(proxy_server, "premium_user", False)
     upsert_mock = AsyncMock()
     monkeypatch.setattr(team_endpoints, "_upsert_budget_and_membership", upsert_mock)
 

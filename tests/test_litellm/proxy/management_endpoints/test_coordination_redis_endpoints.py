@@ -199,33 +199,11 @@ async def test_get_source_does_not_build_a_client(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_rejects_non_admin():
+@pytest.mark.parametrize("role", [LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY])
+async def test_get_rejects_non_admin(role):
     with pytest.raises(HTTPException) as exc_info:
-        await get_coordination_redis_settings(
-            user_api_key_dict=UserAPIKeyAuth(api_key="hashed", user_role=LitellmUserRoles.INTERNAL_USER)
-        )
+        await get_coordination_redis_settings(user_api_key_dict=UserAPIKeyAuth(api_key="hashed", user_role=role))
     assert exc_info.value.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_get_allows_proxy_admin_viewer():
-    """proxy_admin_viewer has READ parity with proxy_admin; credentials stay redacted."""
-    with (
-        patch(
-            "litellm.proxy.proxy_server.prisma_client",
-            _prisma_with_general_settings({"coordination_redis": _SAVED_SETTINGS}),
-        ),
-        patch("litellm.proxy.proxy_server.proxy_config", _proxy_config()),
-    ):
-        response = await get_coordination_redis_settings(
-            user_api_key_dict=UserAPIKeyAuth(
-                api_key="hashed", user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY
-            )
-        )
-
-    assert response.source == "coordination_redis"
-    assert response.values["host"] == "coord-redis.example.com"
-    assert response.values["password"] == _REDACTED_VALUE
 
 
 def test_fields_cover_every_coordination_redis_param():

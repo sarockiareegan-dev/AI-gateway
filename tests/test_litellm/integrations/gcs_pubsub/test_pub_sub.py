@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 import litellm
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 
 @pytest.mark.asyncio
@@ -19,10 +20,7 @@ async def test_construct_request_headers_project_id_from_env(monkeypatch):
     # Set up test environment variable
     test_project_id = "test-project-123"
     monkeypatch.setenv("GCS_PUBSUB_PROJECT_ID", test_project_id)
-    monkeypatch.setattr(
-        "litellm.proxy.proxy_server.premium_user",
-        True,
-    )
+    install_entitlements(monkeypatch, licensed_entitlements(features=("logging_integrations",)))
 
     try:
         # Create handler with no project_id
@@ -62,3 +60,18 @@ async def test_construct_request_headers_project_id_from_env(monkeypatch):
     finally:
         # Clean up environment variable
         del os.environ["GCS_PUBSUB_PROJECT_ID"]
+
+
+@pytest.mark.parametrize("features", [(), ("sso",)])
+def test_pubsub_logger_requires_the_logging_integrations_feature(monkeypatch, features):
+    from fastapi import HTTPException
+
+    from litellm.integrations.gcs_pubsub.pub_sub import GcsPubSubLogger
+    from tests.test_litellm.proxy.auth.license_test_helpers import unlicensed_entitlements
+
+    install_entitlements(monkeypatch, licensed_entitlements(features=features) if features else unlicensed_entitlements())
+
+    with pytest.raises(HTTPException) as exc_info:
+        GcsPubSubLogger(project_id="p", topic_id="t", credentials_path="c.json")
+
+    assert exc_info.value.status_code == 403

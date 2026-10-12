@@ -157,6 +157,100 @@ async def test_team_activity_full_view_when_admin_of_all_requested_teams():
     assert captured["api_key"] is None
 
 
+def _org_teams_prisma():
+    rows = [_make_team("team-A", admin_user_ids=["bob"]), _make_team("team-B", admin_user_ids=["bob"])]
+    for row, org_id in zip(rows, ("org-a", "org-b")):
+        row.organization_id = org_id
+        row.model_dump.return_value["organization_id"] = org_id
+
+    async def find_many(where):
+        if "organization_id" in where:
+            return [r for r in rows if r.organization_id in where["organization_id"]["in"]]
+        if "team_id" in where:
+            return [r for r in rows if r.team_id in where["team_id"]["in"]]
+        return rows
+
+    prisma = MagicMock()
+    prisma.db.litellm_teamtable.find_many = AsyncMock(side_effect=find_many)
+    prisma.db.litellm_verificationtoken.find_many = AsyncMock(return_value=[MagicMock(token="alice-key-1")])
+    return prisma
+
+
+async def _team_activity_as(user_role, org_role, team_ids=None):
+    from litellm.proxy._types import LiteLLM_OrganizationMembershipTable, LiteLLM_UserTable
+    from litellm.proxy.management_endpoints import team_endpoints
+
+    user_info = LiteLLM_UserTable(
+        user_id="alice",
+        teams=[],
+        organization_memberships=[
+            LiteLLM_OrganizationMembershipTable(
+                user_id="alice",
+                organization_id="org-a",
+                user_role=org_role.value,
+                created_at="2026-01-01T00:00:00Z",
+                updated_at="2026-01-01T00:00:00Z",
+            )
+        ],
+    )
+    prisma = _org_teams_prisma()
+    fake_get_daily = AsyncMock(return_value=MagicMock())
+    with (
+        patch(
+            "litellm.proxy.management_endpoints.team_endpoints.get_user_object", new=AsyncMock(return_value=user_info)
+        ),
+        patch("litellm.proxy.management_endpoints.team_endpoints.get_daily_activity", new=fake_get_daily),
+        patch("litellm.proxy.proxy_server.prisma_client", prisma),
+        patch("litellm.proxy.proxy_server.user_api_key_cache", MagicMock()),
+        patch("litellm.proxy.proxy_server.proxy_logging_obj", MagicMock()),
+    ):
+        await team_endpoints.get_team_daily_activity(
+            team_ids=team_ids,
+            start_date="2026-01-01",
+            end_date="2026-01-02",
+            user_api_key_dict=UserAPIKeyAuth(user_id="alice", user_role=user_role.value),
+        )
+    return fake_get_daily.call_args.kwargs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("user_role", "org_role"),
+    [
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER),
+    ],
+)
+async def test_team_activity_org_wide_reader_sees_full_view_of_own_org_teams_only(user_role, org_role):
+    kwargs = await _team_activity_as(user_role, org_role)
+
+    assert kwargs["entity_id"] == ["team-A"]
+    assert kwargs["api_key"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("user_role", "org_role"),
+    [
+        (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.ORG_ADMIN),
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY, LitellmUserRoles.INTERNAL_USER),
+    ],
+)
+async def test_team_activity_org_wide_reader_cannot_request_another_orgs_team(user_role, org_role):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _team_activity_as(user_role, org_role, team_ids="team-B")
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_team_activity_plain_org_member_sees_no_org_teams():
+    kwargs = await _team_activity_as(LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.INTERNAL_USER)
+
+    assert kwargs["entity_id"] == []
+
+
 # ---------------------------------------------------------------------------
 # /agent/daily/activity — non-admin tenant scoping
 # ---------------------------------------------------------------------------

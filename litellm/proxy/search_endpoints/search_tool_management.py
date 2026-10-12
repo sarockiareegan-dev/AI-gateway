@@ -107,10 +107,7 @@ async def _filter_visible_search_tools(
     Drop search tools the caller is not authorized to invoke, applying the same
     key/team object_permission allowlists enforced on /search. Admins see all tools.
     """
-    if user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return search_tools
 
     from litellm.proxy.auth.auth_checks import can_user_view_search_tool

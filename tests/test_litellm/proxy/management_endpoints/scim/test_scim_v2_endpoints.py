@@ -33,7 +33,6 @@ from litellm.proxy.management_endpoints.scim.scim_v2 import (
     _handle_group_membership_changes,
     _handle_team_membership_changes,
     _parse_member_entries,
-    _premium_user_check,
     _process_group_patch_operations,
     _recompute_scim_member_roles,
     _resolve_group_member_ids,
@@ -48,6 +47,7 @@ from litellm.proxy.management_endpoints.scim.scim_v2 import (
     patch_group,
     patch_team_membership,
     patch_user,
+    require_scim_licence,
     scim_router,
     update_group,
     update_user,
@@ -67,6 +67,11 @@ from litellm.types.proxy.management_endpoints.scim_v2 import (
     SCIMUserEmail,
     SCIMUserGroup,
     SCIMUserName,
+)
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
 )
 
 
@@ -493,10 +498,34 @@ async def test_scim_create_user_respects_default_role_set_via_ui(mocker, monkeyp
 def scim_test_client():
     """An in-process SCIM application with authorization dependencies bypassed."""
     app = FastAPI()
-    app.dependency_overrides[_premium_user_check] = lambda: None
+    app.dependency_overrides[require_scim_licence] = lambda: None
     app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN)
     app.include_router(scim_router)
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("service", "status_code"),
+    [
+        (licensed_entitlements(features=("sso",)), 200),
+        (licensed_entitlements(features=("guardrails",)), 403),
+        (unlicensed_entitlements(), 403),
+    ],
+    ids=["sso", "other_feature", "unlicensed"],
+)
+async def test_scim_endpoints_need_the_sso_licence_feature(monkeypatch, service, status_code):
+    install_entitlements(monkeypatch, service)
+    app: Final = FastAPI()
+    app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN)
+    app.include_router(scim_router)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response: Final = await client.get("/scim/v2/ServiceProviderConfig")
+
+    assert response.status_code == status_code
+    if status_code == 403:
+        assert "'sso' feature" in response.json()["detail"]["error"]
 
 
 @pytest.mark.asyncio

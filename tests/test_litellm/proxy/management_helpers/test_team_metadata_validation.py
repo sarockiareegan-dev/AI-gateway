@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 
-from litellm.proxy._types import CommonProxyErrors, LitellmUserRoles, UserAPIKeyAuth
+from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.management_helpers.team_metadata_validation import (
     DEFAULT_TEAM_METADATA_VALIDATION_REJECTED_MESSAGE,
     DEFAULT_TEAM_METADATA_VALIDATION_TIMEOUT_SECONDS,
@@ -20,6 +20,8 @@ from litellm.proxy.management_helpers.team_metadata_validation import (
     validate_team_metadata_if_configured,
 )
 from pydantic import ValidationError
+
+from tests.test_litellm.proxy.auth.license_test_helpers import licensed_entitlements, unlicensed_entitlements
 
 
 def _registry_with(validator):
@@ -43,13 +45,16 @@ def _payload(**overrides):
     return TeamMetadataValidationPayload(**values)
 
 
-async def _run(validator, payload=None, premium_user=True, timeout_seconds=1.0):
+TEAM_MODELS_LICENCE = licensed_entitlements(features=("team_models",))
+
+
+async def _run(validator, payload=None, entitlements=TEAM_MODELS_LICENCE, timeout_seconds=1.0):
     await run_team_metadata_validation(
         validator=validator,
         payload=payload or _payload(),
-        premium_user=premium_user,
         timeout_seconds=timeout_seconds,
         unavailable_message=UNAVAILABLE_MESSAGE,
+        entitlements=entitlements,
     )
 
 
@@ -129,14 +134,19 @@ async def test_malformed_return_shape_fails_closed():
 
 
 @pytest.mark.asyncio
-async def test_non_premium_user_is_rejected():
+@pytest.mark.parametrize("entitlements", [licensed_entitlements(features=("sso",)), unlicensed_entitlements()])
+async def test_validator_needs_the_team_models_licence_feature(entitlements):
+    calls = []
+
     async def validator(payload):
+        calls.append(payload)
         return TeamMetadataValidationResult(valid=True)
 
     with pytest.raises(HTTPException) as exc_info:
-        await _run(validator, premium_user=False)
+        await _run(validator, entitlements=entitlements)
     assert exc_info.value.status_code == 400
-    assert CommonProxyErrors.not_premium_user.value in exc_info.value.detail["error"]
+    assert "'team_models' feature" in exc_info.value.detail["error"]
+    assert calls == []
 
 
 @pytest.mark.asyncio
@@ -211,7 +221,7 @@ async def test_adapter_builds_payload_and_reads_settings():
         return TeamMetadataValidationResult(valid=True)
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: TEAM_MODELS_LICENCE),
         patch(
             "litellm.proxy.proxy_server.general_settings",
             {"team_metadata_validation_timeout": 3, "team_metadata_validation_error_message": "ops msg"},
@@ -252,7 +262,7 @@ async def test_adapter_normalizes_non_dict_metadata_to_empty_dict():
         return TeamMetadataValidationResult(valid=True)
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: TEAM_MODELS_LICENCE),
         patch("litellm.proxy.proxy_server.general_settings", {}),
     ):
         await validate_team_metadata_if_configured(
@@ -338,7 +348,7 @@ def _configured(validator):
     TEAM_METADATA_VALIDATOR_REGISTRY.set(validator)
     try:
         with (
-            patch("litellm.proxy.proxy_server.premium_user", True),
+            patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: TEAM_MODELS_LICENCE),
             patch("litellm.proxy.proxy_server.general_settings", {}),
         ):
             yield
@@ -685,7 +695,7 @@ async def test_adapter_applies_configured_timeout_to_slow_validator():
     registry.set(slow_validator)
 
     with (
-        patch("litellm.proxy.proxy_server.premium_user", True),
+        patch("litellm.proxy.auth.entitlements.get_entitlement_service", lambda: TEAM_MODELS_LICENCE),
         patch(
             "litellm.proxy.proxy_server.general_settings",
             {"team_metadata_validation_timeout": 0.01},

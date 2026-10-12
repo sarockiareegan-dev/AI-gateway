@@ -134,7 +134,6 @@ class TestDeleteDeploymentResilience:
                 side_effect=Exception("httpcore.ReadTimeout"),
             ),
             patch("litellm.proxy.proxy_server.llm_router", mock_router),
-            patch("litellm.proxy.proxy_server.premium_user", False),
         ):
             result = await proxy_config._delete_deployment(db_models=db_models)
 
@@ -172,7 +171,6 @@ class TestDeleteDeploymentResilience:
                 },
             ),
             patch("litellm.proxy.proxy_server.llm_router", mock_router),
-            patch("litellm.proxy.proxy_server.premium_user", False),
         ):
             result = await proxy_config._delete_deployment(db_models=db_models)
 
@@ -268,7 +266,6 @@ class TestDeleteDeploymentKeepsPluginConfigModels:
             patch.object(proxy_config, "get_config", new_callable=AsyncMock, return_value=raw_config),
             patch("litellm.proxy.proxy_server.llm_router", router),
             patch("litellm.proxy.proxy_server.user_config_file_path", config_file_path),
-            patch("litellm.proxy.proxy_server.premium_user", False),
         ):
             result = await proxy_config._delete_deployment(db_models=[])
 

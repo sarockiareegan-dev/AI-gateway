@@ -57,6 +57,11 @@ from litellm.proxy.litellm_pre_call_utils import (
     resolve_tenant_otel_destinations,
 )
 from litellm.types.utils import StandardCallbackDynamicParams
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 
 LANGFUSE_DEST = OtelDestination(
     endpoint="http://tenant.local/api/public/otel",
@@ -2347,9 +2352,7 @@ class TestTenantConfigAgreement:
 
     @pytest.fixture
     def premium(self, monkeypatch):
-        from litellm.proxy import proxy_server
-
-        monkeypatch.setattr(proxy_server, "premium_user", True)
+        install_entitlements(monkeypatch, licensed_entitlements(features=("logging_integrations",)))
         monkeypatch.setattr(litellm, "allow_dynamic_callback_disabling", True)
 
     @pytest.mark.usefixtures("premium")
@@ -2384,10 +2387,14 @@ class TestTenantConfigAgreement:
 
         assert bool(destinations) is resolved
 
-    def test_a_non_premium_proxy_ignores_the_disabled_list_like_dispatch_does(self, monkeypatch):
-        from litellm.proxy import proxy_server
-
-        monkeypatch.setattr(proxy_server, "premium_user", False)
+    @pytest.mark.parametrize(
+        "service",
+        [unlicensed_entitlements(), licensed_entitlements(features=("guardrails",))],
+        ids=["unlicensed", "other_feature"],
+    )
+    def test_a_proxy_without_the_logging_licence_ignores_the_disabled_list(self, monkeypatch, service):
+        install_entitlements(monkeypatch, service)
+        monkeypatch.setattr(litellm, "allow_dynamic_callback_disabling", True)
         auth = UserAPIKeyAuth(
             metadata={"litellm_disabled_callbacks": ["langfuse_otel"]},
             team_metadata={"logging": [self._entry("http://team.local")]},

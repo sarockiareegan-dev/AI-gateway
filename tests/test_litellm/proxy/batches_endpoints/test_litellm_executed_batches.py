@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from litellm_enterprise.proxy.hooks.managed_files import _PROXY_LiteLLMManagedFiles
 from openai.types.batch_request_counts import BatchRequestCounts
 
+from agami.routing.org_models import GLOBAL_MODELS_ONLY
 from litellm.models.managed_files import LiteLLM_ManagedFileTable
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.proxy.batches_endpoints import litellm_executed_batches
@@ -30,7 +30,6 @@ from litellm.proxy.batches_endpoints.litellm_executed_batches import (
     upstream_lacks_files_api,
 )
 from litellm.proxy.openai_files_endpoints.common_utils import (
-    _is_base64_encoded_unified_file_id,
     get_batch_id_from_unified_batch_id,
     is_litellm_executed_batch,
 )
@@ -179,14 +178,6 @@ class FakeManagedBatchStore:
 
     def batch(self, unified_batch_id: str) -> LiteLLMBatch:
         return self.objects[unified_batch_id].batch()
-
-
-REAL_HOOK: Final = _PROXY_LiteLLMManagedFiles(internal_usage_cache=MagicMock(), prisma_client=MagicMock())
-
-
-class RealIdManagedBatchStore(FakeManagedBatchStore):
-    def get_unified_batch_id(self, batch_id: str, model_id: str) -> str:
-        return REAL_HOOK.get_unified_batch_id(batch_id=batch_id, model_id=model_id)
 
 
 def row_matches(row: StoredObject, where: Mapping[str, object]) -> bool:
@@ -617,7 +608,9 @@ async def test_resolve_litellm_executed_provider_asks_the_router_for_the_team_sc
     assert (
         await resolve_litellm_executed_provider(router, BATCH_MODEL, "team-1", FakeFilesApiProbe(True, [])) == expected
     )
-    router.get_deployment_credentials_with_provider.assert_called_once_with(model_id=BATCH_MODEL, team_id="team-1")
+    router.get_deployment_credentials_with_provider.assert_called_once_with(
+        model_id=BATCH_MODEL, team_id="team-1", visibility=GLOBAL_MODELS_ONLY
+    )
 
 
 async def test_create_stores_a_validating_batch_and_completes_it_in_the_background() -> None:
@@ -1108,23 +1101,3 @@ async def test_only_the_create_write_carries_attribution_and_billing_flags() -> 
         ("validating", True, True)
     ]
     assert [write.columns for write in harness.table.writes] == [STATUS_WRITE_COLUMNS] * 3
-
-
-async def test_run_completes_under_the_real_hooks_base64_batch_id() -> None:
-    harness = make_runner(store_factory=RealIdManagedBatchStore)
-    created, finished = await harness.create_and_finish()
-
-    assert _is_base64_encoded_unified_file_id(created.id)
-    assert finished.status == "completed"
-    assert [call.model_object_id.startswith("litellm_batch_") for call in harness.store.calls] == [True]
-    assert [write.unified_object_id for write in harness.table.writes] == [created.id] * 3
-
-
-async def test_cancel_works_under_the_real_hooks_base64_batch_id() -> None:
-    harness = make_runner(store_factory=RealIdManagedBatchStore)
-    batch = seeded_batch(harness.store, "in_progress")
-    cancelled = await harness.runner.cancel(batch.id, harness.user)
-
-    assert cancelled.status == "cancelling"
-    assert harness.store.batch(batch.id).status == "cancelling"
-    assert [write.unified_object_id for write in harness.table.writes] == [batch.id]

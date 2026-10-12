@@ -11,14 +11,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
-from litellm.llms.base_llm.guardrail_translation.base_translation import StreamingScanKey
 from litellm.llms.anthropic.chat.guardrail_translation.handler import (
     AnthropicMessagesHandler,
 )
+from litellm.llms.base_llm.guardrail_translation.base_translation import StreamingScanKey
 from litellm.types.utils import GenericGuardrailAPIInputs
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 
 class MockPassThroughGuardrail(CustomGuardrail):
@@ -520,7 +520,8 @@ class TestAnthropicMessagesHandlerInputProcessing:
     """Test input processing preserves litellm_metadata for dynamic guardrails."""
 
     @pytest.mark.asyncio
-    async def test_process_input_messages_preserves_litellm_metadata_guardrails(self):
+    async def test_process_input_messages_preserves_litellm_metadata_guardrails(self, monkeypatch):
+        install_entitlements(monkeypatch, licensed_entitlements(features=("guardrails",)))
         handler = AnthropicMessagesHandler()
         guardrail = MockDynamicGuardrail(guardrail_name="cygnal-monitor")
 
@@ -534,10 +535,7 @@ class TestAnthropicMessagesHandlerInputProcessing:
             },
         }
 
-        with patch("litellm.proxy.proxy_server.premium_user", True):
-            await handler.process_input_messages(
-                data=data, guardrail_to_apply=guardrail
-            )
+        await handler.process_input_messages(data=data, guardrail_to_apply=guardrail)
 
         assert data.get("litellm_metadata", {}).get("guardrails")
         assert guardrail.dynamic_params == {"policy_id": "policy-123"}

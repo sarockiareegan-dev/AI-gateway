@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 
-from litellm.proxy._types import LiteLLMRoutes, LitellmUserRoles
+from litellm.proxy._types import LitellmUserRoles
 from litellm.proxy.auth.user_api_key_auth import UserAPIKeyAuth, user_api_key_auth
 from litellm.proxy.list_api.common import (
     PROBLEM_TYPE_BASE,
@@ -451,32 +451,33 @@ def test_user_facet_searches_the_internal_user_value(mock_prisma_client, as_prox
 @pytest.mark.parametrize(
     "role",
     [
-        LitellmUserRoles.PROXY_ADMIN,
         LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
         LitellmUserRoles.INTERNAL_USER,
         LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
     ],
 )
-def test_is_reachable_by_every_role_that_can_open_the_logs_page(role):
+@pytest.mark.parametrize("facet_path", [END_USERS_PATH, USERS_PATH])
+def test_is_reachable_by_every_non_admin_role_that_can_open_the_logs_page(role, facet_path):
     """Route-level auth gate, which the dependency_overrides in the other tests bypass.
 
     Handler-side team scoping is dead code if RouteChecks rejects the role first.
     """
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from litellm.proxy._types import LiteLLM_UserTable
     from litellm.proxy.auth.route_checks import RouteChecks
 
-    for facet_path in (END_USERS_PATH, USERS_PATH):
-        for allowed in (
-            LiteLLMRoutes.internal_user_routes.value,
-            LiteLLMRoutes.internal_user_view_only_routes.value,
-        ):
-            assert ("/spend/logs/ui" in allowed) == (facet_path in allowed)
+    request = MagicMock(spec=Request)
+    request.method = "GET"
+    request.query_params = {}
 
-        if role in (LitellmUserRoles.INTERNAL_USER, LitellmUserRoles.INTERNAL_USER_VIEW_ONLY):
-            allowed_routes = (
-                LiteLLMRoutes.internal_user_routes.value
-                if role == LitellmUserRoles.INTERNAL_USER
-                else LiteLLMRoutes.internal_user_view_only_routes.value
-            )
-            assert RouteChecks.check_route_access(route=facet_path, allowed_routes=allowed_routes)
-        else:
-            assert facet_path in LiteLLMRoutes.admin_viewer_routes.value
+    RouteChecks.non_proxy_admin_allowed_routes_check(
+        user_obj=LiteLLM_UserTable(user_id="caller", user_role=role.value),
+        _user_role=role.value,
+        route=facet_path,
+        request=request,
+        valid_token=UserAPIKeyAuth(user_id="caller", user_role=role),
+        request_data={},
+    )

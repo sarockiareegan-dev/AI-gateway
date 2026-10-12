@@ -92,7 +92,6 @@ from litellm.proxy._types import (
     ConfigList,
     ConfigYAML,
     CoordinationRedisParams,
-    EnterpriseLicenseData,
     FieldDetail,
     InvitationClaim,
     InvitationDelete,
@@ -253,6 +252,7 @@ from functools import lru_cache, partial
 
 import litellm
 import litellm._redis
+from agami.routing.org_models import deployment_org_model_name, org_model_name, org_model_names
 from litellm import Router
 from litellm._logging import _redact_string, verbose_proxy_logger, verbose_router_logger
 from litellm.caching.caching import DualCache, RedisCache
@@ -274,7 +274,6 @@ from litellm.constants import (
     MONTHLY_SPEND_REPORT_JOB_ID,
     PROMETHEUS_FALLBACK_STATS_JOB_ID,
     PROMETHEUS_FALLBACK_STATS_SEND_TIME_HOURS,
-    PROXY_BATCH_POLLING_ENABLED,
     PROXY_BATCH_POLLING_INTERVAL,
     PROXY_BATCH_WRITE_AT,
     PROXY_BUDGET_RESCHEDULER_MAX_TIME,
@@ -318,6 +317,7 @@ from litellm.proxy._types import *
 from litellm.proxy.analytics_endpoints.analytics_endpoints import (
     router as analytics_router,
 )
+from litellm.proxy.auth.agami_access import admin_model_visibility
 from litellm.proxy.auth.auth_checks import (
     ROLE_BASED_PERMISSIONS_ADAPTER,
     ExperimentalUIJWTToken,
@@ -331,10 +331,19 @@ from litellm.proxy.auth.auth_utils import (
     log_once_if_budget_reservation_disabled,
     warn_once_if_custom_auth_skips_common_checks,
 )
+from litellm.proxy.auth.entitlements import (
+    AUTO_ROUTER_LICENSE_REMEDY,
+    LICENSE_CONFIG_KEY,
+    LICENSE_ENV_VAR,
+    EntitlementService,
+    LicenseFeature,
+    get_entitlement_service,
+    has_valid_license,
+    is_licensed,
+)
 from litellm.proxy.auth.fallback_budget import router_fallback_budget_check
 from litellm.proxy.auth.fallback_model_access import router_fallback_access_check
 from litellm.proxy.auth.handle_jwt import JWTHandler
-from litellm.proxy.auth.litellm_license import AUTO_ROUTER_LICENSE_REMEDY, LicenseCheck
 from litellm.proxy.auth.login_throttle import (
     LoginThrottle,
     declared_proxy_ranges,
@@ -585,6 +594,9 @@ from litellm.proxy.management_endpoints.model_management_endpoints import (
 )
 from litellm.proxy.management_endpoints.organization_endpoints import (
     router as organization_router,
+)
+from litellm.proxy.management_endpoints.project_endpoints import (
+    router as project_management_router,
 )
 from litellm.proxy.management_endpoints.router_settings_endpoints import (
     router as router_settings_router,
@@ -852,34 +864,8 @@ from fastapi.security import OAuth2PasswordBearer
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 
-# import enterprise folder
-enterprise_router = APIRouter()
-try:
-    # when using litellm cli
-    from litellm.proxy import enterprise
-except Exception:
-    # when using litellm docker image
-    try:
-        import enterprise
-    except Exception:
-        pass
-
-###################
-# Import enterprise routes
-try:
-    from litellm_enterprise.proxy.enterprise_routes import router as _enterprise_router
-    from litellm_enterprise.proxy.proxy_server import EnterpriseProxyConfig
-
-    enterprise_router = _enterprise_router
-    enterprise_proxy_config: EnterpriseProxyConfig | None = EnterpriseProxyConfig()
-except ImportError:
-    enterprise_proxy_config = None
-###################
-
 server_root_path: Final = get_server_root_path()
-_license_check = LicenseCheck()
-premium_user: bool = _license_check.is_premium()
-premium_user_data: Optional["EnterpriseLicenseData"] = _license_check.airgapped_license_data
+_license_check = get_entitlement_service()
 global_max_parallel_request_retries_env: Final[str | None] = os.getenv("LITELLM_GLOBAL_MAX_PARALLEL_REQUEST_RETRIES")
 proxy_state: Final = ProxyState()
 SENSITIVE_DATA_MASKER: Final = SensitiveDataMasker()
@@ -946,13 +932,13 @@ custom_swagger_message: Final = (
 )
 
 ### CUSTOM BRANDING [ENTERPRISE FEATURE] ###
-_title: Final = os.getenv("DOCS_TITLE", "LiteLLM API") if premium_user else "LiteLLM API"
+_title: Final = os.getenv("DOCS_TITLE", "LiteLLM API") if _license_check.is_premium() else "LiteLLM API"
 _description: Final = (
     os.getenv(
         "DOCS_DESCRIPTION",
         f"Enterprise Edition \n\nProxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}",
     )
-    if premium_user
+    if _license_check.is_premium()
     else f"Proxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}"
 )
 
@@ -1133,7 +1119,6 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[None, None]:
         litellm_proxy_admin_name, \
         db_writer_client, \
         store_model_in_db, \
-        premium_user, \
         _license_check, \
         proxy_batch_polling_interval, \
         shared_aiohttp_session
@@ -1168,11 +1153,6 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception as e:
                 verbose_proxy_logger.error("Worker startup hook '%s' failed: %s", _hook_spec, e)
                 raise
-
-    ## CHECK PREMIUM USER
-    verbose_proxy_logger.debug("litellm.proxy.proxy_server.py::startup() - CHECKING PREMIUM USER - %s", premium_user)
-    if premium_user is False:
-        premium_user = _license_check.is_premium()
 
     ## CHECK MASTER KEY IN ENVIRONMENT ##
     master_key = get_secret_str("LITELLM_MASTER_KEY")
@@ -1709,7 +1689,7 @@ def custom_openapi():
     return app.openapi_schema
 
 
-if os.getenv("DOCS_FILTERED", "False") == "True" and premium_user:
+if os.getenv("DOCS_FILTERED", "False") == "True" and _license_check.is_premium():
     app.openapi = custom_openapi
 else:
     # For regular users, use get_openapi_schema to include LLM API schemas
@@ -2243,17 +2223,14 @@ app.add_middleware(PrometheusAuthMiddleware)
 app.add_middleware(
     BillableRequestMetricsMiddleware,
     # Factory, not an instance: the recorder is resolved on the first request so
-    # it sees premium_user and the billing env vars AFTER proxy_startup_event has
+    # it sees the licence and the billing env vars AFTER proxy_startup_event has
     # loaded the YAML config's environment_variables. Building it here at import
     # time would permanently capture recorder=None for YAML-configured
     # deployments. The lambda reads the module globals at call time.
     recorder_factory=lambda: (
         build_billing_metrics_recorder(
-            premium=premium_user,
-            # Read from the license check, not the premium_user_data module
-            # global: that global is bound once at import and goes stale when
-            # the license arrives via the YAML config's environment_variables.
-            license_data=_license_check.airgapped_license_data,
+            premium=_license_check.is_premium(),
+            license_data=_license_check.license_data,
             litellm_version=version,
         )
         if build_billing_metrics_recorder is not None
@@ -2447,7 +2424,7 @@ open_telemetry_logger: OpenTelemetry | None = None
 # LiteLLM_DailyGatewayRequests by the update_gateway_requests scheduler job.
 gateway_request_accumulator: Final = GatewayRequestAccumulator()
 ### INITIALIZE GLOBAL LOGGING OBJECT ###
-proxy_logging_obj: ProxyLogging = ProxyLogging(user_api_key_cache=user_api_key_cache, premium_user=premium_user)
+proxy_logging_obj: ProxyLogging = ProxyLogging(user_api_key_cache=user_api_key_cache)
 
 
 def _gateway_request_redis_buffer() -> GatewayRequestRedisBuffer | None:
@@ -4542,6 +4519,26 @@ def _environment_has_redis_connection_target() -> bool:
     )
 
 
+def _apply_config_licence(general_settings: Mapping[str, object], license_check: EntitlementService) -> None:
+    token: Final = general_settings.get(LICENSE_CONFIG_KEY)
+    if isinstance(token, str):
+        license_check.load(token)
+    if general_settings.get("allowed_ips") is not None and not is_licensed(
+        LicenseFeature.ACCESS_CONTROL, license_check
+    ):
+        raise ValueError(
+            "allowed_ips needs the 'access_control' feature on the Agami license. "
+            f"Please add a valid {LICENSE_ENV_VAR} to your environment."
+        )
+    if general_settings.get("enforced_params") is not None and not is_licensed(
+        LicenseFeature.ENFORCED_PARAMS, license_check
+    ):
+        raise ValueError(
+            "`enforced_params` needs the 'enforced_params' feature on the Agami license. "
+            + CommonProxyErrors.not_premium_user.value
+        )
+
+
 def _build_redis_usage_cache_from_environment() -> RedisCache | None:
     """
     Builds a standalone coordination Redis from REDIS_* environment variables.
@@ -5714,7 +5711,6 @@ class ProxyConfig:
 
     def _load_environment_variables(self, config: dict):
         ## ENVIRONMENT VARIABLES
-        global premium_user
         environment_variables: Final = config.get("environment_variables", None)
         if environment_variables:
             for key, value in environment_variables.items():
@@ -5742,10 +5738,8 @@ class ProxyConfig:
                     #########################################################
                     os.environ[key] = str(value)
 
-            # check if litellm_license in general_settings
-            if "LITELLM_LICENSE" in environment_variables:
-                _license_check.license_str = os.getenv("LITELLM_LICENSE", None)
-                premium_user = _license_check.is_premium()
+            if LICENSE_ENV_VAR in environment_variables:
+                _license_check.load(os.getenv(LICENSE_ENV_VAR))
 
     def _warn_on_misplaced_jwt_keys(self, config: dict) -> tuple[str, ...]:
         misplaced_jwt_keys = tuple(key for key in ("enable_jwt_auth", "litellm_jwtauth") if key in config)
@@ -5789,7 +5783,6 @@ class ProxyConfig:
             prompt_injection_detection_obj, \
             redis_usage_cache, \
             store_model_in_db, \
-            premium_user, \
             open_telemetry_logger, \
             health_check_details, \
             proxy_batch_polling_interval, \
@@ -5908,7 +5901,6 @@ class ProxyConfig:
                 elif key == "guardrails":
                     guardrail_name_config_map = initialize_guardrails(
                         guardrails_config=value,
-                        premium_user=premium_user,
                         config_file_path=config_file_path,
                         litellm_settings=litellm_settings,
                     )
@@ -5947,7 +5939,6 @@ class ProxyConfig:
                 elif key == "callbacks":
                     initialize_callbacks_on_proxy(
                         value=value,
-                        premium_user=premium_user,
                         config_file_path=config_file_path,
                         litellm_settings=litellm_settings,
                         callback_specific_params=callback_settings,
@@ -6328,9 +6319,6 @@ class ProxyConfig:
                     config_file_path=config_file_path,
                 )
 
-            if enterprise_proxy_config is not None:
-                await enterprise_proxy_config.load_enterprise_config(general_settings)
-
             ## pass through endpoints
             if general_settings.get("pass_through_endpoints", None) is not None:
                 await initialize_pass_through_endpoints(
@@ -6338,14 +6326,10 @@ class ProxyConfig:
                     config_file_path=config_file_path,
                 )
 
+            _apply_config_licence(general_settings, _license_check)
+
             ## ADMIN UI ACCESS ##
             ui_access_mode = general_settings.get("ui_access_mode", "all")  # can be either ["admin_only" or "all"]
-            ### ALLOWED IP ###
-            allowed_ips: Final = general_settings.get("allowed_ips", None)
-            if allowed_ips is not None and premium_user is False:
-                raise ValueError(
-                    "allowed_ips is an Enterprise Feature. Please add a valid LITELLM_LICENSE to your envionment."
-                )
             ## BUDGET RESCHEDULER ##
             proxy_budget_rescheduler_min_time = general_settings.get(
                 "proxy_budget_rescheduler_min_time", proxy_budget_rescheduler_min_time
@@ -6395,15 +6379,6 @@ class ProxyConfig:
 
             ### SSRF URL VALIDATION SETTINGS ###
             _apply_ssrf_general_settings(general_settings)
-
-            ## check if user has set a premium feature in general_settings
-            if general_settings.get("enforced_params") is not None and premium_user is not True:
-                raise ValueError("Trying to use `enforced_params`" + CommonProxyErrors.not_premium_user.value)
-
-            # check if litellm_license in general_settings
-            if "litellm_license" in general_settings:
-                _license_check.license_str = general_settings["litellm_license"]
-                premium_user = _license_check.is_premium()
 
         router_params: Final[dict] = {
             "cache_responses": litellm.cache is not None,  # cache if user passed in cache values
@@ -6608,8 +6583,11 @@ class ProxyConfig:
         ## WORKER REGISTRY (Global Control Plane)
         worker_registry_config: Final = config.get("worker_registry", None)
         if worker_registry_config:
-            if premium_user is not True:
-                raise ValueError("Trying to use `worker_registry`" + CommonProxyErrors.not_premium_user.value)
+            if not is_licensed(LicenseFeature.MODEL_AUDIT):
+                raise ValueError(
+                    "worker_registry needs the 'model_audit' feature on the Agami license. "
+                    + CommonProxyErrors.not_premium_user.value
+                )
             self.worker_registry = [WorkerRegistryEntry(**e) for e in worker_registry_config]
         else:
             self.worker_registry = []
@@ -6764,8 +6742,7 @@ class ProxyConfig:
             model.model_info["db_model"] = True
             model.model_info["blocked"] = bool(getattr(model, "blocked", False))
 
-        if premium_user is True:
-            # seeing "created_at", "updated_at", "created_by", "updated_by" is a LiteLLM Enterprise Feature
+        if is_licensed(LicenseFeature.MODEL_AUDIT):
             model.model_info["created_at"] = getattr(model, "created_at", None)
             model.model_info["updated_at"] = getattr(model, "updated_at", None)
             model.model_info["created_by"] = getattr(model, "created_by", None)
@@ -10341,65 +10318,6 @@ class ProxyStartupEvent:
                     )
                 except ValueError:
                     verbose_proxy_logger.error("Invalid maximum_spend_logs_retention_interval value")
-        ### CHECK BATCH COST ###
-        if llm_router is not None and PROXY_BATCH_POLLING_ENABLED:
-            try:
-                from litellm_enterprise.proxy.common_utils.check_batch_cost import (
-                    CheckBatchCost,
-                )
-
-                check_batch_cost_job: Final = CheckBatchCost(
-                    proxy_logging_obj=proxy_logging_obj,
-                    prisma_client=prisma_client,
-                    llm_router=llm_router,
-                    track_unmanaged_batch_cost=general_settings.get("track_unmanaged_batch_cost", False),
-                )
-                await check_batch_cost_job.confirm_batch_processed_support()
-                scheduler.add_job(
-                    check_batch_cost_job.check_batch_cost,
-                    "interval",
-                    seconds=proxy_batch_polling_interval + random.randint(0, 30),  # Add small random offset
-                    # REMOVED jitter parameter - major cause of memory leak
-                    id="check_batch_cost_job",
-                    replace_existing=True,
-                    misfire_grace_time=APSCHEDULER_MISFIRE_GRACE_TIME,
-                )
-                verbose_proxy_logger.info("Batch cost check job scheduled successfully")
-
-            except Exception as e:
-                verbose_proxy_logger.debug("Failed to setup batch cost checking: %s", e)
-                verbose_proxy_logger.debug(
-                    "Checking batch cost for LiteLLM Managed Files is an Enterprise Feature. Skipping..."
-                )
-
-        ### CHECK RESPONSES COST ###
-        if llm_router is not None and PROXY_BATCH_POLLING_ENABLED:
-            try:
-                from litellm_enterprise.proxy.common_utils.check_responses_cost import (
-                    CheckResponsesCost,
-                )
-
-                check_responses_cost_job: Final = CheckResponsesCost(
-                    proxy_logging_obj=proxy_logging_obj,
-                    prisma_client=prisma_client,
-                    llm_router=llm_router,
-                )
-                scheduler.add_job(
-                    check_responses_cost_job.check_responses_cost,
-                    "interval",
-                    seconds=proxy_batch_polling_interval + random.randint(0, 30),  # Add small random offset
-                    # REMOVED jitter parameter - major cause of memory leak
-                    id="check_responses_cost_job",
-                    replace_existing=True,
-                    misfire_grace_time=APSCHEDULER_MISFIRE_GRACE_TIME,
-                )
-                verbose_proxy_logger.info("Responses cost check job scheduled successfully")
-
-            except Exception as e:
-                verbose_proxy_logger.debug("Failed to setup responses cost checking: %s", e)
-                verbose_proxy_logger.debug(
-                    "Checking responses cost for LiteLLM Managed Files is an Enterprise Feature. Skipping..."
-                )
 
         # MEMORY LEAK FIX: Start scheduler with paused=False to avoid backlog processing
         # Do NOT reset job times to "now" as this can trigger the memory leak
@@ -11029,6 +10947,11 @@ async def model_list(
             include_model_access_groups=include_model_access_groups or False,
             only_model_access_groups=only_model_access_groups or False,
         )
+        if llm_router is not None:
+            expand_visibility: Final = await admin_model_visibility(
+                user_api_key_dict, prisma_client, llm_router.model_list
+            )
+            all_models = expand_visibility.visible_model_names(all_models, org_model_names(llm_router.model_list))
 
         # Hide paused/unhealthy models from the public listing
         if hidden_names:
@@ -13907,10 +13830,7 @@ async def _get_caller_byok_team_scope(
     """
     if user_api_key_dict is None or prisma_client is None:
         return None
-    if user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return None
     key_team_scope: Final[set[str]] = {user_api_key_dict.team_id} if user_api_key_dict.team_id else set()
     user_id: Final = user_api_key_dict.user_id
@@ -14435,10 +14355,7 @@ async def _authorize_team_id_query(
     team's id could enumerate that team's BYOK model metadata. Allow only
     proxy admins or members of the requested team.
     """
-    if user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    ):
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         return
 
     user_id: Final = user_api_key_dict.user_id
@@ -14720,6 +14637,9 @@ async def model_info_v2(
             sort_by=sortBy,
             model_name=model,
         )
+
+    visibility: Final = await admin_model_visibility(user_api_key_dict, prisma_client, all_models)
+    all_models = [m for m in all_models if visibility.allows_deployment(m)]
 
     if user_models_only:
         all_models = await non_admin_all_models(
@@ -15305,6 +15225,9 @@ def _translate_model_name_for_response(model: dict) -> dict:
     """
     if not isinstance(model, dict):
         return model
+    organization_owner: Final = deployment_org_model_name(model)
+    if organization_owner is not None:
+        return {**model, "model_name": organization_owner.public_name}
     model_info: Final = model.get("model_info") or {}
     if not isinstance(model_info, dict):
         return model
@@ -15451,12 +15374,15 @@ async def model_info_v1(
     if litellm_model_id is not None:
         # user is trying to get specific model from litellm router
         deployment_info: Final = llm_router.get_deployment(model_id=litellm_model_id)
-        if deployment_info is None:
+        deployment_dict: Final = deployment_info.model_dump(exclude_none=True) if deployment_info is not None else None
+        if deployment_dict is None or not (
+            await admin_model_visibility(user_api_key_dict, prisma_client, (deployment_dict,))
+        ).allows_deployment(deployment_dict):
             raise HTTPException(
                 status_code=400,
                 detail={"error": f"Model id = {litellm_model_id} not found on litellm proxy"},
             )
-        _deployment_info_dict = _get_proxy_model_info(model=deployment_info.model_dump(exclude_none=True))
+        _deployment_info_dict = _get_proxy_model_info(model=deployment_dict)
         single_model_list: list[dict] = [_deployment_info_dict]
         if prisma_client is not None:
             single_model_list = await _populate_team_access_on_models(
@@ -15504,10 +15430,12 @@ async def model_info_v1(
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
     )
+    visibility: Final = await admin_model_visibility(user_api_key_dict, prisma_client, all_models)
     all_models = [
         model
         for model in all_models
         if not _byok_row_outside_caller_teams(model.get("model_info") or {}, allowed_team_ids)
+        and visibility.allows_deployment(model)
     ]
 
     if prisma_client is not None:
@@ -15790,10 +15718,7 @@ async def model_group_info(
     from litellm.proxy.utils import get_available_models_for_user
 
     # Get available models for the user
-    is_proxy_admin: Final = user_api_key_dict.user_role in (
-        LitellmUserRoles.PROXY_ADMIN,
-        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
-    )
+    is_proxy_admin: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN
     all_models_str: Final = (
         get_complete_model_list(
             key_models=(),
@@ -15819,9 +15744,23 @@ async def model_group_info(
             user_api_key_cache=user_api_key_cache,
         )
     )
-    model_groups: list[ModelGroupInfoProxy] = _get_model_group_info(
-        llm_router=llm_router, all_models_str=all_models_str, model_group=model_group
+    org_names: Final = org_model_names(llm_router.model_list)
+    group_visibility: Final = await admin_model_visibility(user_api_key_dict, prisma_client, llm_router.model_list)
+    visible_models_str: Final = group_visibility.visible_model_names(all_models_str, org_names)
+    own_org_model_group: Final = (
+        org_model_name(user_api_key_dict.org_id, model_group)
+        if model_group is not None and user_api_key_dict.org_id is not None
+        else None
     )
+    requested_model_group: Final = own_org_model_group if own_org_model_group in visible_models_str else model_group
+    model_groups: list[ModelGroupInfoProxy] = [
+        group.model_copy(update={"model_group": org_names[group.model_group].public_name})
+        if group.model_group in org_names
+        else group
+        for group in _get_model_group_info(
+            llm_router=llm_router, all_models_str=visible_models_str, model_group=requested_model_group
+        )
+    ]
 
     # Append A2A agents to model groups
     from litellm.proxy.agent_endpoints.model_list_helpers import (
@@ -16138,7 +16077,7 @@ async def fallback_login(request: Request):
 
 @router.post("/login", include_in_schema=False)  # hidden since this is a helper for UI sso login
 async def login(request: Request):
-    global premium_user, general_settings, master_key
+    global general_settings, master_key
     from litellm.proxy.auth.login_utils import authenticate_user, create_ui_token_object, encode_ui_session_jwt
     from litellm.proxy.utils import get_custom_url
 
@@ -16173,7 +16112,6 @@ async def login(request: Request):
     returned_ui_token_object: Final = create_ui_token_object(
         login_result=login_result,
         general_settings=general_settings,
-        premium_user=premium_user,
     )
 
     # Generate JWT token
@@ -16231,7 +16169,7 @@ async def login(request: Request):
 
 @router.post("/v2/login", include_in_schema=False)  # hidden helper for UI logins via API
 async def login_v2(request: Request):
-    global premium_user, general_settings, master_key
+    global general_settings, master_key
     from litellm.proxy.auth.login_utils import authenticate_user, create_ui_token_object, encode_ui_session_jwt
     from litellm.proxy.management_endpoints.ui_sso import set_session_token_cookie
     from litellm.proxy.utils import get_custom_url
@@ -16253,7 +16191,6 @@ async def login_v2(request: Request):
         returned_ui_token_object: Final = create_ui_token_object(
             login_result=login_result,
             general_settings=general_settings,
-            premium_user=premium_user,
         )
 
         jwt_token: Final = encode_ui_session_jwt(returned_ui_token_object, cast(str, master_key))
@@ -16296,7 +16233,7 @@ async def login_v2(request: Request):
     "/v3/login", include_in_schema=False
 )  # control-plane login — always returns token in body for cross-origin use
 async def login_v3(request: Request):
-    global premium_user, general_settings, master_key
+    global general_settings, master_key
     from litellm.proxy.auth.login_utils import authenticate_user, create_ui_token_object, encode_ui_session_jwt
     from litellm.proxy.utils import get_custom_url
 
@@ -16325,7 +16262,6 @@ async def login_v3(request: Request):
         returned_ui_token_object: Final = create_ui_token_object(
             login_result=login_result,
             general_settings=general_settings,
-            premium_user=premium_user,
         )
 
         jwt_token: Final = encode_ui_session_jwt(returned_ui_token_object, cast(str, master_key))
@@ -16509,7 +16445,7 @@ async def onboarding(invite_link: str, request: Request):
         user_email=user_obj.user_email,
         user_role=user_obj.user_role,  # pyright: ignore[reportArgumentType]  # nullable DB column, no unset contract
         login_method="username_password",
-        premium_user=premium_user,
+        premium_user=has_valid_license(),
         auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
         disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
         server_root_path=get_server_root_path(),
@@ -16619,7 +16555,7 @@ async def _generate_onboarding_ui_session_token(user_obj: _UserTableRow) -> str:
         user_email=user_obj.user_email,
         user_role=user_obj.user_role,  # pyright: ignore[reportArgumentType]  # nullable DB column, no unset contract
         login_method="username_password",
-        premium_user=premium_user,
+        premium_user=has_valid_license(),
         auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
         disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
         server_root_path=get_server_root_path(),
@@ -18287,7 +18223,7 @@ def _is_litellm_internal_callback(callback_name: str, callback: CustomLogger | C
 
     module_owner: Final = _callback_module_name(callback).partition(".")[0]
     is_registered_integration: Final = callback_name in CustomLoggerRegistry.CALLBACK_CLASS_STR_TO_CLASS_TYPE
-    return not is_registered_integration and module_owner in ("litellm", "litellm_enterprise")
+    return not is_registered_integration and module_owner == "litellm"
 
 
 def _is_instance_of_configured_callback(
@@ -19165,6 +19101,7 @@ app.include_router(ui_crud_endpoints_router)
 app.include_router(user_banner_endpoints_router)
 app.include_router(team_callback_router)
 app.include_router(budget_management_router)
+app.include_router(project_management_router)
 app.include_router(model_management_router)
 app.include_router(model_access_group_management_router)
 app.include_router(auto_router_management_router)
@@ -19179,7 +19116,6 @@ app.include_router(cache_settings_router)
 app.include_router(coordination_redis_settings_router)
 app.include_router(user_agent_analytics_router)
 app.include_router(gateway_request_router)
-app.include_router(enterprise_router)
 app.include_router(ui_discovery_endpoints_router)
 app.include_router(agent_skills_discovery_router)
 # Eager: /models/{name}:method overlaps with the OpenAI /models endpoint.
@@ -19190,7 +19126,7 @@ app.router.routes = hot_routes_first(app.router.routes)
 app.add_middleware(
     RequestSizeLimitMiddleware,
     get_max_request_size_mb=lambda: general_settings.get("max_request_size_mb"),
-    is_request_size_limit_enabled=lambda: premium_user is True,
+    is_request_size_limit_enabled=lambda: is_licensed(LicenseFeature.REQUEST_LIMITS),
 )
 app.add_middleware(
     AdmissionControlMiddleware,

@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 from typing_extensions import ReadOnly, TypedDict
 
 import litellm
+from agami.routing.org_models import GLOBAL_MODELS_ONLY, ModelVisibility
 from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid as uuid_module
 from litellm.constants import LITELLM_EXECUTED_BATCH_CONCURRENCY
@@ -264,8 +265,12 @@ async def resolve_litellm_executed_provider(
     model: str,
     team_id: str | None,
     lacks_files_api: FilesApiProbe = upstream_lacks_files_api,
+    *,
+    visibility: ModelVisibility = GLOBAL_MODELS_ONLY,
 ) -> str | None:
-    credentials: Final = llm_router.get_deployment_credentials_with_provider(model_id=model, team_id=team_id)
+    credentials: Final = llm_router.get_deployment_credentials_with_provider(
+        model_id=model, team_id=team_id, visibility=visibility
+    )
     return None if credentials is None else await litellm_executed_provider_for(credentials, lacks_files_api)
 
 

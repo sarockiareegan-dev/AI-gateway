@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Optional, Protocol, TypeV
 import fastapi
 import yaml
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from pydantic import AliasChoices, Field
 from typing_extensions import ReadOnly, TypedDict
 
 import litellm
@@ -50,7 +51,7 @@ from litellm.proxy._experimental.mcp_server.outbound_credentials.sso_assertion_s
     rotate_sso_identity_assertions_master_key,
 )
 from litellm.proxy._types import *
-from litellm.proxy._types import Litellm_EntityType, LiteLLM_VerificationToken, hash_token
+from litellm.proxy._types import Litellm_EntityType, LiteLLM_VerificationToken, ProxyErrorDetail, hash_token
 from litellm.proxy.auth.auth_checks import (
     _delete_cache_key_object,
     can_team_access_model,
@@ -65,6 +66,7 @@ from litellm.proxy.auth.auth_utils import (
     enforce_batch_enqueued_token_limit_is_admin_only,
     enforce_output_token_estimates_are_admin_only,
 )
+from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, is_licensed
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.common_utils.auth_cache_invalidation_pubsub import (
     evict_and_broadcast,
@@ -91,6 +93,10 @@ from litellm.proxy.management_endpoints.common_utils import (
     _set_object_metadata_field,
     _team_member_has_permission,
     _user_has_admin_view,
+    caller_org_wide_read_org_ids,
+    can_see_every_team_key,
+    org_wide_read_org_ids,
+    require_metadata_field_licence,
     validate_budget_duration,
     validate_finite_spend,
 )
@@ -808,8 +814,8 @@ def common_key_access_checks(
     user_api_key_dict: UserAPIKeyAuth,
     data: GenerateKeyRequest | UpdateKeyRequest,
     llm_router: Router | None,
-    premium_user: bool,
     user_id: str | None = None,
+    entitlements: EntitlementService | None = None,
 ) -> Literal[True]:
     """
     Check if user is allowed to make a key request, for this key
@@ -831,11 +837,7 @@ def common_key_access_checks(
             detail=str(e),
         )
 
-    _check_model_access_group(
-        models=data.models,
-        llm_router=llm_router,
-        premium_user=premium_user,
-    )
+    _check_model_access_group(models=data.models, llm_router=llm_router, entitlements=entitlements)
     return True
 
 
@@ -1172,16 +1174,10 @@ async def _common_key_generation_helper(
     from litellm.proxy.proxy_server import (
         litellm_proxy_admin_name,
         llm_router,
-        premium_user,
         prisma_client,
     )
 
-    common_key_access_checks(
-        user_api_key_dict=user_api_key_dict,
-        data=data,
-        llm_router=llm_router,
-        premium_user=premium_user,
-    )
+    common_key_access_checks(user_api_key_dict=user_api_key_dict, data=data, llm_router=llm_router)
 
     validate_budget_duration(data.budget_duration)
     raise_on_invalid_key_logging_config(data.metadata)
@@ -1312,18 +1308,6 @@ async def _common_key_generation_helper(
         user_api_key_dict=user_api_key_dict,
     )
 
-    # APPLY ENTERPRISE KEY MANAGEMENT PARAMS
-    try:
-        from litellm_enterprise.proxy.management_endpoints.key_management_endpoints import (
-            apply_enterprise_key_management_params,
-        )
-
-        data = apply_enterprise_key_management_params(data, team_table)
-    except Exception as e:
-        verbose_proxy_logger.debug(
-            "litellm.proxy.proxy_server.generate_key_fn(): Enterprise key management params not applied - %s", e
-        )
-
     await _enforce_custom_key_policy(
         hook=_custom_key_policy_hook(proxy_server),
         build_policy_request=lambda: CustomKeyPolicyRequest(
@@ -1404,21 +1388,6 @@ async def _common_key_generation_helper(
     if user_api_key_dict.user_id is not None:
         data_json["created_by"] = user_api_key_dict.user_id
         data_json["updated_by"] = user_api_key_dict.user_id
-
-    # Set tags on the new key
-    if "tags" in data_json:
-        from litellm.proxy.proxy_server import premium_user
-
-        if premium_user is not True and data_json["tags"] is not None:
-            raise ValueError(f"Only premium users can add tags to keys. {CommonProxyErrors.not_premium_user.value}")
-
-        _metadata: Final = data_json.get("metadata")
-        if not _metadata:
-            data_json["metadata"] = {"tags": data_json["tags"]}
-        else:
-            data_json["metadata"]["tags"] = data_json["tags"]
-
-        data_json.pop("tags")
 
     # Validate MCP servers in object_permission are within team scope
     _is_proxy_admin_caller: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
@@ -2336,6 +2305,8 @@ def prepare_metadata_fields(data: BaseModel, non_default_values: dict, existing_
         casted_metadata[reserved_field] = existing_value
 
     data_json: Final = _as_object_dict(data.model_dump(exclude_unset=True, exclude_none=True))
+    for k, v in data_json.items():
+        require_metadata_field_licence(k, v)
 
     try:
         for k, v in data_json.items():
@@ -2345,10 +2316,6 @@ def prepare_metadata_fields(data: BaseModel, non_default_values: dict, existing_
                 else:
                     casted_metadata[k] = v
             if k in LiteLLM_ManagementEndpoint_MetadataFields_Premium:
-                from litellm.proxy.utils import _premium_user_check
-
-                if v:
-                    _premium_user_check(k)
                 casted_metadata[k] = v
 
     except Exception as e:
@@ -2992,9 +2959,9 @@ async def _validate_update_key_data(
     existing_key_row: LiteLLM_VerificationToken,
     user_api_key_dict: UserAPIKeyAuth,
     llm_router: Router | None,
-    premium_user: bool,
     prisma_client: PrismaClient | None,
     user_api_key_cache: UserApiKeyCache,
+    entitlements: EntitlementService | None = None,
 ) -> None:
     """Validate permissions and constraints for key update."""
     checked_prisma_client: Final = _require_prisma_client(prisma_client)
@@ -3036,7 +3003,7 @@ async def _validate_update_key_data(
         data=data,
         user_id=existing_key_row.user_id,
         llm_router=llm_router,
-        premium_user=premium_user,
+        entitlements=entitlements,
     )
 
     await TeamMemberPermissionChecks.can_team_member_execute_key_management_endpoint(
@@ -3360,7 +3327,6 @@ async def update_key_fn(
     from litellm.proxy.proxy_server import (
         litellm_proxy_admin_name,
         llm_router,
-        premium_user,
         prisma_client,
         proxy_logging_obj,
         user_api_key_cache,
@@ -3390,7 +3356,6 @@ async def update_key_fn(
             existing_key_row=existing_key_row,
             user_api_key_dict=user_api_key_dict,
             llm_router=llm_router,
-            premium_user=premium_user,
             prisma_client=prisma_client,
             user_api_key_cache=user_api_key_cache,
         )
@@ -4401,25 +4366,21 @@ async def _find_deleted_key_info(
     return LiteLLM_DeletedVerificationToken.model_validate(archived_row.model_dump())
 
 
-def _check_model_access_group(models: list[str] | None, llm_router: Router | None, premium_user: bool) -> Literal[True]:
-    """
-    if is_model_access_group is True + is_wildcard_route is True, check if user is a premium user
-
-    Return True if user is a premium user, False otherwise
-    """
+def _check_model_access_group(
+    models: list[str] | None, llm_router: Router | None, entitlements: EntitlementService | None = None
+) -> Literal[True]:
     if models is None or llm_router is None:
         return True
-
-    for model in models:
-        if llm_router._is_model_access_group_for_wildcard_route(model_access_group=model):
-            if not premium_user:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={
-                        "error": f"Setting a model access group on a wildcard model is only available for LiteLLM Enterprise users.{CommonProxyErrors.not_premium_user.value}"
-                    },
-                )
-
+    if any(llm_router._is_model_access_group_for_wildcard_route(model_access_group=model) for model in models) and (
+        not is_licensed(LicenseFeature.ADVANCED_KEYS, entitlements)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ProxyErrorDetail(
+                error="Setting a model access group on a wildcard model needs the 'advanced_keys' feature on the "
+                f"Agami license. {CommonProxyErrors.not_premium_user.value}"
+            ),
+        )
     return True
 
 
@@ -4519,7 +4480,7 @@ async def generate_key_helper_fn(
     *,
     llm_router: Router | None = None,
 ):
-    from litellm.proxy.proxy_server import premium_user, prisma_client
+    from litellm.proxy.proxy_server import prisma_client
 
     if prisma_client is None:
         raise Exception("Connect Proxy to database to generate keys - https://docs.litellm.ai/docs/proxy/virtual_keys ")
@@ -4674,8 +4635,13 @@ async def generate_key_helper_fn(
         if isinstance(saved_token["metadata"], str):
             saved_token["metadata"] = json.loads(saved_token["metadata"])
         if isinstance(saved_token["permissions"], str):
-            if "get_spend_routes" in saved_token["permissions"] and premium_user is not True:
-                raise ValueError("get_spend_routes permission is only available for LiteLLM Enterprise users")
+            if "get_spend_routes" in saved_token["permissions"] and not is_licensed(LicenseFeature.ADVANCED_KEYS):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=ProxyErrorDetail(
+                        error="get_spend_routes permission needs the 'advanced_keys' feature on the Agami license"
+                    ),
+                )
 
             saved_token["permissions"] = json.loads(saved_token["permissions"])
         if isinstance(saved_token["model_max_budget"], str):
@@ -5677,7 +5643,6 @@ async def regenerate_key_fn(
             hash_token,
             llm_router,
             master_key,
-            premium_user,
             prisma_client,
             proxy_logging_obj,
             user_api_key_cache,
@@ -5724,11 +5689,13 @@ async def regenerate_key_fn(
             and _is_master_key(api_key=regenerate_target_key, _master_key=master_key)
         )
 
-        if (
-            premium_user is not True and not is_master_key_regeneration
-        ):  # allow master key regeneration for non-premium users
-            raise ValueError(
-                f"Regenerating Virtual Keys is an Enterprise feature, {CommonProxyErrors.not_premium_user.value}"
+        if not is_master_key_regeneration and not is_licensed(LicenseFeature.ADVANCED_KEYS):
+            raise HTTPException(
+                status_code=403,
+                detail=ProxyErrorDetail(
+                    error="Regenerating virtual keys needs the 'advanced_keys' feature on the Agami license. "
+                    f"{CommonProxyErrors.not_premium_user.value}"
+                ),
             )
 
         # Check if key exists, raise exception if key is not in the DB
@@ -6204,8 +6171,10 @@ async def validate_key_list_check(
                 code=status.HTTP_403_FORBIDDEN,
             )
 
-    if team_id:
-        if team_id not in complete_user_info.teams:
+    if team_id and team_id not in complete_user_info.teams:
+        if team_id not in await _org_team_ids(
+            prisma_client, _org_wide_read_org_ids_of(user_api_key_dict, complete_user_info)
+        ):
             raise ProxyException(
                 message="You are not authorized to check this team's keys",
                 type=ProxyErrorTypes.bad_request_error,
@@ -6256,6 +6225,19 @@ async def validate_key_list_check(
                 detail=f"You are not allowed to access this key's info. Your role={user_api_key_dict.user_role}",
             )
     return complete_user_info
+
+
+def _org_wide_read_org_ids_of(user_api_key_dict: UserAPIKeyAuth, user_info: LiteLLM_UserTable) -> frozenset[str]:
+    return frozenset(org_wide_read_org_ids(user_api_key_dict.user_role, user_info.organization_memberships))
+
+
+async def _org_team_ids(prisma_client: PrismaClient, org_ids: frozenset[str]) -> frozenset[str]:
+    if not org_ids:
+        return frozenset()
+    teams: Final = await TeamRepository(prisma_client).table.find_many(
+        where={"organization_id": {"in": sorted(org_ids)}}  # mutable-ok: Prisma query filters are dict-shaped
+    )
+    return frozenset(team.team_id for team in teams)
 
 
 async def _fetch_user_team_objects(
@@ -6469,6 +6451,12 @@ async def list_keys(
             prisma_client=prisma_client,
         )
 
+        readable_org_ids: Final = (
+            _org_wide_read_org_ids_of(user_api_key_dict, complete_user_info)
+            if include_team_keys and complete_user_info is not None
+            else frozenset[str]()
+        )
+
         # Fetch team objects once when needed for either admin or member filtering.
         # This avoids duplicate DB queries for the same team data.
         if include_team_keys or include_created_by_keys:
@@ -6498,13 +6486,13 @@ async def list_keys(
             )
             if list_permission_team_ids:
                 admin_team_ids = list({*admin_team_ids, *list_permission_team_ids})
+            org_team_ids: Final = await _org_team_ids(prisma_client, readable_org_ids)
+            if org_team_ids:
+                admin_team_ids = sorted(frozenset((*admin_team_ids, *org_team_ids)))
         else:
             admin_team_ids = None
 
-        is_proxy_admin: Final = user_api_key_dict.user_role in [
-            LitellmUserRoles.PROXY_ADMIN.value,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
-        ]
+        is_proxy_admin: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
 
         # Substring matching is opt-in. /key/list matched user_id and key_alias
         # exactly before substring search was added; auto-applying a substring
@@ -6530,6 +6518,7 @@ async def list_keys(
             return_full_object=return_full_object,
             organization_id=organization_id,
             admin_team_ids=admin_team_ids,
+            admin_org_ids=tuple(sorted(readable_org_ids)),
             member_team_ids=member_team_ids,
             include_created_by_keys=include_created_by_keys,
             sort_by=sort_by,
@@ -6653,10 +6642,7 @@ async def key_aliases(
 
         # Scope results for non-admin users: only show aliases for keys the
         # user owns or keys belonging to teams they are a member of.
-        is_proxy_admin: Final = user_api_key_dict.user_role in [
-            LitellmUserRoles.PROXY_ADMIN.value,
-            LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
-        ]
+        is_proxy_admin: Final = user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
         if not is_proxy_admin:
             await _apply_non_admin_alias_scope(user_api_key_dict, prisma_client, query_params, where_parts)
 
@@ -6794,6 +6780,7 @@ def _build_key_filter_conditions(
     admin_team_ids: list[str] | None,
     member_team_ids: list[str] | None = None,
     include_created_by_keys: bool = False,
+    admin_org_ids: Sequence[str] = (),
     project_id: str | None = None,
     access_group_id: str | None = None,
     agent_id: str | None = None,
@@ -6868,6 +6855,8 @@ def _build_key_filter_conditions(
     # Add condition for admin team keys (admins see ALL team keys)
     if admin_team_ids:
         or_conditions.append({"team_id": {"in": admin_team_ids}})
+    if admin_org_ids:
+        or_conditions.append({"organization_id": {"in": sorted(admin_org_ids)}})
 
     # Add condition for member team service accounts (members only see keys with user_id=NULL)
     if member_team_ids:
@@ -6933,6 +6922,7 @@ async def _list_key_helper(
     exclude_team_id: str | None = None,
     return_full_object: bool = False,
     admin_team_ids: list[str] | None = None,  # New parameter for teams where user is admin
+    admin_org_ids: Sequence[str] = (),
     member_team_ids: list[str]
     | None = None,  # Team IDs where user is a member (any role) - for service account visibility
     include_created_by_keys: bool = False,
@@ -6978,6 +6968,7 @@ async def _list_key_helper(
         key_hash=key_hash,
         exclude_team_id=exclude_team_id,
         admin_team_ids=admin_team_ids,
+        admin_org_ids=admin_org_ids,
         member_team_ids=member_team_ids,
         include_created_by_keys=include_created_by_keys,
         project_id=project_id,
@@ -7499,19 +7490,38 @@ async def _can_user_query_key_info(
     Helper to check if the user has access to the key's info
     """
     if (
-        (
-            user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
-            or user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value
-        )
+        user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
         or user_api_key_dict.api_key == key
         or key_info.user_id == user_api_key_dict.user_id
-        or await TeamMemberPermissionChecks.user_belongs_to_keys_team(
-            user_api_key_dict=user_api_key_dict,
-            existing_key_row=key_info,
-        )
     ):
         return True
-    return False
+    if key_info.team_id is None:
+        return await _caller_reads_org_wide(
+            user_api_key_dict, _KeyOrganization.model_validate(key_info.model_dump()).organization_id
+        )
+
+    from litellm.proxy.proxy_server import prisma_client, user_api_key_cache
+
+    team_table: Final = await get_team_object(
+        team_id=key_info.team_id,
+        prisma_client=prisma_client,
+        user_api_key_cache=user_api_key_cache,
+        parent_otel_span=user_api_key_dict.parent_otel_span,
+        check_db_only=True,
+    )
+    return can_see_every_team_key(
+        user_api_key_dict=user_api_key_dict, team_obj=team_table
+    ) or await _caller_reads_org_wide(user_api_key_dict, team_table.organization_id)
+
+
+class _KeyOrganization(BaseModel):
+    organization_id: str | None = Field(default=None, validation_alias=AliasChoices("organization_id", "org_id"))
+
+
+async def _caller_reads_org_wide(user_api_key_dict: UserAPIKeyAuth, organization_id: str | None) -> bool:
+    if organization_id is None:
+        return False
+    return organization_id in await caller_org_wide_read_org_ids(user_api_key_dict)
 
 
 async def test_key_logging(
@@ -7669,25 +7679,25 @@ async def _enforce_unique_key_alias(
             )
 
 
-def validate_model_max_budget(model_max_budget: dict | None) -> None:
+def validate_model_max_budget(model_max_budget: dict | None, entitlements: EntitlementService | None = None) -> None:
     """
-    Validate the model_max_budget is GenericBudgetConfigType + enforce user has an enterprise license
+    Validate the model_max_budget is GenericBudgetConfigType + enforce the license has the `budgets` feature
 
     Raises:
         Exception: If model_max_budget is not a valid GenericBudgetConfigType
     """
+    if not model_max_budget:
+        return
+    if not is_licensed(LicenseFeature.BUDGETS, entitlements):
+        raise HTTPException(
+            status_code=403,
+            detail=ProxyErrorDetail(
+                error="Setting model_max_budget needs the 'budgets' feature on the Agami license. "
+                f"{CommonProxyErrors.not_premium_user.value}"
+            ),
+        )
     try:
-        if model_max_budget is None:
-            return
-        if len(model_max_budget) == 0:
-            return
         if model_max_budget is not None:
-            from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
-
-            if premium_user is not True:
-                raise ValueError(
-                    f"You must have an enterprise license to set model_max_budget. {CommonProxyErrors.not_premium_user.value}"
-                )
             for _model, _budget_info in model_max_budget.items():
                 assert isinstance(_model, str)
 

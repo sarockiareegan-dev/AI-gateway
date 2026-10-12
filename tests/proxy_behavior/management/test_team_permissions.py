@@ -94,21 +94,28 @@ async def test_team_permissions_update_authz_matrix(
 async def test_team_permissions_available_team_self_join_divergence(
     proxy_client, prisma, scratch, world, monkeypatch
 ):
-    """permissions_list honours the available-team self-join — a non-admin can
-    READ an available team's permissions — but permissions_update deliberately
-    does not: the same caller is 403 on update. default_internal_user_params is
+    """permissions_list honours the available-team self-join — a non-admin in the
+    team's organization can READ an available team's permissions, a caller from
+    another organization cannot — but permissions_update deliberately does not:
+    the same-org caller is 403 on update. default_internal_user_params is
     module-level litellm.* state, so monkeypatch save/restores it."""
     await create_scratch_team(prisma, scratch.prefix, organization_id=world.org_a_id)
     monkeypatch.setattr(
         litellm, "default_internal_user_params", {"available_teams": [scratch.prefix]}
     )
-    caller = world.keys[Actor.CROSS_ORG_USER]  # non-admin, unrelated to the team
+    caller = world.keys[Actor.UNRELATED_SAME_ORG]
 
     listed = await proxy_client.get(
         f"/team/permissions_list?team_id={scratch.prefix}",
         headers={"Authorization": f"Bearer {caller.cleartext}"},
     )
     assert listed.status_code == 200, listed.text
+
+    cross_org = await proxy_client.get(
+        f"/team/permissions_list?team_id={scratch.prefix}",
+        headers={"Authorization": f"Bearer {world.keys[Actor.CROSS_ORG_USER].cleartext}"},
+    )
+    assert cross_org.status_code == 403, cross_org.text
 
     updated = await proxy_client.post(
         "/team/permissions_update",

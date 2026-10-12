@@ -639,8 +639,8 @@ class TestTenantIsolation:
         assert resp.status_code == 200
 
 
-class TestAdminViewerReadParity:
-    """proxy_admin_viewer reads every run; write paths stay on the strict admin gate."""
+class TestAdminViewerIsScopedToItsOwnRuns:
+    """proxy_admin_viewer is a per-organization role, so it reads runs like any other non-admin caller."""
 
     def _make_app_with_auth(self, auth_fn):
         from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
@@ -650,14 +650,12 @@ class TestAdminViewerReadParity:
         app.dependency_overrides[user_api_key_auth] = auth_fn
         return TestClient(app, raise_server_exceptions=True)
 
-    def test_read_scope_caller_drops_scope_for_admin_viewer_only(self):
-        """None means 'no ownership filter'; every other non-admin role keeps its caller."""
-        internal = _override_auth_internal_user()
-        assert _read_scope_caller(_override_auth_admin_viewer()) is None
-        assert _read_scope_caller(internal) is internal
+    def test_read_scope_caller_keeps_the_admin_viewer(self):
+        viewer = _override_auth_admin_viewer()
+        assert _read_scope_caller(viewer) is viewer
 
     @patch("litellm.proxy.proxy_server.prisma_client")
-    def test_admin_viewer_list_not_scoped(self, mock_pc):
+    def test_admin_viewer_list_scoped_to_its_own_runs(self, mock_pc):
         client = self._make_app_with_auth(_override_auth_admin_viewer)
         mock_pc.db = self._prisma.db
         self._prisma.db.litellm_workflowrun.find_many = AsyncMock(return_value=[])
@@ -665,48 +663,21 @@ class TestAdminViewerReadParity:
         resp = client.get("/v1/workflows/runs")
         assert resp.status_code == 200
         call_kwargs = self._prisma.db.litellm_workflowrun.find_many.call_args[1]
-        assert "created_by" not in call_kwargs["where"]
+        assert call_kwargs["where"]["created_by"] == "tok-viewer"
 
+    @pytest.mark.parametrize("suffix", ["", "/events", "/messages"])
     @patch("litellm.proxy.proxy_server.prisma_client")
-    def test_admin_viewer_get_other_owners_run_succeeds(self, mock_pc):
+    def test_admin_viewer_cannot_read_another_owners_run(self, mock_pc, suffix):
         client = self._make_app_with_auth(_override_auth_admin_viewer)
         mock_pc.db = self._prisma.db
         self._prisma.db.litellm_workflowrun.find_unique = AsyncMock(
             return_value=_make_run(created_by="tok-other-owner")
         )
+        self._prisma.db.litellm_workflowevent.find_many = AsyncMock(return_value=[_make_event(sequence_number=0)])
+        self._prisma.db.litellm_workflowmessage.find_many = AsyncMock(return_value=[_make_message(sequence_number=0)])
 
-        resp = client.get("/v1/workflows/runs/run-1")
-        assert resp.status_code == 200
-
-    @patch("litellm.proxy.proxy_server.prisma_client")
-    def test_admin_viewer_lists_other_owners_events(self, mock_pc):
-        client = self._make_app_with_auth(_override_auth_admin_viewer)
-        mock_pc.db = self._prisma.db
-        self._prisma.db.litellm_workflowrun.find_unique = AsyncMock(
-            return_value=_make_run(created_by="tok-other-owner")
-        )
-        self._prisma.db.litellm_workflowevent.find_many = AsyncMock(
-            return_value=[_make_event(sequence_number=0)]
-        )
-
-        resp = client.get("/v1/workflows/runs/run-1/events")
-        assert resp.status_code == 200
-        assert resp.json()["count"] == 1
-
-    @patch("litellm.proxy.proxy_server.prisma_client")
-    def test_admin_viewer_lists_other_owners_messages(self, mock_pc):
-        client = self._make_app_with_auth(_override_auth_admin_viewer)
-        mock_pc.db = self._prisma.db
-        self._prisma.db.litellm_workflowrun.find_unique = AsyncMock(
-            return_value=_make_run(created_by="tok-other-owner")
-        )
-        self._prisma.db.litellm_workflowmessage.find_many = AsyncMock(
-            return_value=[_make_message(sequence_number=0)]
-        )
-
-        resp = client.get("/v1/workflows/runs/run-1/messages")
-        assert resp.status_code == 200
-        assert resp.json()["count"] == 1
+        resp = client.get(f"/v1/workflows/runs/run-1{suffix}")
+        assert resp.status_code == 404
 
     @patch("litellm.proxy.proxy_server.prisma_client")
     def test_admin_viewer_cannot_update_other_owners_run(self, mock_pc):

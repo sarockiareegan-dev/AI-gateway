@@ -293,11 +293,6 @@ class UISettings(BaseModel):
         description="If true, team admins are exempt from the vector stores disable restriction (only takes effect when disable_vector_stores_for_internal_users is true).",
     )
 
-    scope_user_search_to_org: bool = Field(
-        default=False,
-        description="If enabled, the user search endpoint (/user/filter/ui) restricts results by organization. When off, any authenticated user can search all users.",
-    )
-
     disable_custom_api_keys: bool = Field(
         default=False,
         description="If true, users cannot specify custom key values. All keys must be auto-generated.",
@@ -344,7 +339,6 @@ ALLOWED_UI_SETTINGS_FIELDS: Final = {
     "allow_agents_for_team_admins",
     "disable_vector_stores_for_internal_users",
     "allow_vector_stores_for_team_admins",
-    "scope_user_search_to_org",
     "disable_custom_api_keys",
     "disable_key_generate_for_org_admin",
     "enable_chat_ui",
@@ -386,7 +380,7 @@ _RUNTIME_GENERAL_SETTINGS_FLAGS: Final = [
     TEAM_ADMIN_EDITABLE_TEAM_FIELDS_SETTING,
 ]
 
-# Extension point: packages outside OSS (e.g. litellm_enterprise) can
+# Extension point: packages outside this one can
 # contribute additional UI settings fields at import time. Each entry
 # maps a field name to a (annotation, FieldInfo) tuple in pydantic
 # create_model's field-definitions format. Registering a field also

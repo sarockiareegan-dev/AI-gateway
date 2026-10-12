@@ -897,10 +897,8 @@ async def test_key_list_key_hash_filter_unauthorized(
     """validate_key_list_check's key_hash branch (lines 4766–4789): a
     cross-tenant non-admin caller asks for a key_hash they don't own → 403.
 
-    `user_belongs_to_keys_team` returns True for any team member, so a
-    same-team caller is allowed to query peer keys by hash (intentional
-    per the helper's policy). The 403 path requires a caller who is neither
-    the key owner, team member, nor admin — i.e. CROSS_ORG_USER.
+    The caller is neither the key owner, a team admin, nor a proxy admin,
+    i.e. CROSS_ORG_USER.
     """
     cleartext = await _seed_token(
         prisma,

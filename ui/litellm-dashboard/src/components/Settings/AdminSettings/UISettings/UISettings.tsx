@@ -63,7 +63,6 @@ export default function UISettings() {
   const allowAgentsTeamAdminsProperty = schema?.properties?.allow_agents_for_team_admins;
   const disableVectorStoresProperty = schema?.properties?.disable_vector_stores_for_internal_users;
   const allowVectorStoresTeamAdminsProperty = schema?.properties?.allow_vector_stores_for_team_admins;
-  const scopeUserSearchProperty = schema?.properties?.scope_user_search_to_org;
   const disableCustomApiKeysProperty = schema?.properties?.disable_custom_api_keys;
   const values = data?.values ?? {};
   const isDisabledForInternalUsers = Boolean(values.disable_model_add_for_internal_users);
@@ -238,20 +237,6 @@ export default function UISettings() {
     );
   };
 
-  const handleToggleScopeUserSearch = (checked: boolean) => {
-    updateSettings(
-      { scope_user_search_to_org: checked },
-      {
-        onSuccess: () => {
-          toast.success("UI settings updated successfully");
-        },
-        onError: (error) => {
-          toast.fromError(error);
-        },
-      },
-    );
-  };
-
   const handleToggleDisableCustomApiKeys = (checked: boolean) => {
     updateSettings(
       { disable_custom_api_keys: checked },
@@ -404,19 +389,6 @@ export default function UISettings() {
               description={allowVectorStoresTeamAdminsProperty?.description}
               indented
               muted={!isVectorStoresDisabled}
-            />
-
-            <Separator />
-            <SettingRow
-              checked={Boolean(values.scope_user_search_to_org)}
-              disabled={isUpdating}
-              onCheckedChange={handleToggleScopeUserSearch}
-              ariaLabel={scopeUserSearchProperty?.description ?? "Scope user search to organization"}
-              label="Scope user search to organization"
-              description={
-                scopeUserSearchProperty?.description ??
-                "If enabled, the user search endpoint restricts results by organization. When off, any authenticated user can search all users."
-              }
             />
 
             <Separator />

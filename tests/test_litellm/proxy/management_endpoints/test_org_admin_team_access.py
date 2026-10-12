@@ -165,6 +165,24 @@ class TestIsUserOrgAdminForTeam:
         assert result is False
 
 
+@pytest.mark.parametrize(
+    ("role", "expected"),
+    [
+        (LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value, ("org-admin-of", "org-member-of")),
+        (LitellmUserRoles.INTERNAL_USER.value, ("org-admin-of",)),
+        (None, ("org-admin-of",)),
+    ],
+)
+def test_org_wide_read_org_ids_grants_a_viewer_every_org_it_belongs_to(role, expected):
+    from litellm.proxy.management_endpoints.common_utils import org_wide_read_org_ids
+
+    memberships = [
+        _make_membership("u", "org-admin-of", "org_admin"),
+        _make_membership("u", "org-member-of", "user"),
+    ]
+    assert org_wide_read_org_ids(role, memberships) == expected
+
+
 # ---------------------------------------------------------------------------
 # validate_membership
 # ---------------------------------------------------------------------------
@@ -219,6 +237,38 @@ class TestValidateMembership:
         caller = _make_caller_user(
             user_id="random-user", org_id="org-2", org_role="user"
         )
+
+        p1, p2, p3, p4 = _patch_org_admin_deps(caller)
+        with p1, p2, p3, p4:
+            with pytest.raises(HTTPException) as exc_info:
+                await validate_membership(user_api_key_dict=key, team_table=team)
+            assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_admin_viewer_reads_a_team_in_an_org_it_belongs_to(self):
+        from litellm.proxy.management_endpoints.team_endpoints import (
+            validate_membership,
+        )
+
+        team = _make_team(organization_id="org-1")
+        key = _make_user_key(user_id="viewer", role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value)
+        caller = _make_caller_user(user_id="viewer", org_id="org-1", org_role="user")
+
+        p1, p2, p3, p4 = _patch_org_admin_deps(caller)
+        with p1, p2, p3, p4:
+            await validate_membership(user_api_key_dict=key, team_table=team)
+
+    @pytest.mark.asyncio
+    async def test_admin_viewer_cannot_read_a_team_in_another_org(self):
+        from fastapi import HTTPException
+
+        from litellm.proxy.management_endpoints.team_endpoints import (
+            validate_membership,
+        )
+
+        team = _make_team(organization_id="org-1")
+        key = _make_user_key(user_id="viewer", role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value)
+        caller = _make_caller_user(user_id="viewer", org_id="org-2", org_role="user")
 
         p1, p2, p3, p4 = _patch_org_admin_deps(caller)
         with p1, p2, p3, p4:

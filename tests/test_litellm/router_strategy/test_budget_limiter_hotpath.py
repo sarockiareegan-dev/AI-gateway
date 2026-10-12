@@ -11,6 +11,7 @@ from litellm.caching.redis_cache import RedisCache, RedisCircuitBreakerOpenError
 from litellm.router_strategy.budget_limiter import RouterBudgetLimiting
 from litellm.types.router import LiteLLM_Params
 from litellm.types.utils import BudgetConfig
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
 
 
 @pytest.fixture
@@ -240,6 +241,21 @@ async def test_get_llm_provider_for_deployment_matches_legacy_behavior(
     legacy_provider = _legacy_provider_resolution(deployment)
 
     assert current_provider == legacy_provider
+
+
+@pytest.mark.parametrize(("features", "allowed"), [(("budgets",), True), (("sso",), False)], ids=["budgets", "other"])
+def test_tag_budgets_need_the_budgets_licence_feature(disable_budget_sync, monkeypatch, features, allowed):
+    monkeypatch.setattr(asyncio, "create_task", lambda coro: None)
+    install_entitlements(monkeypatch, licensed_entitlements(features=features))
+    budget_limiter = RouterBudgetLimiting(dual_cache=DualCache(), provider_budget_config={})
+    monkeypatch.setattr(litellm, "tag_budget_config", {"prod": {"max_budget": 5.0, "budget_duration": "1d"}})
+
+    if not allowed:
+        with pytest.raises(ValueError, match="'budgets' feature"):
+            budget_limiter._init_tag_budgets()
+        return
+    budget_limiter._init_tag_budgets()
+    assert budget_limiter.tag_budget_config["prod"].max_budget == 5.0
 
 
 def test_register_deployment_budget_for_runtime_added_deployment(

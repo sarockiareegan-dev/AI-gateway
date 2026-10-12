@@ -37,6 +37,13 @@ from litellm.proxy.management_endpoints.team_endpoints import new_team
 from litellm.proxy.proxy_server import chat_completion
 from typing import Literal, Optional
 from litellm.proxy._types import ProxyException
+from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+
+
+@pytest.fixture(autouse=True)
+def jwt_auth_licence(monkeypatch):
+    install_entitlements(monkeypatch, licensed_entitlements(features=("jwt_auth",)))
+
 
 public_key = {
     "kty": "RSA",
@@ -420,7 +427,6 @@ async def test_team_token_output(prisma_client, audience, monkeypatch):
 
     ## 1. INITIAL TEAM CALL - should fail
     # use generated key to auth in
-    setattr(litellm.proxy.proxy_server, "premium_user", True)
     setattr(
         litellm.proxy.proxy_server,
         "general_settings",
@@ -842,7 +848,6 @@ async def test_allowed_routes_admin(
 
         ## 1. INITIAL TEAM CALL - should fail
         # use generated key to auth in
-        setattr(litellm.proxy.proxy_server, "premium_user", True)
         setattr(
             litellm.proxy.proxy_server,
             "general_settings",
@@ -1014,7 +1019,6 @@ async def test_allow_access_by_email(
 
     ## 1. INITIAL TEAM CALL - should fail
     # use generated key to auth in
-    setattr(litellm.proxy.proxy_server, "premium_user", True)
     setattr(
         litellm.proxy.proxy_server,
         "general_settings",
@@ -1171,7 +1175,6 @@ async def test_end_user_jwt_auth(monkeypatch):
         router_general_settings=RouterGeneralSettings(pass_through_all_models=True),
     )
 
-    setattr(litellm.proxy.proxy_server, "premium_user", True)
     setattr(
         litellm.proxy.proxy_server,
         "general_settings",

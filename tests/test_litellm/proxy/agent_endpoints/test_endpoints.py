@@ -374,16 +374,14 @@ class TestAgentByIdKeyRedaction:
         assert resp.status_code == 200
         assert resp.json()["keys"] is None
 
-    def test_view_only_admin_reads_a_denied_agent_but_still_without_keys(self):
-        """proxy_admin_viewer skips the per-agent object_permission gate (denied
-        here) yet stays on the redacted response path."""
+    def test_view_only_admin_cannot_read_an_agent_it_is_denied(self):
         with patch(
             "litellm.proxy.agent_endpoints.auth.agent_permission_handler.AgentRequestHandler.is_agent_allowed",
             AsyncMock(return_value=False),
         ):
             resp = self._get_as(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY)
-        assert resp.status_code == 200
-        assert resp.json()["keys"] is None
+        assert resp.status_code in (403, 404)
+        assert "hash-aaa" not in resp.text
 
 
 # ---------- RBAC enforcement tests ----------
