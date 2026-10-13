@@ -49,10 +49,6 @@ jobs:
         with:
           version: "0.10.9"
 
-      - name: Cache the Rust build
-        if: steps.changes.outputs.decision != 'skip'
-        uses: ./.github/actions/cache-cargo-build
-
       - name: Verify lockfile
         if: steps.changes.outputs.decision != 'skip'
         run: |

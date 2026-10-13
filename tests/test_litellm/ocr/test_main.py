@@ -15,16 +15,11 @@ from litellm.llms.base_llm.ocr.transformation import OCRPage, OCRResponse, OCRUs
 from litellm.llms.custom_httpx import llm_http_handler
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.ocr.main import _prepare_ocr_request
-from litellm.rust_bridge import bindings, configuration, runtime
-from litellm.rust_bridge.ocr.entrypoints import NATIVE_AOCR, NATIVE_OCR
 from litellm.utils import ProviderConfigManager
 
 
 @pytest.fixture
 async def provider(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Mock]:
-    configuration.reset_rust_configuration()
-    monkeypatch.setenv("LITELLM_RUST", "0")
-    monkeypatch.setattr(bindings, "get_native_bridge", Mock(side_effect=AssertionError("Rust must not load")))
     handler: Final = Mock(
         return_value=httpx.Response(
             200,
@@ -45,25 +40,11 @@ async def provider(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Mock]:
             monkeypatch.setattr(llm_http_handler, "_get_httpx_client", lambda: sync_handler)
             monkeypatch.setattr(llm_http_handler, "get_async_httpx_client", lambda llm_provider: async_handler)
             yield handler
-    NATIVE_OCR.reset()
-    NATIVE_AOCR.reset()
-    configuration.reset_rust_configuration()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["sync", "async", "sync_async"])
-@pytest.mark.parametrize("dispatch", ["disabled", "declined", "unavailable"])
-async def test_python_request_response_and_callbacks(
-    provider: Mock, monkeypatch: pytest.MonkeyPatch, mode: str, dispatch: str
-) -> None:
-    class Declined(Exception):
-        pass
-
-    if dispatch != "disabled":
-        monkeypatch.setenv("LITELLM_RUST", "1")
-        binding: Final = NATIVE_AOCR if mode == "async" else NATIVE_OCR
-        binding.override(Mock(side_effect=Declined()) if dispatch == "declined" else None)
-        monkeypatch.setattr(runtime, "native_exception_types", lambda: (Declined, RuntimeError))
+async def test_python_request_response_and_callbacks(provider: Mock, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
     logger: Final = Mock(spec=CustomLogger)
     monkeypatch.setattr(litellm, "input_callback", [logger])
     arguments: Final = {

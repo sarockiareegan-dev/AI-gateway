@@ -8752,6 +8752,10 @@ class ProviderConfigManager:
             return AzureSpeechAudioTranscriptionConfig()
         elif litellm.LlmProviders.DEEPGRAM == provider:
             return litellm.DeepgramAudioTranscriptionConfig()
+        elif litellm.LlmProviders.BEDROCK == provider:
+            from litellm.llms.bedrock.audio_transcription.transformation import BedrockAudioTranscriptionConfig
+
+            return BedrockAudioTranscriptionConfig()
         elif litellm.LlmProviders.ELEVENLABS == provider:
             from litellm.llms.elevenlabs.audio_transcription.transformation import (
                 ElevenLabsAudioTranscriptionConfig,
@@ -9573,6 +9577,11 @@ class ProviderConfigManager:
             from litellm.llms.cohere.ocr.transformation import CohereParseConfig
 
             return CohereParseConfig()
+
+        if provider == litellm.LlmProviders.AWS_TEXTRACT:
+            from litellm.llms.aws_textract.ocr.transformation import AWSTextractOCRConfig
+
+            return AWSTextractOCRConfig()
 
         if provider == litellm.LlmProviders.REDUCTO:
             from litellm.llms.reducto.ocr.transformation import (

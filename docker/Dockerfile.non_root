@@ -56,11 +56,10 @@ RUN for i in 1 2 3; do \
         python-3.13 \
         python-3.13-dev \
         gcc \
-        rust \
         bash \
         coreutils \
         curl \
-        openssl \
+        openssl~3.6 \
         libsndfile \
         nodejs \
         npm && break || sleep 5; \

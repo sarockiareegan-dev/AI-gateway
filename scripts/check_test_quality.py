@@ -64,9 +64,7 @@ TQ009   A child interpreter spawned as `subprocess.run([sys.executable, ...])` w
         `-I`/`-P` as its first flag. Without isolation the child's sys.path leads with
         the working directory, so a source checkout shadows the installed package and
         the child tests a different `litellm` than the parent imported -- TQ003 is the
-        same working-directory hazard seen from the child's side. Use
-        tests.test_litellm_rust.support.child_interpreter.run_child_interpreter, which
-        also asserts the child resolved the same `litellm.__file__` as the parent.
+        same working-directory hazard seen from the child's side. Pass `-I` first.
 
 Every rule is suppressible with `# test-quality-ok: <reason>` on the reported
 line, following the repo's `*-ok: <reason>` convention. A suppression without a
@@ -742,8 +740,7 @@ def iter_child_interpreter_violations(path: Path, tree: ast.Module) -> Iterator[
             node.lineno,
             "TQ009",
             "child interpreter spawned without -I/-P; the working directory lands on sys.path "
-            "and a source checkout can shadow the installed package, use "
-            "tests.test_litellm_rust.support.child_interpreter.run_child_interpreter or pass -I "
+            "and a source checkout can shadow the installed package, pass -I "
             f"(suppress: `# {SUPPRESSION_TOKEN}: <reason>`)",
         )
 

@@ -186,7 +186,7 @@ def _error_provider(model: str, custom_llm_provider: str | None) -> str | None:
     if custom_llm_provider is not None:
         return custom_llm_provider
     prefix: Final = model.partition("/")[0]
-    if prefix in ("mistral", "azure_ai", "vertex_ai"):
+    if prefix in ("mistral", "azure_ai", "vertex_ai", "aws_textract"):
         return prefix
     return "mistral" if model.startswith("mistral-ocr") else None
 

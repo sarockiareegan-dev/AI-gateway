@@ -2,7 +2,6 @@ import asyncio
 import json
 import ssl
 from collections.abc import AsyncGenerator, AsyncIterator, Coroutine, Iterator, Mapping, Sequence
-from contextlib import asynccontextmanager
 from functools import lru_cache
 from types import MappingProxyType, ModuleType
 from typing import (
@@ -176,17 +175,6 @@ from litellm.utils import (
     ProviderConfigManager,
     async_pre_call_deployment_hook,
 )
-
-
-def _rust_responses_websocket_enabled(
-    custom_llm_provider: str | None,
-) -> bool:
-    from litellm.rust_bridge.catalog import Context, Delivery, Route, decision
-    from litellm.rust_bridge.configuration import Decision
-
-    context: Final = Context(Route.RESPONSES, provider=custom_llm_provider, delivery=Delivery.WEBSOCKET)
-    return decision(context) is not Decision.PYTHON
-
 
 from .http_handler import get_shared_realtime_ssl_context
 
@@ -1505,12 +1493,25 @@ class BaseLLMHTTPHandler:
         json_data: Final = data if files is None and isinstance(data, dict) else None
 
         try:
+            signed_headers, signed_body = (
+                (headers, None)
+                if json_data is None
+                else provider_config.sign_request(
+                    headers=headers,
+                    optional_params=optional_params,
+                    request_data=json_data,
+                    api_base=complete_url,
+                    api_key=api_key,
+                    model=model,
+                )
+            )
             response: Final = client.post(
                 url=complete_url,
-                headers=headers,
+                headers=signed_headers,
                 data=data if json_data is None else None,
                 files=files,
-                json=json_data,
+                json=json_data if signed_body is None else None,
+                content=signed_body,
                 timeout=timeout,
             )
         except Exception as e:
@@ -1577,12 +1578,27 @@ class BaseLLMHTTPHandler:
         json_data: Final = data if files is None and isinstance(data, dict) else None
 
         try:
+            signed_headers, signed_body = (
+                (headers, None)
+                if json_data is None
+                else await sign_request_off_loop_if_aws(
+                    provider_config,
+                    provider_config.sign_request,
+                    headers=headers,
+                    optional_params=optional_params,
+                    request_data=json_data,
+                    api_base=complete_url,
+                    api_key=api_key,
+                    model=model,
+                )
+            )
             response: Final = await async_httpx_client.post(
                 url=complete_url,
-                headers=headers,
+                headers=signed_headers,
                 data=data if json_data is None else None,
                 files=files,
-                json=json_data,
+                json=json_data if signed_body is None else None,
+                content=signed_body,
                 timeout=timeout,
             )
         except Exception as e:
@@ -1818,11 +1834,14 @@ class BaseLLMHTTPHandler:
             client = _get_httpx_client()
 
         try:
-            # Make the POST request with JSON data (Mistral format)
+            signed_headers, signed_body = provider_config.sign_request(
+                headers=headers, request_data=data, api_base=complete_url, litellm_params=litellm_params
+            )
             response: Final = client.post(
                 url=complete_url,
-                headers=headers,
-                json=data,
+                headers=signed_headers,
+                json=data if signed_body is None else None,
+                content=signed_body,
                 timeout=timeout,
             )
         except Exception as e:
@@ -1887,11 +1906,19 @@ class BaseLLMHTTPHandler:
             async_httpx_client = client
 
         try:
-            # Make the async POST request with JSON data (Mistral format)
+            signed_headers, signed_body = await sign_request_off_loop_if_aws(
+                provider_config,
+                provider_config.sign_request,
+                headers=headers,
+                request_data=data,
+                api_base=complete_url,
+                litellm_params=litellm_params,
+            )
             response: Final = await async_httpx_client.post(
                 url=complete_url,
-                headers=headers,
-                json=data,
+                headers=signed_headers,
+                json=data if signed_body is None else None,
+                content=signed_body,
                 timeout=timeout,
             )
         except Exception as e:
@@ -6714,29 +6741,12 @@ class BaseLLMHTTPHandler:
                 },
             )
 
-            @asynccontextmanager
-            async def _backend_connection():
-                if _rust_responses_websocket_enabled(custom_llm_provider):
-                    from litellm.rust_bridge.responses import websocket as rust_responses_websocket
-
-                    rust_backend: Final = await rust_responses_websocket.connect(
-                        url=ws_url,
-                        headers={str(key): str(value) for key, value in headers.items()},
-                        timeout=timeout,
-                    )
-                    if rust_backend is not None:
-                        yield rust_backend
-                        return
-
-                async with websockets.connect(
-                    ws_url,
-                    additional_headers=headers,
-                    max_size=REALTIME_WEBSOCKET_MAX_MESSAGE_SIZE_BYTES,
-                    ssl=ssl_context,
-                ) as backend:
-                    yield backend
-
-            async with _backend_connection() as backend_ws:
+            async with websockets.connect(
+                ws_url,
+                additional_headers=headers,
+                max_size=REALTIME_WEBSOCKET_MAX_MESSAGE_SIZE_BYTES,
+                ssl=ssl_context,
+            ) as backend_ws:
                 _request_data: Final[dict[str, object]] = {}
                 if litellm_metadata:
                     _request_data["litellm_metadata"] = litellm_metadata

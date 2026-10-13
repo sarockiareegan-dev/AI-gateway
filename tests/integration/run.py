@@ -36,7 +36,7 @@ def main() -> int:
         parser.error("Every selected file must have canonical manifest nodes")
     environment: Final = {
         **os.environ,
-        "PYTHONPATH": os.pathsep.join((str(root), str(root / "tests"), str(root / "tests/e2e"))),
+        "PYTHONPATH": os.pathsep.join((str(root), str(root / "tests"))),
         "INTEGRATION_RESULTS_DIR": str(output),
         "LITELLM_LOCAL_MODEL_COST_MAP": "True",
     }

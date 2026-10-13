@@ -258,6 +258,16 @@ class BaseOCRConfig:
             **kwargs,
         )
 
+    def sign_request(
+        self,
+        headers: dict,
+        request_data: dict,
+        api_base: str,
+        litellm_params: Mapping[str, builtins.object],
+    ) -> tuple[dict, bytes | None]:
+        """Return the headers to send and, when the provider signs the body, the exact bytes to post."""
+        return headers, None
+
     def transform_ocr_response(
         self,
         model: str,

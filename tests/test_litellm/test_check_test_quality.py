@@ -2,9 +2,8 @@
 
 Every rule is exercised on a snippet that violates it and on one that does not, so
 dropping a rule, widening it, or inverting the suppression check makes a test fail.
-The helper-resolution cases are the regression for the false positives the rule
-produced against tests/e2e, where the assertions live in a shared helper rather than
-in the test body.
+The helper-resolution cases are the regression for false positives on tests whose
+assertions live in a shared helper rather than in the test body.
 """
 
 import importlib.util

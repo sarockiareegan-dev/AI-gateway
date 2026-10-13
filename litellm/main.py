@@ -5970,7 +5970,7 @@ def responses_with_retries(*args, **kwargs):
     except Exception as e:
         raise Exception(f"tenacity import failed please run `pip install tenacity`. Error{e}")
 
-    from litellm.responses.dispatch import responses
+    from litellm.responses.main import responses
 
     num_retries: Final = kwargs.pop("num_retries", 3)
     # reset retries in .responses()
@@ -6000,7 +6000,7 @@ async def aresponses_with_retries(*args, **kwargs):
     except Exception as e:
         raise Exception(f"tenacity import failed please run `pip install tenacity`. Error{e}")
 
-    from litellm.responses.dispatch import aresponses
+    from litellm.responses.main import aresponses
 
     num_retries: Final = kwargs.pop("num_retries", 3)
     kwargs["max_retries"] = 0
@@ -7939,32 +7939,6 @@ def transcription(
             headers=extra_headers,
             provider_config=provider_config,
         )
-    elif custom_llm_provider == "bedrock":
-        from litellm.llms.bedrock.audio_transcription import BedrockAudioTranscriptionRustDispatch
-
-        dispatch: Final = BedrockAudioTranscriptionRustDispatch()
-        if atranscription:
-            response = dispatch.async_audio_transcriptions(
-                model=model,
-                audio_file=file,
-                api_key=api_key,
-                api_base=api_base,
-                custom_llm_provider=custom_llm_provider,
-                extra_headers=extra_headers,
-                optional_params=optional_params,
-                timeout=timeout,
-            )
-        else:
-            response = dispatch.audio_transcriptions(
-                model=model,
-                audio_file=file,
-                api_key=api_key,
-                api_base=api_base,
-                custom_llm_provider=custom_llm_provider,
-                extra_headers=extra_headers,
-                optional_params=optional_params,
-                timeout=timeout,
-            )
     elif provider_config is not None:
         response = base_llm_http_handler.audio_transcriptions(
             model=model,

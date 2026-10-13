@@ -15,7 +15,6 @@ COMPONENT_ENTRYPOINT = REPO_ROOT / "docker" / "component_entrypoint.sh"
 PROD_ENTRYPOINT = REPO_ROOT / "docker" / "prod_entrypoint.sh"
 GATEWAY_DOCKERFILE = REPO_ROOT / "gateway" / "Dockerfile"
 BACKEND_DOCKERFILE = REPO_ROOT / "backend" / "Dockerfile"
-BUILD_FROM_PIP_DOCKERFILE = REPO_ROOT / "docker" / "build_from_pip" / "Dockerfile.build_from_pip"
 TERRAFORM_ECS = REPO_ROOT / "terraform" / "litellm" / "aws" / "ecs.tf"
 TERRAFORM_CLOUDRUN = REPO_ROOT / "terraform" / "litellm" / "gcp" / "cloudrun.tf"
 
@@ -37,7 +36,6 @@ _STUB_TEMPLATE = """#!/bin/sh
 
 _ENTRYPOINT_RE = re.compile(r"^ENTRYPOINT\s+(\[.*\])\s*$", re.MULTILINE)
 _CMD_RE = re.compile(r"^CMD\s+(\[.*\])\s*$", re.MULTILINE)
-_COPY_RE = re.compile(r"^COPY\s+(?!--from)(\S+)\s+(\S+)\s*$", re.MULTILINE)
 _APP_TARGET_RE = re.compile(r"(?:gateway|backend)\.main:app|gateway\.launch")
 _TF_STRING_LOCAL_RE = re.compile(r'^\s*(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"\s*$', re.MULTILINE)
 _TF_INTERPOLATION_RE = re.compile(r"\$\{(local|var)\.(\w+)\}")
@@ -278,49 +276,6 @@ def test_creates_a_missing_prometheus_multiproc_dir(tmp_path: Path) -> None:
 
     assert result.returncode == 0, f"stdout={result.stdout} stderr={result.stderr}"
     assert missing.is_dir()
-
-
-def _copied_script(dockerfile: Path, image_path: str) -> Path:
-    """Resolve the repo file a Dockerfile `COPY`s to `image_path`, so tests run what the image ships."""
-    matches = _COPY_RE.findall(dockerfile.read_text())
-    sources = tuple(src for src, dst in matches if dst == image_path)
-    assert sources, f"{dockerfile} never COPYs anything to {image_path}"
-    source = REPO_ROOT / sources[-1]
-    assert source.is_file(), f"{dockerfile} COPYs {sources[-1]}, which does not exist in the build context"
-    return source
-
-
-@pytest.mark.parametrize(
-    "use_ddtrace, traced",
-    [*((v, True) for v in TRUTHY_USE_DDTRACE), *((v, False) for v in FALSY_USE_DDTRACE)],
-)
-def test_build_from_pip_image_launches_litellm_through_the_prod_entrypoint(
-    use_ddtrace: str | None, traced: bool, tmp_path: Path
-) -> None:
-    """Run the build_from_pip image's ENTRYPOINT + CMD through the script it actually COPYs.
-
-    The image used to `ENTRYPOINT ["litellm"]`, so `USE_DDTRACE` was inert there at any spelling.
-    Resolving the ENTRYPOINT path back to its COPY source and executing it with the Dockerfile's
-    CMD checks the launch the container performs, not just that the Dockerfile mentions the script.
-    """
-    entrypoint = _entrypoint_argv(BUILD_FROM_PIP_DOCKERFILE)
-    assert len(entrypoint) == 1, (
-        f"{BUILD_FROM_PIP_DOCKERFILE} ENTRYPOINT must be the bare script so CMD reaches litellm"
-    )
-    script = _copied_script(BUILD_FROM_PIP_DOCKERFILE, entrypoint[0])
-    assert script == PROD_ENTRYPOINT, f"{BUILD_FROM_PIP_DOCKERFILE} bypasses the ddtrace-aware entrypoint"
-    assert f"chmod +x {entrypoint[0]}" in BUILD_FROM_PIP_DOCKERFILE.read_text()
-
-    cmd = _cmd_argv(BUILD_FROM_PIP_DOCKERFILE)
-    recorded = _run_entrypoint(script, cmd, use_ddtrace=use_ddtrace, tmp_path=tmp_path)
-
-    cmd_str = " ".join(cmd)
-    assert recorded == (
-        "exec=ddtrace-run" if traced else "exec=litellm",
-        f"args=litellm {cmd_str}" if traced else f"args={cmd_str}",
-        "DD_TRACE_OPENAI_ENABLED=False" if traced else "DD_TRACE_OPENAI_ENABLED=<unset>",
-        f"PYTHONPATH={PYTHONPATH_SENTINEL}",
-    )
 
 
 def test_entrypoint_script_is_executable() -> None:

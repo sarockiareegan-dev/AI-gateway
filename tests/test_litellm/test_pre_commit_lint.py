@@ -426,7 +426,6 @@ def test_run_ends_with_a_summary_of_ran_and_skipped_blocks(tmp_path: Path) -> No
     assert "ran:     Python lint (make lint)" in proc.stdout
     assert "ran:     dashboard lint (prettier + eslint + lint budgets)" in proc.stdout
     assert "ran:     dashboard API-type sync (npm run gen:api)" in proc.stdout
-    assert "skipped: tests/e2e checks (basedpyright + raw HTTP client ban) (no tests/e2e Python files in scope)" in proc.stdout
     assert TEST_TREE_SKIPPED in proc.stdout
     assert "check: PASS" in proc.stdout
     assert "check: FAIL" not in proc.stdout
@@ -478,7 +477,7 @@ def test_tests_only_change_runs_the_whole_test_tree_ruff_and_the_quality_gate(tm
         "test-quality-budget.json",
         "scripts/check_test_quality.py",
         "scripts/test_quality_gate.py",
-        "tests/e2e/test_x.py",
+        "tests/proxy_unit_tests/test_x.py",
     ],
 )
 def test_test_tree_lint_inputs_trigger_the_test_tree_checks(tmp_path: Path, changed: str) -> None:

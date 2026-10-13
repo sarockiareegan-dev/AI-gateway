@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
-import hashlib
 import importlib.metadata
 import json
 import statistics
@@ -194,21 +193,8 @@ async def main() -> int:
     if args.callbacks == "noop":
         litellm.callbacks.append(callback)
 
-    rust_toggle: Final = getattr(litellm, "rust", None)
-    if callable(rust_toggle):
-        rust_toggle(False)
     package: Final = Path(litellm.__file__).resolve()
     version: Final = importlib.metadata.version("litellm")
-    native_path: str | None = None
-    native_sha256: str | None = None
-    try:
-        from litellm.rust_bridge import _native
-
-        native: Final = Path(_native.__file__).resolve()
-        native_path = str(native)
-        native_sha256 = hashlib.file_digest(native.open("rb"), "sha256").hexdigest()
-    except ImportError:
-        pass
 
     server: Final = Server()
     thread: Final = threading.Thread(target=server.serve_forever, daemon=True)
@@ -273,8 +259,6 @@ async def main() -> int:
         },
         "version": version,
         "package": str(package),
-        "native": native_path,
-        "native_sha256": native_sha256,
         "user_agents": user_agents,
         "results": tuple(asdict(result) for result in results),
     }

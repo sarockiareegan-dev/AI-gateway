@@ -3,11 +3,7 @@ from typing import Final
 import pytest
 
 
-from litellm.types.utils import HiddenParams, all_litellm_params, text_tokens_without_nested_reasoning
-
-
-def test_rust_is_a_known_litellm_param():
-    assert "rust" in all_litellm_params
+from litellm.types.utils import HiddenParams, text_tokens_without_nested_reasoning
 
 
 def test_hidden_params_response_ms():

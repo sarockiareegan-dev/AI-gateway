@@ -1,3 +1,3 @@
-from .dispatch import acompletion, completion
+from litellm.main import acompletion, completion
 
 __all__ = ("acompletion", "completion")

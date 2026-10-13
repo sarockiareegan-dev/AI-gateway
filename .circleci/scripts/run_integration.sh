@@ -61,7 +61,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 export PATH="$PWD/.venv/bin:$PATH"
-export PYTHONPATH="$PWD:$PWD/tests:$PWD/tests/e2e"
+export PYTHONPATH="$PWD:$PWD/tests"
 export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/circle_test"
 export REDIS_HOST=127.0.0.1 REDIS_PORT=6379
 export LITELLM_MASTER_KEY=sk-integration-master LITELLM_SALT_KEY=sk-integration-salt
@@ -72,10 +72,6 @@ export INTEGRATION_PEER_URL=""
 export INTEGRATION_UPSTREAM_URL=http://127.0.0.1:8190
 export INTEGRATION_MASTER_KEY="$LITELLM_MASTER_KEY"
 export LITELLM_UI_PATH="$PWD/litellm/proxy/_experimental/out"
-if [ "$suite" = browser ]; then
-  export LITELLM_UI_PATH="$PWD/ui/litellm-dashboard/out"
-  test -f "$LITELLM_UI_PATH/index.html"
-fi
 export INTEGRATION_SEED="$(.venv/bin/python -c 'import hashlib,os; print(int(hashlib.sha256((os.environ.get("CIRCLE_SHA1", "local") + os.environ.get("CIRCLE_WORKFLOW_ID", "local")).encode()).hexdigest()[:8],16))')"
 export INTEGRATION_ORDER_SEED="$INTEGRATION_SEED"
 
@@ -147,29 +143,6 @@ if [ "$suite" = management ]; then
   start_proxy 4001 peer.log
   peer_pid="$launched_pid"
   .venv/bin/python .circleci/scripts/wait_integration_services.py
-fi
-
-if [ "$suite" = providers ]; then
-  INTEGRATION_RUN_ID="$integration_identity" .venv/bin/python -m pytest --noconftest -o addopts= \
-    --strict-markers --strict-config -p no:pytest-retry -p no:rerunfailures --timeout=30 \
-    tests/e2e/test_provider_edge.py::TestReplayMode::test_content_drift_returns_the_miss_status_naming_both_keys \
-    tests/e2e/test_provider_edge.py::TestReplayMode::test_exhausted_key_returns_the_miss_status \
-    tests/e2e/test_provider_edge.py::TestReplayLeftover::test_partially_consumed_recording_names_the_leftover \
-    tests/e2e/test_provider_edge.py::TestStreamingFidelity::test_replay_of_a_stream_makes_no_provider_connection \
-    --junitxml="$results/replay-controls.xml"
-fi
-
-if [ "$suite" = browser ]; then
-  export E2E_UI_BASE_URL="$INTEGRATION_PROXY_URL" E2E_UI_ARTIFACT_DIR="$PWD/$results"
-  export INTEGRATION_PYTHON="$PWD/.venv/bin/python"
-  timeout --signal=TERM --kill-after=20s 3m env -i PATH="$PATH" HOME="$HOME" PYTHONPATH="$PYTHONPATH" \
-    INTEGRATION_RUN_ID="$integration_identity" DATABASE_URL="$DATABASE_URL" \
-    INTEGRATION_UPSTREAM_URL="$INTEGRATION_UPSTREAM_URL" INTEGRATION_PYTHON="$INTEGRATION_PYTHON" \
-    E2E_UI_BASE_URL="$E2E_UI_BASE_URL" E2E_UI_ARTIFACT_DIR="$E2E_UI_ARTIFACT_DIR" \
-    LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" CI=true \
-    node tests/e2e/ui/node_modules/@playwright/test/cli.js test --config tests/e2e/ui/integration.config.ts
-  .venv/bin/python .circleci/scripts/verify_integration_browser.py "$results/browser-results.json"
-  exit 0
 fi
 
 timeout --signal=TERM --kill-after=20s "$shard_timeout" env -i PATH="$PATH" HOME="$HOME" PYTHONPATH="$PYTHONPATH" \

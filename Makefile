@@ -4,9 +4,8 @@
 .PHONY: help test test-unit test-unit-llms test-unit-proxy-guardrails test-unit-proxy-core test-unit-proxy-misc \
 	test-unit-integrations test-unit-core-utils test-unit-other test-unit-root \
 	test-proxy-unit-a test-proxy-unit-b test-integration test-unit-helm \
-	test-rust-extension \
 	info lint lint-inner lint-dev lint-checks format \
-	lint-basedpyright lint-e2e-basedpyright lint-basedpyright-budget-update lint-type-discipline lint-type-discipline-budget-update \
+	lint-basedpyright lint-basedpyright-budget-update lint-type-discipline lint-type-discipline-budget-update \
 	lint-ruff-budget lint-ruff-budget-update lint-budget-update lint-gate \
 	lint-test-quality lint-test-quality-budget-update \
 	install-dev install-proxy-dev install-test-deps install-hooks \
@@ -31,7 +30,6 @@ help:
 	@echo "  make lint               - Run all linting (Ruff, basedpyright, format check, circular imports, import safety)"
 	@echo "  make lint-ruff          - Run Ruff linting only"
 	@echo "  make lint-basedpyright  - Run basedpyright strict, gated by per-rule error counts"
-	@echo "  make lint-e2e-basedpyright - Run basedpyright over tests/e2e (zero errors allowed)"
 	@echo "  make lint-basedpyright-budget-update - Ratchet basedpyright limits down by what this branch fixed"
 	@echo "  make lint-format        - Check ruff format formatting (matches CI)"
 	@echo "  make lint-ruff-budget - Gate the codebase total of each strict ruff rule against its limit"
@@ -55,7 +53,6 @@ help:
 	@echo "  make test-proxy-unit-b  - Run proxy_unit_tests (p-z, ~28 files)"
 	@echo "  make test-integration   - Run integration tests"
 	@echo "  make test-unit-helm     - Run helm unit tests"
-	@echo "  make test-rust-extension - Build the Rust extension and run its public Python tests"
 	@echo ""
 	@echo "Heavy targets (check, lint) queue for LITELLM_GATE_SLOTS machine-wide"
 	@echo "slots (default 2; 0 disables) so parallel sessions don't thrash one machine."
@@ -71,7 +68,6 @@ RESOLVE_BASE = python3 scripts/default_branch.py --base "$(BASE_REF)"
 GATE_SLOT_LOCK := python3 scripts/gate_slot_lock.py
 
 LINT_DEP_INSTALL ?= install-dev
-LINT_E2E_DEP_INSTALL ?= lint-install
 LINT_DEP_BASE ?=
 LINT_JOBS := $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 LINT_OUTPUT_SYNC := $(if $(filter output-sync,$(.FEATURES)),--output-sync=target,)
@@ -139,7 +135,7 @@ lint-fetch-base:
 	@$(RESOLVE_BASE)
 
 # Mirror test-linting.yml's lint job environment: the proxy-dev group plus a generated
-# Prisma client, so `basedpyright tests/e2e` resolves the same modules CI does. The
+# Prisma client, so lint resolves the same modules CI does. The
 # budget gate itself no longer measures here (scripts/type_check_gate.py provisions its
 # own .venv-typecheck). --inexact tops up the venv instead of pruning the proxy extras
 # gen:api and the running proxy need.
@@ -205,9 +201,6 @@ lint-ruff-FULL-dev: install-dev
 lint-basedpyright: $(LINT_DEP_INSTALL) $(LINT_DEP_BASE)
 	$(UV_RUN) python scripts/type_check_gate.py --base "$(BASE_REF)"
 
-lint-e2e-basedpyright: $(LINT_E2E_DEP_INSTALL)
-	$(UV_RUN) basedpyright tests/e2e
-
 # Type-discipline budget (mutable collections / casts / type guards / kwargs /
 # unexplained suppressions), the test-linting.yml step `make lint` used to omit.
 lint-type-discipline: $(LINT_DEP_INSTALL) $(LINT_DEP_BASE)
@@ -265,9 +258,9 @@ lint:
 
 lint-inner: lint-install
 	@base_ref=$$($(RESOLVE_BASE)) && \
-	$(MAKE) BASE_REF="$$base_ref" -j $(LINT_JOBS) $(LINT_OUTPUT_SYNC) LINT_DEP_INSTALL= LINT_E2E_DEP_INSTALL= LINT_DEP_BASE= lint-checks
+	$(MAKE) BASE_REF="$$base_ref" -j $(LINT_JOBS) $(LINT_OUTPUT_SYNC) LINT_DEP_INSTALL= LINT_DEP_BASE= lint-checks
 
-lint-checks: lint-format-check-changed lint-ruff lint-gate lint-type-discipline lint-test-quality lint-basedpyright lint-e2e-basedpyright check-circular-imports check-import-safety
+lint-checks: lint-format-check-changed lint-ruff lint-gate lint-type-discipline lint-test-quality lint-basedpyright check-circular-imports check-import-safety
 
 # Faster linting for local development (only checks changed code)
 lint-dev: lint-format-changed check-circular-imports check-import-safety
@@ -290,20 +283,6 @@ pre-commit:
 	@$(MAKE) check
 
 # Testing targets
-test-rust-extension:
-	@temporary=$$(mktemp -d) && \
-	trap 'rm -rf "$$temporary"' EXIT HUP INT TERM && \
-	$(UV) build --python 3.12 --wheel --out-dir "$$temporary/wheels" && \
-	set -- "$$temporary"/wheels/*.whl && \
-	[ "$$#" -eq 1 ] && \
-	UV_PROJECT_ENVIRONMENT="$$temporary/venv" $(UV) sync --python 3.12 --frozen --no-install-project --all-groups --all-extras && \
-	$(UV) pip install --python "$$temporary/venv/bin/python" --no-deps "$$1" && \
-	"$$temporary/venv/bin/python" -I -m mypy.stubtest \
-		--mypy-config-file tests/test_litellm/rust_bridge/stubtest.ini \
-		litellm.rust_bridge._native && \
-	LITELLM_RUST=1 LITELLM_LOCAL_MODEL_COST_MAP=True \
-	"$$temporary/venv/bin/python" -I -m pytest --import-mode=importlib -m requires_rust_extension tests/test_litellm_rust
-
 test: install-test-deps
 	$(UV_RUN) pytest tests/
 
