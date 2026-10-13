@@ -79,6 +79,19 @@ class BaseAudioTranscriptionConfig(BaseConfig, ABC):
         """
         return api_base or ""
 
+    def sign_request(
+        self,
+        headers: dict[str, object],
+        optional_params: dict[str, object],
+        request_data: dict[str, object],
+        api_base: str,
+        api_key: str | None = None,
+        model: str | None = None,
+        stream: bool | None = None,
+        fake_stream: bool | None = None,
+    ) -> tuple[dict[str, object], bytes | None]:
+        return headers, None
+
     @abstractmethod
     def transform_audio_transcription_request(
         self,

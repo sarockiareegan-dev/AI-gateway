@@ -1435,7 +1435,11 @@ from .skills.main import (
     adelete_skill,
 )
 from .containers.main import *
-from .ocr.main import aocr, convert_file_document_to_url_document, get_mime_type, ocr
+from .ocr.main import (
+    convert_file_document_to_url_document as convert_file_document_to_url_document,
+    get_mime_type as get_mime_type,
+)
+from .public_entrypoints import *
 from .rag.main import *
 from .sandbox.main import *
 from .search.main import *

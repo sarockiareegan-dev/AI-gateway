@@ -56,7 +56,7 @@ _BULLETS: Final = "-*\u2022\u00b7"
 
 
 def _pages(blocks: tuple[Block, ...]) -> tuple[int, ...]:
-    return tuple(sorted({block.page for block in blocks}))
+    return tuple(sorted(frozenset(block.page for block in blocks)))
 
 
 def lines_by_page(blocks: tuple[Block, ...]) -> tuple[tuple[int, str], ...]:
@@ -87,7 +87,7 @@ def _table_markdown(table: Block, by_id: Mapping[str, Block]) -> str:
         }
     )
     columns: Final = max((column for _, column in cells), default=0)
-    rows: Final = sorted({row for row, _ in cells})
+    rows: Final = tuple(sorted(frozenset(row for row, _ in cells)))
     rendered: Final = tuple(
         "| " + " | ".join(cells.get((row, column), "") for column in range(1, columns + 1)) + " |" for row in rows
     )
@@ -102,10 +102,7 @@ def _layout_markdown(blocks: tuple[Block, ...], page: int, by_id: Mapping[str, B
     )
     tables: Final = tuple(block for block in on_page if block.block_type == "TABLE")
     table_ordinal: Final = MappingProxyType(
-        {
-            block.id: ordinal
-            for ordinal, block in enumerate(b for b in on_page if b.block_type == Layout.TABLE.value)
-        }
+        {block.id: ordinal for ordinal, block in enumerate(b for b in on_page if b.block_type == Layout.TABLE.value)}
     )
 
     def table_of(layout_table: Block) -> Block | None:

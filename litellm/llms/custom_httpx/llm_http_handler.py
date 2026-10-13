@@ -6693,7 +6693,6 @@ class BaseLLMHTTPHandler:
             return None
 
         import websockets
-        from websockets.asyncio.client import ClientConnection
 
         litellm_params: Final = GenericLiteLLMParams.model_validate(
             {
@@ -6783,7 +6782,7 @@ class BaseLLMHTTPHandler:
 
                 streaming: Final = ResponsesWebSocketStreaming(
                     websocket=websocket,
-                    backend_ws=cast(ClientConnection, backend_ws),
+                    backend_ws=backend_ws,
                     logging_obj=logging_obj,
                     user_api_key_dict=user_api_key_dict,
                     request_data=_request_data,

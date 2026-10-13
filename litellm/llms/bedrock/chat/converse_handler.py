@@ -18,7 +18,7 @@ from litellm.types.utils import ModelResponse
 from litellm.utils import CustomStreamWrapper
 
 from ..base_aws_llm import BaseAWSLLM, Credentials, bedrock_bearer_token, pop_aws_auth_params, run_aws_signing
-from ..common_utils import BedrockError, _get_all_bedrock_regions, error_response_text
+from ..common_utils import BedrockError, error_response_text, get_all_bedrock_regions
 from .invoke_handler import AWSEventStreamDecoder, MockResponseIterator, make_call
 
 
@@ -296,7 +296,7 @@ class BedrockConverseLLM(BaseAWSLLM):
             # and capture it so it can be used as aws_region_name below.
             _region_from_model: str | None = None
             _potential_region: Final = _stripped.split("/", 1)[0]
-            if _potential_region in _get_all_bedrock_regions() and "/" in _stripped:
+            if _potential_region in get_all_bedrock_regions() and "/" in _stripped:
                 _region_from_model = _potential_region
                 _stripped = _stripped.split("/", 1)[1]
                 _model_for_id = _stripped

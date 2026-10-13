@@ -1,5 +1,5 @@
 """OCR module for LiteLLM."""
 
-from .main import aocr, ocr
+from litellm.public_entrypoints import aocr, ocr
 
 __all__ = ["aocr", "ocr"]

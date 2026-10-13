@@ -3,6 +3,7 @@ import binascii
 import json
 from collections.abc import Mapping
 from enum import Enum
+from types import MappingProxyType
 from typing import Final, Literal, get_args
 from urllib.parse import unquote_to_bytes
 
@@ -73,6 +74,19 @@ class _AwsError(BaseModel):
     lowercase_message: str = Field(default="", validation_alias="message")
 
 
+class _Document(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    data: str = Field(serialization_alias="Bytes")
+
+
+class _TextractRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    document: _Document = Field(serialization_alias="Document")
+    feature_types: tuple[FeatureType, ...] | None = Field(default=None, serialization_alias="FeatureTypes")
+
+
 def _region(litellm_params: Mapping[str, object]) -> str:
     configured: Final = litellm_params.get("aws_region_name")
     region: Final = (
@@ -105,9 +119,9 @@ def _document_source(document: DocumentType) -> str:
 
 
 def _operation_headers(headers: Mapping[str, object], operation: TextractOperation) -> dict[str, str]:
-    ours: Final = {_TARGET_HEADER: operation.target, _CONTENT_TYPE_HEADER: _AWS_JSON_CONTENT_TYPE}
+    ours: Final = MappingProxyType({_TARGET_HEADER: operation.target, _CONTENT_TYPE_HEADER: _AWS_JSON_CONTENT_TYPE})
     lowered: Final = frozenset(name.lower() for name in ours)
-    return {
+    return {  # mutable-ok: BaseOCRConfig.validate_environment returns a dict
         **{str(name): str(value) for name, value in headers.items() if str(name).lower() not in lowered},
         **ours,
     }
@@ -118,13 +132,16 @@ class AWSTextractOCRConfig(BaseOCRConfig, BaseAWSLLM):
         BaseOCRConfig.__init__(self)
         BaseAWSLLM.__init__(self)
 
-    def get_supported_ocr_params(self, model: str) -> list:
-        return ["feature_types"] if model.lower() == TextractOperation.ANALYZE_DOCUMENT.value else []
+    def get_supported_ocr_params(self, model: str) -> list[str]:
+        supported: Final = ("feature_types",) if model.lower() == TextractOperation.ANALYZE_DOCUMENT.value else ()
+        return list(supported)  # mutable-ok: BaseOCRConfig returns a list
 
     def get_health_check_document(self) -> DocumentType:
         return {"type": "image_url", "image_url": _HEALTH_CHECK_IMAGE}  # mutable-ok: litellm.aocr requires a dict
 
-    def map_ocr_params(self, non_default_params: dict, optional_params: dict, model: str) -> dict:
+    def map_ocr_params(
+        self, non_default_params: dict[str, object], optional_params: dict[str, object], model: str
+    ) -> dict[str, object]:
         operation: Final = TextractOperation.from_model(model)
         if operation is TextractOperation.DETECT_DOCUMENT_TEXT:
             return {}  # mutable-ok: the OCR handler takes the mapped params as a dict
@@ -141,41 +158,43 @@ class AWSTextractOCRConfig(BaseOCRConfig, BaseAWSLLM):
 
     def validate_environment(
         self,
-        headers: dict,
+        headers: dict[str, object],
         model: str,
         api_key: str | None = None,
         api_base: str | None = None,
-        litellm_params: dict | None = None,
+        litellm_params: dict[str, object] | None = None,
         **kwargs: object,  # kwargs-ok: BaseOCRConfig contract
-    ) -> dict:
+    ) -> dict[str, str]:
         return _operation_headers(headers, TextractOperation.from_model(model))
 
     def get_complete_url(
         self,
         api_base: str | None,
         model: str,
-        optional_params: dict,
-        litellm_params: dict | None = None,
+        optional_params: dict[str, object],
+        litellm_params: dict[str, object] | None = None,
         **kwargs: object,  # kwargs-ok: BaseOCRConfig contract
     ) -> str:
         if api_base:
             return api_base
-        region: Final = _region(litellm_params or {})
+        region: Final = _region(litellm_params or MappingProxyType({}))
         return f"https://textract.{region}.{get_aws_dns_suffix(region)}/"
 
     def _request(self, document_bytes: bytes, optional_params: Mapping[str, object]) -> OCRRequestData:
         encoded: Final = base64.b64encode(document_bytes).decode("ascii")
         feature_types: Final = optional_params.get("feature_types")
-        return OCRRequestData(
-            data={"Document": {"Bytes": encoded}, **({"FeatureTypes": feature_types} if feature_types else {})}
+        request: Final = _TextractRequest(
+            document=_Document(data=encoded),
+            feature_types=tuple(_FEATURE_TYPES.validate_python(feature_types)) if feature_types else None,
         )
+        return OCRRequestData(data=request.model_dump(mode="json", by_alias=True, exclude_none=True))
 
     def transform_ocr_request(
         self,
         model: str,
         document: DocumentType,
-        optional_params: dict,
-        headers: dict,
+        optional_params: dict[str, object],
+        headers: dict[str, str],
         **kwargs: object,  # kwargs-ok: BaseOCRConfig contract
     ) -> OCRRequestData:
         source: Final = _document_source(document)
@@ -186,8 +205,8 @@ class AWSTextractOCRConfig(BaseOCRConfig, BaseAWSLLM):
         self,
         model: str,
         document: DocumentType,
-        optional_params: dict,
-        headers: dict,
+        optional_params: dict[str, object],
+        headers: dict[str, str],
         **kwargs: object,  # kwargs-ok: BaseOCRConfig contract
     ) -> OCRRequestData:
         source: Final = _document_source(document)
@@ -196,23 +215,29 @@ class AWSTextractOCRConfig(BaseOCRConfig, BaseAWSLLM):
 
     def sign_request(
         self,
-        headers: dict,
-        request_data: dict,
+        headers: dict[str, object],
+        request_data: dict[str, object],
         api_base: str,
         litellm_params: Mapping[str, object],
-    ) -> tuple[dict, bytes | None]:
+    ) -> tuple[dict[str, object], bytes | None]:
         region: Final = _region(litellm_params)
-        credentials: Final = self.resolve_credentials(AwsAuthParams.model_validate(dict(litellm_params)), region)
+        credentials: Final = self.resolve_credentials(AwsAuthParams.model_validate(litellm_params), region)
         prepared: Final = sign_aws_json_post(
             lambda: credentials,
             _SERVICE,
             region,
             api_base,
             json.dumps(request_data),
-            {str(name): str(value) for name, value in headers.items()},
+            MappingProxyType({str(name): str(value) for name, value in headers.items()}),
         )
         body: Final = prepared.body
-        return dict(prepared.headers), body.encode() if isinstance(body, str) else body
+        signed_headers: Final[dict[str, object]] = {  # mutable-ok: BaseOCRConfig.sign_request returns a dict
+            str(name): str(value) for name, value in prepared.headers.items()
+        }
+        signed_body: Final = (
+            body.encode() if isinstance(body, str) else bytes(body) if isinstance(body, (bytes, bytearray)) else None
+        )
+        return signed_headers, signed_body
 
     def transform_ocr_response(
         self,
@@ -228,15 +253,15 @@ class AWSTextractOCRConfig(BaseOCRConfig, BaseAWSLLM):
             if operation is TextractOperation.ANALYZE_DOCUMENT
             else lines_by_page(response.blocks)
         )
-        pages: Final = [OCRPage(index=page - 1, markdown=markdown) for page, markdown in page_markdown]
+        pages: Final = tuple(OCRPage(index=page - 1, markdown=markdown) for page, markdown in page_markdown)
         metadata_pages: Final = response.document_metadata.pages if response.document_metadata else None
         return OCRResponse(
-            pages=pages,
+            pages=list(pages),  # mutable-ok: OCRResponse.pages is a list
             model=model,
             usage_info=OCRUsageInfo(pages_processed=metadata_pages if metadata_pages is not None else len(pages)),
         )
 
-    def get_error_class(self, error_message: str, status_code: int, headers: dict) -> Exception:
+    def get_error_class(self, error_message: str, status_code: int, headers: dict[str, str]) -> Exception:
         try:
             error: Final = _AwsError.model_validate_json(error_message)
         except ValidationError:
