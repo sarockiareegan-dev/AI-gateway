@@ -2,8 +2,6 @@
 .venv
 .venv-typecheck
 .venv_policy_test
-.venv-mutmut
-mutants/
 .env
 .claude
 CLAUDE.local.md
@@ -52,8 +50,6 @@ litellm/proxy/tests/package-lock.json
 ui/litellm-dashboard/.next
 ui/litellm-dashboard/node_modules
 ui/litellm-dashboard/next-env.d.ts
-helm/litellm-helm/*.tgz
-helm/*.tgz
 litellm/proxy/vertex_key.json
 **/.vim/
 **/node_modules
@@ -92,7 +88,6 @@ tests/test_custom_dir/*
 test.py
 
 litellm_config.yaml
-!.github/observatory/litellm_config.yaml
 .cursor
 litellm/proxy/to_delete_loadtest_work/*
 update_model_cost_map.py

@@ -292,10 +292,6 @@ keys = client.keys.list(
 )
 ```
 
-## Contributing
-
-Contributions are welcome! Please check out our [contributing guidelines](../../CONTRIBUTING.md) for details.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.

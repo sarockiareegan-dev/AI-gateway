@@ -3,13 +3,10 @@
 
 .PHONY: help test test-unit test-unit-llms test-unit-proxy-guardrails test-unit-proxy-core test-unit-proxy-misc \
 	test-unit-integrations test-unit-core-utils test-unit-other test-unit-root \
-	test-proxy-unit-a test-proxy-unit-b test-integration test-unit-helm \
-	info lint lint-inner lint-dev lint-checks format \
-	lint-basedpyright lint-basedpyright-budget-update lint-type-discipline lint-type-discipline-budget-update \
-	lint-ruff-budget lint-ruff-budget-update lint-budget-update lint-gate \
-	lint-test-quality lint-test-quality-budget-update \
-	install-dev install-proxy-dev install-test-deps install-hooks \
-	install-helm-unittest check-circular-imports check-import-safety check check-inner pre-commit \
+	test-proxy-unit-a test-proxy-unit-b test-integration \
+	info lint lint-dev format \
+	install-dev install-proxy-dev install-test-deps \
+	check-circular-imports check-import-safety check \
 	lint-install lint-fetch-base bootstrap
 
 # Default target
@@ -21,22 +18,12 @@ help:
 	@echo "  make install-dev-ci     - Install dev dependencies (CI-compatible, pins OpenAI)"
 	@echo "  make install-proxy-dev-ci - Install proxy dev dependencies (CI-compatible)"
 	@echo "  make install-test-deps  - Install the full local test environment"
-	@echo "  make install-helm-unittest - Install helm unittest plugin"
-	@echo "  make install-hooks      - Install git hooks (Conventional Commits + Branches)"
-	@echo "  make check              - Run CI-equivalent lint on staged files, or on the diff vs the base branch when nothing is staged"
-	@echo "  make pre-commit         - Legacy alias for make check"
+	@echo "  make check              - Alias for make lint"
 	@echo "  make format             - Apply ruff format code formatting"
 	@echo "  make format-check       - Check ruff format code formatting (matches CI)"
-	@echo "  make lint               - Run all linting (Ruff, basedpyright, format check, circular imports, import safety)"
+	@echo "  make lint               - Run all linting (Ruff, format check, circular imports, import safety)"
 	@echo "  make lint-ruff          - Run Ruff linting only"
-	@echo "  make lint-basedpyright  - Run basedpyright strict, gated by per-rule error counts"
-	@echo "  make lint-basedpyright-budget-update - Ratchet basedpyright limits down by what this branch fixed"
 	@echo "  make lint-format        - Check ruff format formatting (matches CI)"
-	@echo "  make lint-ruff-budget - Gate the codebase total of each strict ruff rule against its limit"
-	@echo "  make lint-gate        - Strict ruff gate in CI-parity mode (fetches the default branch, simulates the merge)"
-	@echo "  make lint-ruff-budget-update - Ratchet ruff-strict-budget.json limits down by what this branch fixed"
-	@echo "  make lint-test-quality  - Gate the test suite against test-quality-budget.json"
-	@echo "  make lint-budget-update - Ratchet all budgets down (ruff + type-discipline + test quality + basedpyright)"
 	@echo "  make check-circular-imports - Check for circular imports"
 	@echo "  make check-import-safety - Check import safety"
 	@echo "  make test               - Run all tests"
@@ -52,20 +39,12 @@ help:
 	@echo "  make test-proxy-unit-a  - Run proxy_unit_tests (a-o, ~20 files)"
 	@echo "  make test-proxy-unit-b  - Run proxy_unit_tests (p-z, ~28 files)"
 	@echo "  make test-integration   - Run integration tests"
-	@echo "  make test-unit-helm     - Run helm unit tests"
-	@echo ""
-	@echo "Heavy targets (check, lint) queue for LITELLM_GATE_SLOTS machine-wide"
-	@echo "slots (default 2; 0 disables) so parallel sessions don't thrash one machine."
 
 UV := uv
 UV_RUN := $(UV) run --no-sync
 BASE_REF ?=
 export BASE_REF
 RESOLVE_BASE = python3 scripts/default_branch.py --base "$(BASE_REF)"
-
-# Machine-wide slot queue for the heavy targets below; python3 + stdlib only, so
-# it runs before any venv exists. See scripts/gate_slot_lock.py.
-GATE_SLOT_LOCK := python3 scripts/gate_slot_lock.py
 
 LINT_DEP_INSTALL ?= install-dev
 LINT_DEP_BASE ?=
@@ -111,17 +90,6 @@ install-test-deps: install-proxy-dev
 	$(UV) sync --frozen --all-groups --all-extras
 	$(UV_RUN) prisma generate --schema litellm/proxy/schema.prisma
 
-install-helm-unittest:
-	@helm plugin list | grep -qE '^unittest[[:space:]]+0\.8\.2([[:space:]]|$$)' || { \
-		helm plugin uninstall unittest >/dev/null 2>&1 || true; \
-		helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.8.2; \
-	}
-
-# Install git hooks that enforce Conventional Commits and Conventional Branches.
-# Opt-in: not chained into install-dev.
-install-hooks:
-	./scripts/install_git_hooks.sh
-
 # Formatting
 # Wrap width is ruff.toml's single source of truth (line-length = 120), shared by the
 # formatter and the import sorter so there's no 88-vs-120 split to reconcile.
@@ -135,10 +103,8 @@ lint-fetch-base:
 	@$(RESOLVE_BASE)
 
 # Mirror test-linting.yml's lint job environment: the proxy-dev group plus a generated
-# Prisma client, so lint resolves the same modules CI does. The
-# budget gate itself no longer measures here (scripts/type_check_gate.py provisions its
-# own .venv-typecheck). --inexact tops up the venv instead of pruning the proxy extras
-# gen:api and the running proxy need.
+# Prisma client, so lint resolves the same modules CI does. --inexact tops up the venv
+# instead of pruning the proxy extras gen:api and the running proxy need.
 lint-install:
 	$(UV) sync --inexact --frozen --group proxy-dev --group e2e-dev
 	$(UV_RUN) python scripts/prisma_generate_if_needed.py
@@ -198,46 +164,7 @@ lint-ruff-FULL-dev: install-dev
 	if [ -n "$$files" ]; then echo "$$files" | xargs $(UV_RUN) ruff check; \
 	else echo "No changed .py files to check."; fi
 
-lint-basedpyright: $(LINT_DEP_INSTALL) $(LINT_DEP_BASE)
-	$(UV_RUN) python scripts/type_check_gate.py --base "$(BASE_REF)"
-
-# Type-discipline budget (mutable collections / casts / type guards / kwargs /
-# unexplained suppressions), the test-linting.yml step `make lint` used to omit.
-lint-type-discipline: $(LINT_DEP_INSTALL) $(LINT_DEP_BASE)
-	$(UV_RUN) python scripts/type_discipline_gate.py --base "$(BASE_REF)"
-
-# Test-quality budget (zero-assert / mock-echo tests, sys.path.insert, raw env writes,
-# litellm module-global mutation, credential-gated skips, conftest snapshot
-# inventory), counted across tests/ the same delta-vs-base way.
-lint-test-quality: $(LINT_DEP_INSTALL) $(LINT_DEP_BASE)
-	$(UV_RUN) python scripts/test_quality_gate.py --base "$(BASE_REF)"
-
-# --update lowers each limit by what this branch fixed since its branch point, so
-# it needs the base ref fetched to resolve the merge-base.
-lint-basedpyright-budget-update: install-dev
-	$(UV_RUN) python scripts/type_check_gate.py --update --base "$(BASE_REF)"
-
 lint-format: format-check
-
-lint-ruff-budget: install-dev
-	$(UV_RUN) python scripts/ruff_strict_gate.py --base "$(BASE_REF)"
-
-# Strict gate, invoked the same way CI does in test-linting.yml so a local pass
-# means the CI check will pass too.
-lint-gate: $(LINT_DEP_INSTALL) $(LINT_DEP_BASE)
-	$(UV_RUN) python scripts/ruff_strict_gate.py --base "$(BASE_REF)"
-
-lint-ruff-budget-update: install-dev
-	$(UV_RUN) python scripts/ruff_strict_gate.py --update --base "$(BASE_REF)"
-
-lint-type-discipline-budget-update: install-dev
-	$(UV_RUN) python scripts/type_discipline_gate.py --update --base "$(BASE_REF)"
-
-lint-test-quality-budget-update: install-dev
-	$(UV_RUN) python scripts/test_quality_gate.py --update --base "$(BASE_REF)"
-
-# Ratchet all budgets in one shot (ruff strict + type-discipline + test quality + basedpyright)
-lint-budget-update: lint-ruff-budget-update lint-type-discipline-budget-update lint-test-quality-budget-update lint-basedpyright-budget-update
 
 check-circular-imports: $(LINT_DEP_INSTALL)
 	cd litellm && $(UV_RUN) python ../tests/documentation_tests/test_circular_imports.py && cd ..
@@ -245,42 +172,15 @@ check-circular-imports: $(LINT_DEP_INSTALL)
 check-import-safety: $(LINT_DEP_INSTALL)
 	@$(UV_RUN) python -c "from litellm import *; print('[from litellm import *] OK! no issues!');" || (echo '🚨 import failed, this means you introduced unprotected imports! 🚨'; exit 1)
 
-# Combined linting, isomorphic to test-linting.yml's lint job so a local pass means a
-# green CI lint: it installs the same env (proxy-dev + generated Prisma client) and then
-# runs the diff-scoped ruff format check, whole-tree ruff check, the strict-rule /
-# type-discipline / basedpyright budgets as a delta vs the base, then the circular-import
-# and import-safety checks. Steps that compare against the base resolve it the same way CI
-# does (merge-base with origin's current default branch). Setup (env sync, Prisma client,
-# base fetch) runs once up front; the checks themselves are independent, so a sub-make
-# fans them out with -j and the fast ones finish under basedpyright's shadow.
-lint:
-	@$(GATE_SLOT_LOCK) $(MAKE) lint-inner
-
-lint-inner: lint-install
+lint: lint-install
 	@base_ref=$$($(RESOLVE_BASE)) && \
-	$(MAKE) BASE_REF="$$base_ref" -j $(LINT_JOBS) $(LINT_OUTPUT_SYNC) LINT_DEP_INSTALL= LINT_DEP_BASE= lint-checks
-
-lint-checks: lint-format-check-changed lint-ruff lint-gate lint-type-discipline lint-test-quality lint-basedpyright check-circular-imports check-import-safety
+	$(MAKE) BASE_REF="$$base_ref" -j $(LINT_JOBS) $(LINT_OUTPUT_SYNC) LINT_DEP_INSTALL= LINT_DEP_BASE= \
+		lint-format-check-changed lint-ruff check-circular-imports check-import-safety
 
 # Faster linting for local development (only checks changed code)
 lint-dev: lint-format-changed check-circular-imports check-import-safety
 
-# Run the gating CI checks against your changes. Scopes to staged files when anything
-# is staged (warning about changed files left unstaged); with nothing staged it falls
-# back to the working tree's diff against the merge base with the base branch, so a
-# fresh merge commit or an unstaged working tree still gets checked. Mirrors
-# test-linting.yml (Python), test-litellm-ui-build.yml's frontend-lint (dashboard), and
-# check-ui-api-types.yml (API-type drift), skipping any whose files aren't in scope.
-# Not auto-installed as a git hook so it never slows an unrelated human commit.
-check:
-	@$(GATE_SLOT_LOCK) $(MAKE) check-inner
-
-check-inner: bootstrap
-	./scripts/pre_commit_lint.sh
-
-pre-commit:
-	@echo "make pre-commit is a legacy alias; use make check" >&2
-	@$(MAKE) check
+check: lint
 
 # Testing targets
 test: install-test-deps
@@ -323,9 +223,6 @@ test-proxy-unit-b: install-test-deps
 
 test-integration: install-test-deps
 	$(UV_RUN) pytest tests/ -k "not test_litellm"
-
-test-unit-helm: install-helm-unittest
-	helm unittest -f 'tests/*.yaml' helm/litellm-helm
 
 # LLM Translation testing targets
 test-llm-translation: install-test-deps

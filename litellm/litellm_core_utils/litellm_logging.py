@@ -2477,7 +2477,7 @@ class Logging(LiteLLMLoggingBaseClass):
 
     def success_handler(
         self,
-        result: Any = None,  # heterogeneous response object; varies by call type (ANN401 ignored, see ruff-strict.toml)
+        result: Any = None,  # heterogeneous response object; varies by call type
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         cache_hit: bool | None = None,
@@ -2913,7 +2913,7 @@ class Logging(LiteLLMLoggingBaseClass):
 
     async def async_success_handler(
         self,
-        result: Any = None,  # heterogeneous response object; varies by call type (ANN401 ignored, see ruff-strict.toml)
+        result: Any = None,  # heterogeneous response object; varies by call type
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         cache_hit: bool | None = None,
@@ -2930,7 +2930,7 @@ class Logging(LiteLLMLoggingBaseClass):
 
     async def _async_success_handler_body(
         self,
-        result: Any = None,  # heterogeneous response object; varies by call type (ANN401 ignored, see ruff-strict.toml)
+        result: Any = None,  # heterogeneous response object; varies by call type
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         cache_hit: bool | None = None,

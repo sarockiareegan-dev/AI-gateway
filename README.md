@@ -5,12 +5,6 @@
         <p align="center">LiteLLM AI Gateway
         </p>
         <p align="center">Open Source AI Gateway for 100+ LLMs. Self-hosted. Enterprise-ready. Call any LLM in OpenAI format.</p>
-        <p align="center">
-        <a href="https://render.com/deploy?repo=https://github.com/BerriAI/litellm" target="_blank" rel="nofollow"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="40"></a>
-        <a href="https://railway.com/deploy/RhvhdC?referralCode=7mRv9K&utm_medium=integration&utm_source=template&utm_campaign=generic"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="40"></a>
-        <a href="https://console.aws.amazon.com/cloudshell/home" target="_blank" rel="nofollow"><img src="./.github/deploy-on-aws.png" alt="Deploy on AWS" height="40"></a>
-        <a href="https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FBerriAI%2Flitellm&cloudshell_workspace=terraform%2Flitellm%2Fgcp%2Fexamples%2Fdefault&cloudshell_tutorial=TUTORIAL.md&cloudshell_image=gcr.io/ds-artifacts-cloudshell/deploystack_custom_image&shellonly=true" target="_blank" rel="nofollow"><img src="./.github/deploy-on-gcp.png" alt="Deploy on GCP" height="40"></a>
-        </p>
     </p>
 <h4 align="center"><a href="https://docs.litellm.ai/docs/simple_proxy" target="_blank">LiteLLM Proxy Server (AI Gateway)</a> | <a href="https://docs.litellm.ai/docs/enterprise#hosted-litellm-proxy" target="_blank"> Hosted Proxy</a> | <a href="https://litellm.ai/enterprise"target="_blank">Enterprise Tier</a> | <a href="https://www.litellm.ai/ai-gateway" target="_blank">Website</a></h4>
 <h4 align="center">
@@ -31,9 +25,6 @@
     </a>
     <a href="https://www.litellm.ai/support">
         <img src="https://img.shields.io/static/v1?label=Chat%20on&message=Slack&color=black&logo=Slack&style=flat-square" alt="Slack">
-    </a>
-    <a href="https://codspeed.io/BerriAI/litellm?utm_source=badge">
-        <img src="https://img.shields.io/endpoint?url=https://codspeed.io/badge.json" alt="CodSpeed"/>
     </a>
 </h4>
 
@@ -417,140 +408,6 @@ You can use LiteLLM through either the Proxy Server or Python SDK. Both give you
 
 Support for more providers. Missing a provider or LLM Platform, raise a [feature request](https://github.com/BerriAI/litellm/issues/new?assignees=&labels=enhancement&projects=&template=feature_request.yml&title=%5BFeature%5D%3A+).
 
-### Deploy on AWS or GCP with Terraform
-
-Run the LiteLLM proxy as a production-ready componentized stack (gateway, backend, UI on separate services; managed Postgres + Redis + object store) using the published Terraform modules. Both modules are on the [public Terraform Registry](https://registry.terraform.io/namespaces/BerriAI) — no auth needed.
-
-#### AWS — ECS Fargate + Aurora + ElastiCache + ALB
-
-[![Launch in AWS CloudShell](https://img.shields.io/badge/Launch-AWS_CloudShell-FF9900?logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudshell/home) — opens an in-browser shell, already authenticated to your AWS account. Once inside, run:
-
-```bash
-git clone https://github.com/BerriAI/litellm.git
-cd litellm/terraform/litellm/aws/examples/default
-cp terraform.tfvars.example terraform.tfvars   # edit region/tenant/env
-terraform init && terraform apply
-```
-
-[Module page →](https://registry.terraform.io/modules/BerriAI/litellm/aws/latest)
-
-Or call the module from your own root config:
-
-```hcl
-# main.tf
-terraform {
-  required_version = ">= 1.6.0"
-  required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.60" }
-  }
-}
-
-provider "aws" {
-  region = "us-west-2"
-}
-
-module "litellm" {
-  source  = "BerriAI/litellm/aws"
-  version = "~> 1.89"
-
-  region = "us-west-2"
-  azs    = ["us-west-2a", "us-west-2b"]
-  tenant = "acme"
-  env    = "prod"
-
-  # Production: provide an ACM cert. Without one, set allow_plaintext_alb = true
-  # (dev/trial only).
-  # acm_certificate_arn = "arn:aws:acm:us-west-2:111122223333:certificate/..."
-  allow_plaintext_alb = true
-}
-
-output "litellm_url" {
-  value = module.litellm.alb_dns_name
-}
-```
-
-```bash
-terraform init
-terraform apply
-```
-
-Provider API keys live in AWS Secrets Manager; reference ARNs via `gateway_extra_secrets`. Full input list and architecture diagram on the [registry page](https://registry.terraform.io/modules/BerriAI/litellm/aws/latest?tab=inputs).
-
-#### GCP — Cloud Run + Cloud SQL + Memorystore + HTTPS LB
-
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.png)](https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FBerriAI%2Flitellm&cloudshell_workspace=terraform%2Flitellm%2Fgcp%2Fexamples%2Fdefault&cloudshell_tutorial=TUTORIAL.md&cloudshell_image=gcr.io/ds-artifacts-cloudshell/deploystack_custom_image&shellonly=true)
-
-Real 1-click. Opens Cloud Shell, clones this repo, and walks you through `terraform apply` via a built-in [DeployStack tutorial](./terraform/litellm/gcp/examples/default/TUTORIAL.md) — pick the project, the tutorial sets up the Artifact Registry remote repo, writes `terraform.tfvars` from your answers, and runs apply.
-
-[Module page →](https://registry.terraform.io/modules/BerriAI/litellm/google/latest)
-
-To call the module from your own config instead, Cloud Run can't pull from `ghcr.io` directly, so first set up a one-time Artifact Registry remote repo backed by GHCR:
-
-```bash
-gcloud artifacts repositories create litellm \
-  --location=us-central1 \
-  --repository-format=docker \
-  --mode=remote-repository \
-  --remote-docker-repo=https://ghcr.io \
-  --project=my-gcp-project
-```
-
-Then:
-
-```hcl
-# main.tf
-terraform {
-  required_version = ">= 1.6.0"
-  required_providers {
-    google      = { source = "hashicorp/google",      version = "~> 6.10" }
-    google-beta = { source = "hashicorp/google-beta", version = "~> 6.10" }
-  }
-}
-
-provider "google"      { project = "my-gcp-project"; region = "us-central1" }
-provider "google-beta" { project = "my-gcp-project"; region = "us-central1" }
-
-module "litellm" {
-  source  = "BerriAI/litellm/google"
-  version = "~> 1.89"
-
-  project_id = "my-gcp-project"
-  region     = "us-central1"
-  tenant     = "acme"
-  env        = "prod"
-
-  # Replace my-gcp-project with your GCP project ID (same value as project_id above).
-  image_registry = "us-central1-docker.pkg.dev/my-gcp-project/litellm/berriai"
-
-  # Production: provide DNS already pointing at the LB IP for Google-managed certs.
-  # Without one, set allow_plaintext_lb = true (dev/trial only).
-  # lb_domains         = ["proxy.example.com"]
-  allow_plaintext_lb = true
-}
-
-output "litellm_url" {
-  value = module.litellm.load_balancer_url
-}
-```
-
-```bash
-terraform init
-terraform apply
-```
-
-Provider API keys live in Secret Manager; reference resource IDs (e.g. `projects/my-gcp-project/secrets/openai-api-key`) via `gateway_extra_secrets`. Full input list and architecture diagram on the [registry page](https://registry.terraform.io/modules/BerriAI/litellm/google/latest?tab=inputs).
-
-#### Both stacks include
-
-- The full componentized split (gateway / backend / UI as independent services)
-- Managed Postgres (writer + reader) and Redis
-- Versioned object store for proxy state + file uploads
-- An auto-generated `LITELLM_MASTER_KEY` in your cloud's secret manager
-- A one-off migration job that runs `prisma migrate deploy` before the proxy starts
-- The same `proxy_config` surface as the [Helm chart](./helm/litellm/) — pass YAML as a typed map
-
-The Terraform modules live at [`terraform/litellm/aws/`](./terraform/litellm/aws/) and [`terraform/litellm/gcp/`](./terraform/litellm/gcp/) in this repo; the registry entries are read-only mirrors updated on each release.
-
 ### Run in Developer Mode
 #### Services
 1. Setup .env file in root
@@ -563,32 +420,6 @@ The Terraform modules live at [`terraform/litellm/aws/`](./terraform/litellm/aws
 #### Frontend
 1. Navigate to `ui/litellm-dashboard` (dependencies were already installed w/ `make bootstrap`)
 2. Start dashboard: `npm run dev`
-
-### Verify Docker Image Signatures
-
-All LiteLLM Docker images published to GHCR are signed with [cosign](https://docs.sigstore.dev/cosign/overview/). Every release is signed with the same key introduced in [commit `0112e53`](https://github.com/BerriAI/litellm/commit/0112e53046018d726492c814b3644b7d376029d0).
-
-**Verify using the pinned commit hash (recommended):**
-
-A commit hash is cryptographically immutable, so this is the strongest way to ensure you are using the original signing key:
-
-```bash
-cosign verify \
-  --key https://raw.githubusercontent.com/BerriAI/litellm/0112e53046018d726492c814b3644b7d376029d0/cosign.pub \
-  ghcr.io/berriai/litellm:<release-tag>
-```
-
-**Verify using a release tag (convenience):**
-
-Tags are protected in this repository and resolve to the same key. This option is easier to read but relies on tag protection rules:
-
-```bash
-cosign verify \
-  --key https://raw.githubusercontent.com/BerriAI/litellm/<release-tag>/cosign.pub \
-  ghcr.io/berriai/litellm:<release-tag>
-```
-
-Replace `<release-tag>` with the version you are deploying (e.g. `v1.83.0-stable`).
 
 ---
 
@@ -605,42 +436,6 @@ This covers:
 - ✅ **Professional Support - Dedicated discord + slack**
 - ✅ **Custom SLAs**
 - ✅ **Secure access with Single Sign-On**
-
-# Contributing
-
-We welcome contributions to LiteLLM! Whether you're fixing bugs, adding features, or improving documentation, we appreciate your help.
-
-## Quick Start for Contributors
-
-This requires uv to be installed.
-
-```bash
-git clone https://github.com/BerriAI/litellm.git
-cd litellm
-make install-dev    # Install development dependencies
-make format         # Format your code
-make lint           # Run all linting checks
-make test-unit      # Run unit tests
-make format-check   # Check formatting only
-```
-
-For detailed contributing guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-> **📖 Contributing to documentation?** The LiteLLM docs have moved to a separate repository: [BerriAI/litellm-docs](https://github.com/BerriAI/litellm-docs). Please open doc PRs there. Docs are served at [docs.litellm.ai](https://docs.litellm.ai).
-
-## Code Quality / Linting
-
-LiteLLM follows the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
-
-Our automated checks include:
-- **Ruff** for formatting, linting, and code quality
-- **basedpyright** for type checking
-- **Circular import detection**
-- **Import safety checks**
-
-
-All these checks must pass before your PR can be merged.
-
 
 # Support / talk with founders
 
