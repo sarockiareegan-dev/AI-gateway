@@ -34,6 +34,8 @@ export interface Guardrail {
     [key: string]: any;
   };
   guardrail_info: Record<string, any> | null;
+  team_id?: string | null;
+  organization_id?: string | null;
   created_at?: string;
   updated_at?: string;
   guardrail_definition_location: GuardrailDefinitionLocation;

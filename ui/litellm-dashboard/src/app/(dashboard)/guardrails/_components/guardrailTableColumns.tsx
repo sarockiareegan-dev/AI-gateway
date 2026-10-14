@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/cva.config";
 
-import { formatGuardrailMode, getGuardrailLogoAndName } from "./guardrail_info_helpers";
+import { formatGuardrailMode, getGuardrailLogoAndName, guardrailOwnerLabel } from "./guardrail_info_helpers";
 import { Logo } from "@/components/molecules/logo/Logo";
 
 const CONFIG_DELETE_HINT = "Config guardrails are defined in the config file and cannot be deleted from the dashboard.";
@@ -122,6 +122,21 @@ export const getGuardrailTableColumns = ({
       return (
         <span className="font-mono text-xs text-muted-foreground" title={mode || undefined}>
           {mode || "-"}
+        </span>
+      );
+    },
+  },
+  {
+    id: "owner",
+    meta: { title: "Owner" },
+    header: "Owner",
+    size: 200,
+    enableSorting: false,
+    cell: ({ row }) => {
+      const owner = guardrailOwnerLabel(row.original);
+      return (
+        <span className="block truncate text-sm text-muted-foreground" title={owner}>
+          {owner}
         </span>
       );
     },

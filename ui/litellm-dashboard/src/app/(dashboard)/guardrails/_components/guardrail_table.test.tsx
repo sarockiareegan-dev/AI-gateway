@@ -25,9 +25,27 @@ const makeGuardrail = (overrides: Partial<Guardrail> = {}): Guardrail => ({
 describe("GuardrailTable", () => {
   it("renders every column header", () => {
     render(<GuardrailTable guardrailsList={[]} {...baseProps} />);
-    for (const header of ["Guardrail ID", "Name", "Provider", "Mode", "Default On", "Created At", "Updated At"]) {
+    for (const header of [
+      "Guardrail ID",
+      "Name",
+      "Provider",
+      "Mode",
+      "Owner",
+      "Default On",
+      "Created At",
+      "Updated At",
+    ]) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
+  });
+
+  it.each([
+    [{ team_id: "team-1", organization_id: "org-a" }, "Team team-1"],
+    [{ organization_id: "org-a" }, "Organization org-a"],
+    [{}, "Proxy-wide"],
+  ])("shows the guardrail owner %o as %s", (owner, label) => {
+    render(<GuardrailTable guardrailsList={[makeGuardrail(owner)]} {...baseProps} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 
   it("renders the provider logo from the bundled guardrail logo map", () => {
