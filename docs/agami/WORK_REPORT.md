@@ -10,6 +10,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #2 | `257e278` | Dependency and security bumps |
 | #4 | `01617ca` | Rust extension, e2e harness and LiteLLM repo tooling removed, Textract OCR and Bedrock transcription ported to Python |
 | #5 | `5deb495` | Managed files hook rebuilt |
+| #6 | `2e1f70f` | This work report |
+| #7 | pending | Guardrail owner (`team_id`, `organization_id`) in the guardrail list and info responses, guardrail info scoped like the list |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -31,6 +33,8 @@ PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for exampl
 14. Debugging playbook
 15. How to reproduce everything from scratch
 16. What is still open
+17. Decisions log
+18. Bugs found and fixed along the way
 
 ---
 
@@ -499,6 +503,15 @@ return ownership.organization_id is not None and ownership.organization_id in sc
 
 A guardrail with neither owner is proxy-wide and only proxy admins list it (that is a behaviour change from upstream). Proxy admins set the owner with `organization_id` on `POST /guardrails` and `PUT /guardrails/{id}`
 
+Follow-up (Oct 14, #7):
+
+- `GuardrailInfoResponse` in `litellm/types/guardrails.py` has `team_id` and `organization_id`, so `/guardrails/list`, `/v2/guardrails/list` and `/guardrails/{id}/info` show who owns each guardrail
+- The values come from `_guardrail_ownership(row).model_dump()`, which reads only those two keys from the stored row. They were deliberately not added to the `Guardrail` TypedDict, because that type is also the `guardrail` field of the create and update request bodies. Adding them there would let a client put a fake owner into the in-memory copy of a guardrail. The real owner is only ever set from the top-level `organization_id` of the request, by a proxy admin
+- `/guardrails/{id}/info` (and its alias `/guardrails/{id}`) used to return any guardrail's masked config to any logged-in user. It now takes `user_api_key_dict` and, for non-admins, answers 404 unless `_guardrail_visible_to(result, scope)` is true. 404 instead of 403 means a caller cannot probe which guardrail IDs exist
+- Generated files regenerated with it: `litellm/proxy/_lazy_openapi_snapshot.json` (`python -m litellm.proxy._lazy_openapi_snapshot`) and `ui/litellm-dashboard/src/lib/http/schema.d.ts` (`npm run gen:api` in `ui/litellm-dashboard`). CI's "UI API types" workflow fails if either is stale
+- Tests in `tests/test_litellm/proxy/guardrails/test_guardrail_endpoints.py`: `test_list_guardrails_v2_returns_each_guardrails_owner`, and `test_get_guardrail_info_follows_the_list_visibility`, which crosses every scoped guardrail (proxy-wide, org A, org B, team 1, team 2 in org A) with every caller (proxy admin, org and team member, org viewer, team key without user) and expects exactly the list's answer
+- If you change the visibility rule, change only `_guardrail_visible_to`; the two lists and the info endpoint all call it
+
 ### 6.3 How to debug a "user sees too much / too little" report
 
 1. Identify the endpoint and the caller's `user_role`, `organization_memberships`, team roles
@@ -763,6 +776,40 @@ rg "agami-org/" litellm agami                      # org model naming
 - UI rebrand (the UI still says LiteLLM and reads one `premium_user` flag instead of per-feature gating)
 - Batch cost poller for managed batches
 - `managed_vector_stores` hook
-- Return guardrail `organization_id` in list and info responses and show it in the UI
-- Docker Compose demo check (needs Docker Desktop running)
+- Show the guardrail owner in the Admin UI (the API returns it since #7)
+- Docker Compose demo check (needs Docker Desktop running), then commit the demo files
 - Step 7: refactor (scope not decided)
+
+`PROGRESS.md` is the source of truth for this list. When an item is done, tick it there and add its explanation to the matching section here, in the same PR
+
+---
+
+## 17. Decisions log
+
+Mirrors "Open decisions" in `PROGRESS.md`, with the reason for each
+
+| Date | Decision | Why |
+|------|----------|-----|
+| Oct 4 | `proxy_admin_viewer` is per organization | A global reader breaks tenant isolation; it matches the adapter's org-scoped `VIEWER` |
+| Oct 6 | Guardrails get a nullable `organization_id` column, schema-only migration | Lets orgs own guardrails without rewriting rows |
+| Oct 6 | Plain team members see only their own keys | Teammates' token hashes were visible |
+| Oct 6 | Proxy-wide config reads are proxy admin only | Config holds every tenant's settings |
+| Oct 6 | One `jwt_auth` feature for JWT, OAuth2 and MCP token flows; grouped features for the rest | Fewer, sellable feature names |
+| Oct 7 | `allowed_routes` and `admin_only_routes` always enforced, licensed or not | Restrictions must not lapse when a licence expires |
+| Oct 7 | `allowed_ips` gated on `access_control` | Same family as public routes |
+| Oct 8 | SCIM gated on `sso`; UI token keeps `premium_user` computed from `has_valid_license()`; Swagger branding needs any valid licence | About 60 UI components read the flag |
+| Oct 8 | Order: step 3 (rebuild), then rename, then refactor; rename keeps a thin `litellm` shim; rebuilds are clean-room | The enterprise code has its own commercial licence |
+| Oct 14 | Guardrail owner returned through `_guardrail_ownership`, not the request type; guardrail info answers 404 outside the caller's scope | Clients must not set owners; IDs must not be probeable |
+
+## 18. Bugs found and fixed along the way
+
+These were real defects (most also upstream) caught while moving gates and writing tests
+
+- `/key/update` ran the old premium check inside a `try` that only logged, so an unlicensed premium metadata field was silently dropped and the update still succeeded. Now refused with 403
+- Key regeneration, `model_max_budget` and enforced params answered 500 instead of 403 when unlicensed (caught by the live curl proof, fixed in `33b627d`)
+- The `get_spend_routes` key permission raised a `ValueError` that surfaced as a bare "Internal Server Error". Now a 403 naming `advanced_keys`
+- The old key tags gate was dead code (tags were already moved into `metadata` before the check ran). Removed; tags are gated through the metadata field map
+- `enforced_params` in the config was checked before the licence in the same config was loaded, so a config-only licence was refused. `_apply_config_licence` now loads the licence first
+- Upstream skipped `admin_only_routes` without a licence, so routes meant to be restricted were open on unlicensed installs
+
+Live proof, Oct 8, on a fresh database: with an `sso`-only licence SCIM was 200 while `/organization/new`, `/key/generate` with `model_max_budget` and `/key/regenerate` were 403. With `sso,organizations,advanced_keys,budgets` all four were 200, and an org admin of org A saw only org A's team and got 401 on org B's `/organization/info`. `tests/proxy_behavior` on a migrated throwaway database: 902 passed

@@ -117,6 +117,7 @@ def _get_guardrails_list_response(
                 guardrail_name=guardrail.get("guardrail_name"),
                 litellm_params=masked_params,
                 guardrail_info=guardrail.get("guardrail_info"),
+                **_guardrail_ownership(guardrail).model_dump(),
             )
         )
     return ListGuardrailsResponse(guardrails=guardrail_configs)
@@ -268,6 +269,7 @@ async def list_guardrails_v2(
                     guardrail_name=guardrail.get("guardrail_name"),
                     litellm_params=masked_litellm_params,
                     guardrail_info=guardrail.get("guardrail_info"),
+                    **_guardrail_ownership(guardrail).model_dump(),
                     created_at=guardrail.get("created_at"),
                     updated_at=guardrail.get("updated_at"),
                     guardrail_definition_location="db",
@@ -307,6 +309,7 @@ async def list_guardrails_v2(
                     guardrail_name=guardrail.get("guardrail_name"),
                     litellm_params=masked_in_memory_litellm_params_typed,
                     guardrail_info=dict(guardrail.get("guardrail_info") or {}),
+                    **_guardrail_ownership(guardrail).model_dump(),
                     guardrail_definition_location="config",
                 )
             )
@@ -1346,9 +1349,12 @@ async def patch_guardrail(
     tags=["Guardrails"],
     dependencies=[Depends(user_api_key_auth)],
 )
-async def get_guardrail_info(guardrail_id: str):
+async def get_guardrail_info(
+    guardrail_id: str,
+    user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
+):
     """
-    Get detailed information about a specific guardrail by ID
+    Get detailed information about a specific guardrail by ID. Callers who can't list the guardrail get a 404
 
     👉 [Guardrail docs](https://docs.litellm.ai/docs/proxy/guardrails/quick_start)
 
@@ -1400,7 +1406,10 @@ async def get_guardrail_info(guardrail_id: str):
                 result = in_memory
                 guardrail_definition_location = GUARDRAIL_DEFINITION_LOCATION.CONFIG
 
-        if result is None:
+        if result is None or (
+            not _user_has_admin_view(user_api_key_dict)
+            and not _guardrail_visible_to(result, await _get_guardrail_reader_scope(user_api_key_dict))
+        ):
             raise HTTPException(status_code=404, detail=f"Guardrail with ID {guardrail_id} not found")
 
         litellm_params: Final[LitellmParams | dict | None] = result.get("litellm_params")
@@ -1421,6 +1430,7 @@ async def get_guardrail_info(guardrail_id: str):
             guardrail_name=result.get("guardrail_name"),
             litellm_params=masked_litellm_params,
             guardrail_info=dict(result.get("guardrail_info") or {}),
+            **_guardrail_ownership(result).model_dump(),
             created_at=result.get("created_at"),
             updated_at=result.get("updated_at"),
             guardrail_definition_location=guardrail_definition_location,

@@ -6598,7 +6598,7 @@ export interface paths {
         };
         /**
          * Get Guardrail Info
-         * @description Get detailed information about a specific guardrail by ID
+         * @description Get detailed information about a specific guardrail by ID. Callers who can't list the guardrail get a 404
          *
          *     👉 [Guardrail docs](https://docs.litellm.ai/docs/proxy/guardrails/quick_start)
          *
@@ -6759,7 +6759,7 @@ export interface paths {
         };
         /**
          * Get Guardrail Info
-         * @description Get detailed information about a specific guardrail by ID
+         * @description Get detailed information about a specific guardrail by ID. Callers who can't list the guardrail get a 404
          *
          *     👉 [Guardrail docs](https://docs.litellm.ai/docs/proxy/guardrails/quick_start)
          *
@@ -28776,6 +28776,10 @@ export interface components {
             /** Guardrail Name */
             guardrail_name: string;
             litellm_params?: components["schemas"]["BaseLitellmParams"] | null;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Team Id */
+            team_id?: string | null;
             /** Updated At */
             updated_at?: string | null;
         };
