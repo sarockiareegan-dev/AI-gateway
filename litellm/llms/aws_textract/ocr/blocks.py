@@ -70,8 +70,19 @@ def lines_by_page(blocks: tuple[Block, ...]) -> tuple[tuple[int, str], ...]:
 def _text_of(block: Block, by_id: Mapping[str, Block], separator: str) -> str:
     if block.text is not None:
         return block.text
-    parts: Final = (_text_of(by_id[child], by_id, separator) for child in block.children if child in by_id)
-    return separator.join(part for part in parts if part)
+    parts: Final[list[str]] = []
+    seen: Final[set[str]] = {block.id}
+    pending: Final[list[Block]] = [block]
+    while pending:
+        current = pending.pop()
+        if current.text is not None:
+            if current.text:
+                parts.append(current.text)
+            continue
+        children = tuple(by_id[child] for child in current.children if child in by_id and child not in seen)
+        seen.update(child.id for child in children)
+        pending.extend(reversed(children))
+    return separator.join(parts)
 
 
 def strip_bullet(item: str) -> str:

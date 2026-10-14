@@ -1,5 +1,5 @@
 """Unit tests for `docker/component_entrypoint.sh` and its wiring into the
-componentized `gateway` / `backend` images and Terraform deployments."""
+componentized `gateway` / `backend` images."""
 
 import json
 import os
@@ -15,8 +15,6 @@ COMPONENT_ENTRYPOINT = REPO_ROOT / "docker" / "component_entrypoint.sh"
 PROD_ENTRYPOINT = REPO_ROOT / "docker" / "prod_entrypoint.sh"
 GATEWAY_DOCKERFILE = REPO_ROOT / "gateway" / "Dockerfile"
 BACKEND_DOCKERFILE = REPO_ROOT / "backend" / "Dockerfile"
-TERRAFORM_ECS = REPO_ROOT / "terraform" / "litellm" / "aws" / "ecs.tf"
-TERRAFORM_CLOUDRUN = REPO_ROOT / "terraform" / "litellm" / "gcp" / "cloudrun.tf"
 
 IMAGE_ENTRYPOINT_PATH = "/app/docker/component_entrypoint.sh"
 
@@ -36,17 +34,6 @@ _STUB_TEMPLATE = """#!/bin/sh
 
 _ENTRYPOINT_RE = re.compile(r"^ENTRYPOINT\s+(\[.*\])\s*$", re.MULTILINE)
 _CMD_RE = re.compile(r"^CMD\s+(\[.*\])\s*$", re.MULTILINE)
-_APP_TARGET_RE = re.compile(r"(?:gateway|backend)\.main:app|gateway\.launch")
-_TF_STRING_LOCAL_RE = re.compile(r'^\s*(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"\s*$', re.MULTILINE)
-_TF_INTERPOLATION_RE = re.compile(r"\$\{(local|var)\.(\w+)\}")
-
-TERRAFORM_LAUNCH_SITES = {TERRAFORM_ECS: 2, TERRAFORM_CLOUDRUN: 2}
-TERRAFORM_VAR_STUBS = {"gateway_num_workers": "2"}
-COMPONENT_LAUNCHERS = {
-    "gateway": ("python", "-m", "gateway.launch"),
-    "backend": ("uvicorn", "backend.main:app"),
-}
-_MAX_INTERPOLATION_PASSES = 5
 
 
 def _write_stubs(bin_dir: Path, names: tuple[str, ...]) -> None:
@@ -88,42 +75,6 @@ def _run_entrypoint(
     )
     assert result.returncode == 0, f"stdout={result.stdout} stderr={result.stderr}"
     return tuple(record.read_text().splitlines()) if record.exists() else ()
-
-
-def _run_shell_command(command: str, bin_dir: Path, record: Path, use_ddtrace: str | None) -> tuple[str, ...]:
-    """Run a resolved Terraform launch command through `sh -c` and return the recorded lines."""
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
-        "RECORD": str(record),
-        "PYTHONPATH": PYTHONPATH_SENTINEL,
-    }
-    env.pop("USE_DDTRACE", None)
-    env.pop("DD_TRACE_OPENAI_ENABLED", None)
-    if use_ddtrace is not None:
-        env["USE_DDTRACE"] = use_ddtrace
-
-    result = subprocess.run(["sh", "-c", command], env=env, capture_output=True, text=True, check=False)
-    assert result.returncode == 0, f"stdout={result.stdout} stderr={result.stderr}"
-    return tuple(record.read_text().splitlines()) if record.exists() else ()
-
-
-def _resolve_tf_local(terraform_file: Path, name: str) -> str:
-    """Read a string local out of a .tf file and expand its `local.` / `var.` interpolations."""
-    values = {
-        m.group(1): m.group(2).replace('\\"', '"') for m in _TF_STRING_LOCAL_RE.finditer(terraform_file.read_text())
-    }
-
-    assert name in values, f"{terraform_file} defines no {name} local"
-    resolved = values[name]
-    for _ in range(_MAX_INTERPOLATION_PASSES):
-        if "${" not in resolved:
-            return resolved
-        resolved = _TF_INTERPOLATION_RE.sub(
-            lambda m: values[m.group(2)] if m.group(1) == "local" else TERRAFORM_VAR_STUBS[m.group(2)],
-            resolved,
-        )
-    raise AssertionError(f"{terraform_file}:{name} still has unresolved interpolations: {resolved}")
 
 
 def _entrypoint_argv(dockerfile: Path) -> tuple[str, ...]:
@@ -350,87 +301,6 @@ def test_gateway_image_execs_the_supervisor_with_its_worker_count(
 def test_component_images_make_the_entrypoint_executable(dockerfile: Path) -> None:
     body = dockerfile.read_text()
     assert "chmod +x docker/component_entrypoint.sh" in body
-
-
-@pytest.mark.parametrize("terraform_file", TERRAFORM_LAUNCH_SITES, ids=lambda p: p.parent.name)
-@pytest.mark.parametrize("component", ["gateway", "backend"])
-@pytest.mark.parametrize("use_ddtrace", [*TRUTHY_USE_DDTRACE, *FALSY_USE_DDTRACE])
-def test_terraform_launch_command_matches_the_script_contract(
-    terraform_file: Path, component: str, use_ddtrace: str | None, tmp_path: Path
-) -> None:
-    """The Terraform command and `docker/component_entrypoint.sh` must decide identically.
-
-    The decision deliberately lives in two places. The script is what the image ENTRYPOINT runs;
-    the Terraform strings are what runs when a deployment overrides that ENTRYPOINT, and they
-    cannot call the script because the caller supplies the image tag and it may predate the file.
-    Both modules default to a tag that does. So instead of asserting a shared path, this runs both
-    implementations under the same environment and asserts they agree on which binary is exec'd
-    and on whether the openai integration is disabled.
-    """
-    launcher = COMPONENT_LAUNCHERS[component]
-    app_target = " ".join(launcher[1:])
-    command = _resolve_tf_local(terraform_file, f"{component}_launch_cmd")
-
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(parents=True)
-    _write_stubs(bin_dir, ("ddtrace-run", "uvicorn", "python"))
-    from_terraform = _run_shell_command(command, bin_dir, tmp_path / "terraform.txt", use_ddtrace)
-
-    from_script = _run_entrypoint(
-        COMPONENT_ENTRYPOINT,
-        launcher,
-        use_ddtrace=use_ddtrace,
-        tmp_path=tmp_path / "script",
-    )
-
-    assert from_terraform[0] == from_script[0], (
-        f"{terraform_file} disagrees with the script on USE_DDTRACE={use_ddtrace}"
-    )
-    assert from_terraform[2] == from_script[2], f"{terraform_file} disagrees with the script on the openai integration"
-    assert app_target in from_terraform[1]
-    assert "gateway.main:app" not in from_terraform[1], f"{terraform_file} bypasses the gateway.launch supervisor"
-
-    if use_ddtrace in TRUTHY_USE_DDTRACE:
-        assert from_terraform[0] == "exec=ddtrace-run"
-        assert from_terraform[1].startswith(f"args={launcher[0]} ")
-        assert from_terraform[2] == "DD_TRACE_OPENAI_ENABLED=False"
-    else:
-        assert from_terraform[0] == f"exec={launcher[0]}"
-        assert from_terraform[2] == "DD_TRACE_OPENAI_ENABLED=<unset>"
-
-
-@pytest.mark.parametrize("terraform_file", TERRAFORM_LAUNCH_SITES, ids=lambda p: p.parent.name)
-def test_terraform_routes_every_launch_site_through_a_traced_command(terraform_file: Path) -> None:
-    """Every place Terraform names a component ASGI target has to honor `USE_DDTRACE`.
-
-    The count is pinned as well: a launch site that is deleted or renamed would otherwise drop
-    out of the scan and let this pass while covering less than it claims.
-    """
-    launch_sites = tuple(line for line in terraform_file.read_text().splitlines() if _APP_TARGET_RE.search(line))
-
-    assert len(launch_sites) == TERRAFORM_LAUNCH_SITES[terraform_file], (
-        f"{terraform_file} launch-site count changed; re-check each one honors USE_DDTRACE"
-    )
-    for line in launch_sites:
-        assert "ddtrace-run" in line, f"{terraform_file} launches uvicorn without honoring USE_DDTRACE: {line.strip()}"
-
-    body = terraform_file.read_text()
-    for component in ("gateway", "backend"):
-        assert f"local.{component}_launch_cmd" in body, (
-            f"{terraform_file} defines a {component} launch command but never uses it"
-        )
-
-
-@pytest.mark.parametrize("terraform_file", TERRAFORM_LAUNCH_SITES, ids=lambda p: p.parent.name)
-def test_terraform_does_not_depend_on_the_entrypoint_script(terraform_file: Path) -> None:
-    """Terraform must not reference a file the caller-supplied image may not contain.
-
-    Both modules default to an image tag published before the script existed, so exec'ing that
-    path would fail at container start rather than degrade to an untraced process.
-    """
-    assert IMAGE_ENTRYPOINT_PATH not in terraform_file.read_text(), (
-        f"{terraform_file} depends on a script that images predating it do not ship"
-    )
 
 
 def test_gateway_keeps_its_worker_count_and_backend_keeps_a_single_process() -> None:

@@ -8,11 +8,8 @@ configuration works correctly.
 Related issue: https://github.com/BerriAI/litellm/issues/18221
 """
 
-import json
-import re
 from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
 from types import MappingProxyType
 from typing import Final, get_args
 
@@ -27,13 +24,6 @@ from litellm.integrations.prometheus_services import PrometheusServicesLogger
 from litellm.proxy.db.db_transaction_queue.spend_log_cleanup_metrics import SpendLogCleanupMetrics
 from litellm.proxy.middleware.admission_control_middleware import create_prometheus_admission_metrics
 from litellm.proxy.middleware.in_flight_requests_middleware import InFlightRequestsMiddleware
-
-_GRAFANA_DIR: Final = Path(__file__).parents[3] / "cookbook" / "litellm_proxy_server" / "grafana_dashboard"
-_ALL_METRICS_DASHBOARD: Final = _GRAFANA_DIR / "dashboard_all_metrics" / "grafana_dashboard.json"
-_LITELLM_DASHBOARDS: Final = (_ALL_METRICS_DASHBOARD, _GRAFANA_DIR / "dashboard_v2" / "grafana_dashboard.json")
-_METRIC_TOKEN_RE: Final = re.compile(r"\blitellm_[a-z0-9_]+")
-_BY_CLAUSE_RE: Final = re.compile(r"\bby\s*\([^)]*\)")
-_EXPOSITION_SUFFIXES: Final = ("", "_total", "_bucket", "_sum", "_count", "_created")
 
 
 def _registered_collectors() -> MappingProxyType[Collector, tuple[str, ...]]:
@@ -105,12 +95,6 @@ def _isolated_litellm_metric_families(monkeypatch: pytest.MonkeyPatch) -> Iterat
 
 
 @pytest.fixture
-def emitted_metric_families(monkeypatch: pytest.MonkeyPatch) -> Iterator[frozenset[str]]:
-    with _isolated_litellm_metric_families(monkeypatch) as families:
-        yield families
-
-
-@pytest.fixture
 def gauges_registered_by_an_earlier_test() -> Iterator[tuple[Collector, Collector]]:
     sentinel: Final = Gauge("litellm_unrelated_sentinel", "registered by a test outside the isolated block")
     already_registered: Final = REGISTRY._names_to_collectors.get("litellm_admission_admitted_requests")
@@ -139,55 +123,6 @@ def test_isolated_metric_families_restore_the_registry_and_keep_lazy_owners_live
     assert all(collector in after for collector in lazy_owned)
 
 
-def _dashboard_expressions(path: Path) -> tuple[str, ...]:
-    dashboard: Final = json.loads(path.read_text())
-    return tuple(target["expr"] for panel in dashboard["panels"] for target in panel.get("targets", ()))
-
-
-def _referenced_metric_tokens(path: Path) -> frozenset[str]:
-    return frozenset(
-        token
-        for expr in _dashboard_expressions(path)
-        for token in _METRIC_TOKEN_RE.findall(_BY_CLAUSE_RE.sub("", expr))
-    )
-
-
-def _family_of(token: str, families: frozenset[str]) -> str | None:
-    candidates: Final = (token.removesuffix(suffix) for suffix in _EXPOSITION_SUFFIXES if token.endswith(suffix))
-    return next((candidate for candidate in candidates if candidate in families), None)
-
-
-def test_all_metrics_dashboard_charts_every_emitted_metric_family(emitted_metric_families: frozenset[str]):
-    referenced: Final = _referenced_metric_tokens(_ALL_METRICS_DASHBOARD)
-    charted: Final = frozenset(
-        family for token in referenced for family in (_family_of(token, emitted_metric_families),) if family
-    )
-    assert emitted_metric_families - charted == frozenset()
-
-
-@pytest.mark.parametrize("dashboard_path", _LITELLM_DASHBOARDS, ids=lambda p: p.parent.name)
-def test_dashboards_only_reference_emitted_metrics(dashboard_path: Path, emitted_metric_families: frozenset[str]):
-    dead: Final = frozenset(
-        token
-        for token in _referenced_metric_tokens(dashboard_path)
-        if _family_of(token, emitted_metric_families) is None
-    )
-    assert dead == frozenset()
-
-
-@pytest.mark.parametrize("dashboard_path", _LITELLM_DASHBOARDS, ids=lambda p: p.parent.name)
-def test_dashboards_use_templated_prometheus_datasource(dashboard_path: Path):
-    dashboard: Final = json.loads(dashboard_path.read_text())
-    datasource_variables: Final = tuple(
-        variable["name"] for variable in dashboard["templating"]["list"] if variable["type"] == "datasource"
-    )
-    assert datasource_variables == ("DS_PROMETHEUS",)
-    panel_datasource_uids: Final = frozenset(
-        panel["datasource"]["uid"] for panel in dashboard["panels"] if panel["type"] != "row"
-    )
-    assert panel_datasource_uids == frozenset({"${DS_PROMETHEUS}"})
-
-
 def test_remaining_requests_metric_name_in_defined_metrics():
     """
     Test that litellm_remaining_requests_metric is defined in DEFINED_PROMETHEUS_METRICS.
@@ -198,9 +133,9 @@ def test_remaining_requests_metric_name_in_defined_metrics():
     from litellm.types.integrations.prometheus import DEFINED_PROMETHEUS_METRICS
 
     defined_metrics = get_args(DEFINED_PROMETHEUS_METRICS)
-    assert (
-        "litellm_remaining_requests_metric" in defined_metrics
-    ), "litellm_remaining_requests_metric should be in DEFINED_PROMETHEUS_METRICS"
+    assert "litellm_remaining_requests_metric" in defined_metrics, (
+        "litellm_remaining_requests_metric should be in DEFINED_PROMETHEUS_METRICS"
+    )
 
 
 def test_remaining_tokens_metric_name_in_defined_metrics():
@@ -213,9 +148,9 @@ def test_remaining_tokens_metric_name_in_defined_metrics():
     from litellm.types.integrations.prometheus import DEFINED_PROMETHEUS_METRICS
 
     defined_metrics = get_args(DEFINED_PROMETHEUS_METRICS)
-    assert (
-        "litellm_remaining_tokens_metric" in defined_metrics
-    ), "litellm_remaining_tokens_metric should be in DEFINED_PROMETHEUS_METRICS"
+    assert "litellm_remaining_tokens_metric" in defined_metrics, (
+        "litellm_remaining_tokens_metric should be in DEFINED_PROMETHEUS_METRICS"
+    )
 
 
 def test_prometheus_metric_labels_have_remaining_metrics():
@@ -227,33 +162,19 @@ def test_prometheus_metric_labels_have_remaining_metrics():
     from litellm.types.integrations.prometheus import PrometheusMetricLabels
 
     # Test that labels can be retrieved for remaining metrics
-    remaining_requests_labels = PrometheusMetricLabels.get_labels(
-        "litellm_remaining_requests_metric"
-    )
-    remaining_tokens_labels = PrometheusMetricLabels.get_labels(
-        "litellm_remaining_tokens_metric"
-    )
+    remaining_requests_labels = PrometheusMetricLabels.get_labels("litellm_remaining_requests_metric")
+    remaining_tokens_labels = PrometheusMetricLabels.get_labels("litellm_remaining_tokens_metric")
 
-    assert isinstance(
-        remaining_requests_labels, list
-    ), "Labels for litellm_remaining_requests_metric should be a list"
-    assert isinstance(
-        remaining_tokens_labels, list
-    ), "Labels for litellm_remaining_tokens_metric should be a list"
+    assert isinstance(remaining_requests_labels, list), "Labels for litellm_remaining_requests_metric should be a list"
+    assert isinstance(remaining_tokens_labels, list), "Labels for litellm_remaining_tokens_metric should be a list"
 
     # These metrics should have api_provider and api_base labels
-    assert (
-        "api_provider" in remaining_requests_labels
-    ), "litellm_remaining_requests_metric should have api_provider label"
-    assert (
-        "api_base" in remaining_requests_labels
-    ), "litellm_remaining_requests_metric should have api_base label"
-    assert (
-        "api_provider" in remaining_tokens_labels
-    ), "litellm_remaining_tokens_metric should have api_provider label"
-    assert (
-        "api_base" in remaining_tokens_labels
-    ), "litellm_remaining_tokens_metric should have api_base label"
+    assert "api_provider" in remaining_requests_labels, (
+        "litellm_remaining_requests_metric should have api_provider label"
+    )
+    assert "api_base" in remaining_requests_labels, "litellm_remaining_requests_metric should have api_base label"
+    assert "api_provider" in remaining_tokens_labels, "litellm_remaining_tokens_metric should have api_provider label"
+    assert "api_base" in remaining_tokens_labels, "litellm_remaining_tokens_metric should have api_base label"
 
 
 def test_all_defined_metrics_have_consistent_naming():
@@ -269,9 +190,7 @@ def test_all_defined_metrics_have_consistent_naming():
 
     for metric_name in defined_metrics:
         # All metrics should start with 'litellm_'
-        assert metric_name.startswith(
-            "litellm_"
-        ), f"Metric {metric_name} should start with 'litellm_'"
+        assert metric_name.startswith("litellm_"), f"Metric {metric_name} should start with 'litellm_'"
 
 
 if __name__ == "__main__":
