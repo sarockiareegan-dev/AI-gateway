@@ -32,7 +32,6 @@ from litellm.llms.custom_httpx.llm_http_handler import (
     _collect_ws_project_quota_callbacks,
     _google_genai_streaming_hidden_params,
     _has_pre_call_deployment_hook,
-    _rust_responses_websocket_enabled,
 )
 from litellm.llms.azure.videos.transformation import AzureVideoConfig
 from litellm.llms.bedrock.messages.invoke_transformations.anthropic_claude3_transformation import (
@@ -3064,15 +3063,6 @@ async def test_generic_http_handler_async_streaming_forwards_provider_response_h
 
     collected = [chunk async for chunk in response]
     assert "".join([chunk.choices[0].delta.content or "" for chunk in collected]) == "hi"
-
-
-@pytest.mark.parametrize("custom_llm_provider", ["openai", "azure", "hosted_vllm", None])
-def test_the_rust_responses_websocket_stays_on_python_with_the_switch_on(custom_llm_provider, monkeypatch):
-    from litellm.rust_bridge import configuration
-
-    configuration.reset_rust_configuration()
-    monkeypatch.setenv("LITELLM_RUST", "1")
-    assert _rust_responses_websocket_enabled(custom_llm_provider) is False
 
 
 def test_a_plain_callback_does_not_advertise_a_pre_call_deployment_hook(monkeypatch):

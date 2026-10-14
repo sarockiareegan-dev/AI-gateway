@@ -41,7 +41,7 @@ async def test_bearer_only_sdk_sync_async_requests_do_not_require_aws_credential
     empty.write_text("")
     for name in tuple(name for name in os.environ if name.startswith("AWS_")):
         monkeypatch.delenv(name, raising=False)
-    for name, value in {"AWS_CONFIG_FILE": str(empty), "AWS_SHARED_CREDENTIALS_FILE": str(empty), "AWS_EC2_METADATA_DISABLED": "true", "LITELLM_RUST": "false"}.items():
+    for name, value in {"AWS_CONFIG_FILE": str(empty), "AWS_SHARED_CREDENTIALS_FILE": str(empty), "AWS_EC2_METADATA_DISABLED": "true"}.items():
         monkeypatch.setenv(name, value)
     with wire_server(bearer_peer) as wire:
         with pytest.raises(litellm.APIConnectionError, match=r"config profile .* could not be found"):
@@ -79,7 +79,7 @@ def test_bearer_environment_reference_loads_from_db_and_yaml_and_survives_reload
         configuration["model_list"] = [{"model_name": alias, "litellm_params": parameters, "model_info": {"id": alias}}]
         path: Final = tmp_path / "bedrock.yaml"
         path.write_text(yaml.safe_dump(configuration))
-        overrides: Final = {"INTEGRATION_BEARER_TOKEN": TOKEN, "AWS_CONFIG_FILE": str(empty), "AWS_SHARED_CREDENTIALS_FILE": str(empty), "AWS_EC2_METADATA_DISABLED": "true", "LITELLM_RUST": "false"}
+        overrides: Final = {"INTEGRATION_BEARER_TOKEN": TOKEN, "AWS_CONFIG_FILE": str(empty), "AWS_SHARED_CREDENTIALS_FILE": str(empty), "AWS_EC2_METADATA_DISABLED": "true"}
         with owned_proxy(gateway, tmp_path, overrides, config=path, remove_environment=tuple(name for name in os.environ if name.startswith("AWS_"))) as candidate, candidate.scenario() as scenario:
             database_model: Final = scenario.model(**parameters)
             for generation in range(2):

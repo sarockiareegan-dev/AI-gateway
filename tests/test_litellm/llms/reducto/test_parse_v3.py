@@ -1,7 +1,7 @@
 import pytest
 
 import litellm
-from tests.test_litellm_rust.support.recording_server import RecordingServer, ResponseSpec
+from tests.test_litellm.llms.reducto.recording_server import RecordingServer, ResponseSpec
 
 
 def _reducto_parse_response() -> dict:

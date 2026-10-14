@@ -10,7 +10,7 @@ from litellm.llms.reducto.common import (
     upload_bytes_async,
     upload_bytes_sync,
 )
-from tests.test_litellm_rust.support.recording_server import RecordingServer, ResponseSpec
+from tests.test_litellm.llms.reducto.recording_server import RecordingServer, ResponseSpec
 
 
 @pytest.fixture()

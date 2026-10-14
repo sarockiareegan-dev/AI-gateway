@@ -103,7 +103,7 @@ class OCRResponse(LiteLLMPydanticObjectBase):
     model_config = {"extra": "allow"}
 
     # Define private attributes using PrivateAttr
-    _hidden_params: dict = PrivateAttr(default_factory=dict)
+    _hidden_params: dict[str, builtins.object] = PrivateAttr(default_factory=dict)
 
     def set_provider_native_response(self, native_response: Mapping[str, builtins.object]) -> None:
         """Keep the provider's own response payload alongside the normalized one."""
@@ -257,6 +257,16 @@ class BaseOCRConfig:
             headers=headers,
             **kwargs,
         )
+
+    def sign_request(
+        self,
+        headers: dict[str, builtins.object],
+        request_data: dict[str, builtins.object],
+        api_base: str,
+        litellm_params: Mapping[str, builtins.object],
+    ) -> tuple[dict[str, builtins.object], bytes | None]:
+        """Return the headers to send and, when the provider signs the body, the exact bytes to post."""
+        return headers, None
 
     def transform_ocr_response(
         self,

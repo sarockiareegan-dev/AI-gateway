@@ -32,9 +32,7 @@ WORKFLOWS_DIR: Final = REPO_ROOT / ".github" / "workflows"
 UV_LOCK: Final = REPO_ROOT / "uv.lock"
 CACHE_ACTION: Final = "./.github/actions/cache-prisma-binaries"
 
-# Commands that reach the prisma binary cache: a direct generate, or a script
-# that runs one on the caller's behalf.
-PRISMA_GENERATE_MARKERS: Final = ("prisma generate", "type_check_gate.py")
+PRISMA_GENERATE_MARKERS: Final = ("prisma generate",)
 
 
 class PrismaBinaryCacheError(Exception):

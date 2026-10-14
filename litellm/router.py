@@ -9172,7 +9172,7 @@ class Router:
         `available_models`. Models not yet registered fall back to defaults.
         """
         # Local import: AdaptiveRouter -> hooks -> classifier all import litellm
-        # internals which transitively import this module. (AGENTS.md exception clause.)
+        # internals which transitively import this module.
         from litellm.router_strategy.adaptive_router.adaptive_router import (
             AdaptiveRouter,
         )

@@ -58,9 +58,8 @@ RUN apk add --no-cache \
     gcc \
     python-3.13 \
     python-3.13-dev \
-    rust \
-    openssl \
-    openssl-dev \
+    openssl~3.6 \
+    openssl-dev~3.6 \
     nodejs \
     npm \
     libsndfile

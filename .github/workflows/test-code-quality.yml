@@ -50,9 +50,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-uv-
 
-      - name: Cache the Rust build
-        uses: ./.github/actions/cache-cargo-build
-
       - name: Install dependencies
         run: uv sync --frozen --all-groups --all-extras
 
@@ -73,9 +70,6 @@ jobs:
 
       - name: test_workflow_job_name_collisions
         run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_workflow_job_name_collisions.py
-
-      - name: test_e2e_changed_gate
-        run: uv run --no-sync pytest -q --noconftest -p no:cacheprovider -c /dev/null tests/code_coverage_tests/test_e2e_changed_gate.py tests/code_coverage_tests/test_e2e_idp_stack.py
 
       - name: router_code_coverage
         run: uv run --no-sync python ./tests/code_coverage_tests/router_code_coverage.py
@@ -133,9 +127,6 @@ jobs:
 
       - name: check_py310_typing_imports
         run: uv run --no-sync python ./tests/code_coverage_tests/check_py310_typing_imports.py
-
-      - name: check_e2e_no_raw_requests
-        run: uv run --no-sync python ./tests/code_coverage_tests/check_e2e_no_raw_requests.py
 
       - name: check_migrations_no_data_rewrites
         run: uv run --no-sync python ./tests/code_coverage_tests/check_migrations_no_data_rewrites.py

@@ -884,7 +884,7 @@ def function_setup(
     original_function: str,
     rules_obj: Rules,
     start_time: datetime.datetime,
-    *args: Any,  # positional passthrough to the wrapped LLM call (ANN401 ignored, see ruff-strict.toml)
+    *args: Any,  # positional passthrough to the wrapped LLM call
     is_async_call: bool = True,
     **kwargs: Any,  # kwargs-ok: forwarded to Logging()/callbacks, varies per call_type
 ) -> tuple[LiteLLMLoggingObject, dict[str, Any]]:
@@ -8752,6 +8752,10 @@ class ProviderConfigManager:
             return AzureSpeechAudioTranscriptionConfig()
         elif litellm.LlmProviders.DEEPGRAM == provider:
             return litellm.DeepgramAudioTranscriptionConfig()
+        elif litellm.LlmProviders.BEDROCK == provider:
+            from litellm.llms.bedrock.audio_transcription.transformation import BedrockAudioTranscriptionConfig
+
+            return BedrockAudioTranscriptionConfig()
         elif litellm.LlmProviders.ELEVENLABS == provider:
             from litellm.llms.elevenlabs.audio_transcription.transformation import (
                 ElevenLabsAudioTranscriptionConfig,
@@ -9573,6 +9577,11 @@ class ProviderConfigManager:
             from litellm.llms.cohere.ocr.transformation import CohereParseConfig
 
             return CohereParseConfig()
+
+        if provider == litellm.LlmProviders.AWS_TEXTRACT:
+            from litellm.llms.aws_textract.ocr.transformation import AWSTextractOCRConfig
+
+            return AWSTextractOCRConfig()
 
         if provider == litellm.LlmProviders.REDUCTO:
             from litellm.llms.reducto.ocr.transformation import (

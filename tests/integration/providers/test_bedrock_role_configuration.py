@@ -55,7 +55,7 @@ def test_role_reference_from_db_and_yaml_reaches_real_sts_http_and_bedrock(gatew
         overrides: Final = {
             "INTEGRATION_ROLE_ARN": role, "AWS_ACCESS_KEY_ID": "AKIAINTEGRATION000001", "AWS_SECRET_ACCESS_KEY": "synthetic-source-secret-key-for-testing",
             "AWS_CONFIG_FILE": str(empty), "AWS_SHARED_CREDENTIALS_FILE": str(empty), "AWS_EC2_METADATA_DISABLED": "true",
-            "AWS_ENDPOINT_URL_STS": authority.url, "AWS_DEFAULT_REGION": "us-east-1", "LITELLM_RUST": "false",
+            "AWS_ENDPOINT_URL_STS": authority.url, "AWS_DEFAULT_REGION": "us-east-1",
         }
         with owned_proxy(gateway, tmp_path, overrides, config=path, remove_environment=tuple(name for name in os.environ if name.startswith("AWS_"))) as candidate, candidate.scenario() as scenario:
             database_model: Final = scenario.model(**{**parameters, "api_key": None, "aws_session_name": "integration-db-session"})

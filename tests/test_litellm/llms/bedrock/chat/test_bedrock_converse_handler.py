@@ -18,7 +18,6 @@ from botocore.exceptions import ClientError
 
 from litellm.llms.bedrock.chat.converse_handler import BedrockConverseLLM
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
-from litellm.rust_bridge import configuration
 from litellm.types.utils import ModelResponse
 from tests.test_litellm.llms.bedrock.event_loop_probe import EventLoopProbe
 
@@ -27,15 +26,6 @@ RESOLVED_CREDENTIALS = Credentials(
     secret_key="resolved-secret",
     token="resolved-token",
 )
-
-
-@pytest.fixture(autouse=True)
-def reset_rust_configuration(monkeypatch):
-    monkeypatch.setenv("LITELLM_RUST", "1")
-    configuration.reset_rust_configuration()
-    yield
-    configuration.reset_rust_configuration()
-
 
 def _completion_kwargs(**overrides):
     kwargs = {
@@ -146,13 +136,8 @@ async def test_async_completion_signs_off_the_event_loop(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rust_enabled", (False, True))
-async def test_python_only_async_dispatch_refreshes_credentials_off_the_event_loop(
-    monkeypatch: pytest.MonkeyPatch, rust_enabled: bool
-) -> None:
+async def test_async_dispatch_refreshes_credentials_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
-    monkeypatch.setenv("LITELLM_RUST", "1" if rust_enabled else "0")
-    configuration.rust(rust_enabled)
     probe: Final = EventLoopProbe()
     release: Final = asyncio.create_task(probe.release_refresh_from_the_loop())
 

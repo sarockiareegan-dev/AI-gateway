@@ -742,7 +742,7 @@ def get_bedrock_tool_name(response_tool_name: str) -> str:
 _BEDROCK_GLOBAL_REGIONS: list[str] | None = None
 
 
-def _get_all_bedrock_regions() -> list[str]:
+def get_all_bedrock_regions() -> list[str]:
     """Get all Bedrock regions, cached at module level."""
     global _BEDROCK_GLOBAL_REGIONS
     if _BEDROCK_GLOBAL_REGIONS is None:
@@ -863,7 +863,7 @@ def get_bedrock_base_model(model: str) -> str:
 
     if potential_region in get_bedrock_cross_region_inference_regions():
         return model.split(".", 1)[1]
-    elif alt_potential_region in _get_all_bedrock_regions() and len(model.split("/", 1)) > 1:
+    elif alt_potential_region in get_all_bedrock_regions() and len(model.split("/", 1)) > 1:
         return model.split("/", 1)[1]
 
     return model

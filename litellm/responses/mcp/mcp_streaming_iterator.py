@@ -600,7 +600,7 @@ class MCPEnhancedStreamingIterator(BaseResponsesAPIStreamingIterator):
         """Create the initial response iterator by making the first LLM call"""
         try:
             # Import the core aresponses function that doesn't have MCP logic
-            from litellm.responses.main import aresponses  # noqa: TID251  # core call without MCP logic
+            from litellm.responses.main import aresponses
 
             # Make the initial response API call - but avoid the MCP wrapper
             params: Final[dict[str, object]] = self.original_request_params.copy()
@@ -765,7 +765,7 @@ class MCPEnhancedStreamingIterator(BaseResponsesAPIStreamingIterator):
             self.base_iterator = None
             return
 
-        from litellm.responses.main import aresponses  # noqa: TID251  # follow-up call without MCP logic
+        from litellm.responses.main import aresponses
         from litellm.responses.mcp.litellm_proxy_mcp_handler import (
             LiteLLM_Proxy_MCP_Handler,
         )
