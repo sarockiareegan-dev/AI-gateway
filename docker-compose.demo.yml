@@ -1,0 +1,8 @@
+# docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+# Needs GROQ_API_KEY, LITELLM_MASTER_KEY and AGAMI_LICENSE in .env
+services:
+  litellm:
+    image: agami-gateway:demo
+    volumes:
+      - ./agami_demo_config.yaml:/app/config.yaml:ro
+    command: ["--config=/app/config.yaml", "--port", "4000"]
