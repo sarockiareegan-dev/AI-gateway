@@ -11,7 +11,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #4 | `01617ca` | Rust extension, e2e harness and LiteLLM repo tooling removed, Textract OCR and Bedrock transcription ported to Python |
 | #5 | `5deb495` | Managed files hook rebuilt |
 | #6 | `2e1f70f` | This work report |
-| #7 | pending | Guardrail owner (`team_id`, `organization_id`) in the guardrail list and info responses, guardrail info scoped like the list |
+| #7 | `dcdd0e4` | Guardrail owner (`team_id`, `organization_id`) in the guardrail list and info responses, guardrail info scoped like the list |
+| #8 | pending | Demo config and Docker Compose override committed |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -642,7 +643,7 @@ Why: those tools needed LiteLLM's accounts and secrets, and they gated our PRs o
 
 ## 12. Running the demo
 
-Local files (not committed): `agami_demo_config.yaml`, `docker-compose.demo.yml`, `.env`
+Files: `agami_demo_config.yaml` and `docker-compose.demo.yml` are committed in the repo root (#8). `.env` is local only and never committed
 
 `.env` needs (never commit or print these): `LITELLM_MASTER_KEY`, `GROQ_API_KEY`, `DATABASE_URL` (PostgreSQL), `AGAMI_LICENSE`
 
@@ -669,7 +670,13 @@ $env:PYTHONPATH='.'
 
 (`litellm` loads `.env` on import.) Open `http://localhost:4000/ui`, log in with the master key, check `/health/license`
 
-Docker: start Docker Desktop, then `docker compose -f docker-compose.demo.yml up --build`
+Docker: start Docker Desktop, then
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+```
+
+`docker-compose.demo.yml` is an override on top of `docker-compose.yml`. It renames the image to `agami-gateway:demo`, so Compose builds it from our `Dockerfile` instead of pulling LiteLLM's published image, and mounts `agami_demo_config.yaml` as `/app/config.yaml`. The base file supplies the Postgres container (`db`), port 4000, `env_file: .env` and the health check. Its `environment.DATABASE_URL` wins over the `DATABASE_URL` in `.env`, so the container uses the Compose database, not your local one. The first build takes several minutes (it builds the UI too)
 
 Demo script for a manager:
 
@@ -777,7 +784,7 @@ rg "agami-org/" litellm agami                      # org model naming
 - Batch cost poller for managed batches
 - `managed_vector_stores` hook
 - Show the guardrail owner in the Admin UI (the API returns it since #7)
-- Docker Compose demo check (needs Docker Desktop running), then commit the demo files
+- Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
 
 `PROGRESS.md` is the source of truth for this list. When an item is done, tick it there and add its explanation to the matching section here, in the same PR
