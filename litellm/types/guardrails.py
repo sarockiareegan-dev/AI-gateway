@@ -1289,6 +1289,8 @@ class GuardrailInfoResponse(BaseModel):
     guardrail_name: str
     litellm_params: BaseLitellmParams | None = None
     guardrail_info: dict | None = None
+    team_id: str | None = None
+    organization_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     guardrail_definition_location: GUARDRAIL_DEFINITION_LOCATION = GUARDRAIL_DEFINITION_LOCATION.CONFIG

@@ -215,7 +215,7 @@ async def test_get_guardrail_info_404s_stale_db_backed_entry(
     mock_in_memory_handler.get_source.return_value = "db"
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_guardrail_info("stale-db-id")
+        await get_guardrail_info("stale-db-id", MOCK_ADMIN_USER)
 
     assert exc_info.value.status_code == 404
     assert "not found" in str(exc_info.value.detail)
@@ -493,11 +493,50 @@ async def test_list_config_guardrails_shows_guardrails_only_to_their_team_or_org
 
 
 @pytest.mark.asyncio
+async def test_list_guardrails_v2_returns_each_guardrails_owner(mocker):
+    mock_prisma_client = mocker.Mock()
+    mock_prisma_client.db.litellm_guardrailstable.find_many = AsyncMock(return_value=list(_SCOPED_GUARDRAILS))
+    mock_in_memory_handler = mocker.Mock()
+    mock_in_memory_handler.list_in_memory_guardrails.return_value = []
+    mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    mocker.patch("litellm.proxy.guardrails.guardrail_registry.IN_MEMORY_GUARDRAIL_HANDLER", mock_in_memory_handler)
+
+    response = await list_guardrails_v2(user_api_key_dict=MOCK_ADMIN_USER)
+
+    assert {g.guardrail_id: (g.team_id, g.organization_id) for g in response.guardrails} == {
+        g["guardrail_id"]: (g["team_id"], g["organization_id"]) for g in _SCOPED_GUARDRAILS
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("caller", "visible_ids"), _GUARDRAIL_READER_CASES)
+@pytest.mark.parametrize("guardrail", _SCOPED_GUARDRAILS, ids=lambda g: g["guardrail_id"])
+async def test_get_guardrail_info_follows_the_list_visibility(mocker, caller, visible_ids, guardrail):
+    mock_prisma_client = mocker.Mock()
+    mock_prisma_client.db.litellm_guardrailstable.find_unique = AsyncMock(return_value=guardrail)
+    mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    mocker.patch(
+        "litellm.proxy.guardrails.guardrail_endpoints._get_caller_user_row",
+        AsyncMock(side_effect=_member_of_org_a_and_team_1),
+    )
+
+    if guardrail["guardrail_id"] not in visible_ids:
+        with pytest.raises(HTTPException) as exc_info:
+            await get_guardrail_info(guardrail["guardrail_id"], caller)
+        assert exc_info.value.status_code == 404
+        return
+
+    response = await get_guardrail_info(guardrail["guardrail_id"], caller)
+
+    assert (response.team_id, response.organization_id) == (guardrail["team_id"], guardrail["organization_id"])
+
+
+@pytest.mark.asyncio
 async def test_get_guardrail_info_from_db(mocker, mock_prisma_client):
     """Test getting guardrail info from DB"""
     mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
 
-    response = await get_guardrail_info("test-db-guardrail")
+    response = await get_guardrail_info("test-db-guardrail", MOCK_ADMIN_USER)
 
     assert response.guardrail_id == "test-db-guardrail"
     assert response.guardrail_name == "Test DB Guardrail"
@@ -521,7 +560,7 @@ async def test_get_guardrail_info_from_config(
         return_value=None
     )
 
-    response = await get_guardrail_info("test-config-guardrail")
+    response = await get_guardrail_info("test-config-guardrail", MOCK_ADMIN_USER)
 
     assert response.guardrail_id == "test-config-guardrail"
     assert response.guardrail_name == "Test Config Guardrail"
@@ -547,7 +586,7 @@ async def test_get_guardrail_info_not_found(
     mock_in_memory_handler.get_guardrail_by_id.return_value = None
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_guardrail_info("non-existent-guardrail")
+        await get_guardrail_info("non-existent-guardrail", MOCK_ADMIN_USER)
 
     assert exc_info.value.status_code == 404
     assert "not found" in str(exc_info.value.detail)
@@ -612,7 +651,7 @@ async def test_get_guardrail_info_without_prisma_returns_config_guardrail(
         mock_in_memory_handler,
     )
 
-    response = await get_guardrail_info("test-config-guardrail")
+    response = await get_guardrail_info("test-config-guardrail", MOCK_ADMIN_USER)
 
     assert response.guardrail_id == "test-config-guardrail"
     assert response.guardrail_name == "Test Config Guardrail"
@@ -631,7 +670,7 @@ async def test_get_guardrail_info_without_prisma_404s_unknown_id(
     mock_in_memory_handler.get_guardrail_by_id.return_value = None
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_guardrail_info("non-existent-guardrail")
+        await get_guardrail_info("non-existent-guardrail", MOCK_ADMIN_USER)
 
     assert exc_info.value.status_code == 404
 
@@ -1847,7 +1886,7 @@ async def test_get_guardrail_info_endpoint_config_guardrail(mocker):
     )
 
     # Call endpoint and expect GuardrailInfoResponse
-    result = await get_guardrail_info(guardrail_id="test-config-guardrail")
+    result = await get_guardrail_info(guardrail_id="test-config-guardrail", user_api_key_dict=MOCK_ADMIN_USER)
 
     # Verify the response is of the correct type
     assert isinstance(result, GuardrailInfoResponse)
@@ -1885,7 +1924,7 @@ async def test_get_guardrail_info_endpoint_db_guardrail(mocker):
     )
 
     # Call endpoint and expect GuardrailInfoResponse
-    result = await get_guardrail_info(guardrail_id="test-db-guardrail")
+    result = await get_guardrail_info(guardrail_id="test-db-guardrail", user_api_key_dict=MOCK_ADMIN_USER)
 
     # Verify the response is of the correct type
     assert isinstance(result, GuardrailInfoResponse)
