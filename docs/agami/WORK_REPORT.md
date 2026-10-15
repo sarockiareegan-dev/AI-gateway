@@ -18,7 +18,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #11 | `f5c17dd` | Managed vector stores hook rebuilt |
 | #12 | `27dfee6` | Admin UI rebrand, first part (text, links, brand constants) |
 | #13 | `b01b46a` | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
-| #14 | pending | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
+| #14 | `2bf6e14` | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
+| #15 | pending | Role labels and descriptions |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -771,6 +772,17 @@ Bundle: `litellm/proxy/_experimental/out` is rebuilt with `npm run build` and co
 
 Tests: new `test_email_branding.py` (support contact default, logo URL from `PROXY_BASE_URL`, empty without it), two `licensed_features` tests, `licenseFeatures.test.ts`, and updated license error, deleted-page and Team-BYOK tooltip assertions. The UI tests related to the changed files pass
 
+### 9.11 Role labels and descriptions (#15)
+
+The global role picker (Users page, invite and edit) reads `/user/available_roles`, which returns `ui_label` and `description` from `LitellmUserRoles` in `litellm/proxy/_types.py`. The descriptions were upstream text, so they now describe the Iagami roles:
+
+- Admin (All Permissions): manages the whole gateway, every organization, team, user, key and setting
+- Organization Viewer (View Only): read-only view of the teams, users, keys and spend in the organizations they belong to
+- Internal User (Create/Delete/View): their own keys and spend. A team admin (a team membership role, not a global one) also manages the team's members and keys
+- Internal User (View Only): their own keys and spend
+
+`org_admin` gets the label "Organization Admin" and a description, but stays out of the picker: it is a membership role set per organization under Members, like team admin is set per team. `test_user_role_labels.py` checks every role the UI shows has a label and a description without LiteLLM branding
+
 ---
 
 ## 10. Dependency bumps (PR #2)
@@ -938,6 +950,7 @@ rg "agami-org/" litellm agami                      # org model naming
 
 ## 16. What is still open
 
+- Virtual key requests: members request a team key, the team admin approves or rejects it
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
