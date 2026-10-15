@@ -6,6 +6,7 @@ from .autorouter_baseline_cache import AutoRouterBaselineCache
 from .cache_control_check import _PROXY_CacheControlCheck
 from .litellm_skills import SkillsInjectionHook
 from .managed_files import _PROXY_LiteLLMManagedFiles
+from .managed_vector_stores import _PROXY_LiteLLMManagedVectorStores
 from .max_budget_per_session_limiter import _PROXY_MaxBudgetPerSessionHandler
 from .max_iterations_limiter import _PROXY_MaxIterationsHandler
 from .parallel_request_limiter import _PROXY_MaxParallelRequestsHandler
@@ -25,6 +26,7 @@ PROXY_HOOKS: Final = {
     "prompt_cache_prediction": PromptCacheObserver,
     "autorouter_baseline_cache": AutoRouterBaselineCache,
     "managed_files": _PROXY_LiteLLMManagedFiles,
+    "managed_vector_stores": _PROXY_LiteLLMManagedVectorStores,
 }
 
 ## FEATURE FLAG HOOKS ##
