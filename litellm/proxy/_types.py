@@ -188,10 +188,11 @@ class LitellmUserRoles(str, enum.Enum):
         Descriptions for the enum values
         """
         descriptions: Final = {
-            "proxy_admin": "admin over litellm proxy, has all permissions",
-            "proxy_admin_viewer": "view the teams, users and spend of the organizations they belong to",
-            "internal_user": "view/create/delete their own keys, view their own spend",
-            "internal_user_viewer": "view their own keys, view their own spend",
+            "proxy_admin": "manage the whole Iagami gateway: every organization, team, user, key and setting",
+            "proxy_admin_viewer": "read-only view of the teams, users, keys and spend in the organizations they belong to",
+            "org_admin": "manage their organizations, including teams and members. Set per organization under Members",
+            "internal_user": "create, view and delete their own keys, view their own spend. A team admin also manages the team's members and keys",
+            "internal_user_viewer": "view their own keys and spend",
             "team": "team scope used for JWT auth",
             "customer": "customer",
         }
@@ -205,6 +206,7 @@ class LitellmUserRoles(str, enum.Enum):
         ui_labels: Final = {
             "proxy_admin": "Admin (All Permissions)",
             "proxy_admin_viewer": "Organization Viewer (View Only)",
+            "org_admin": "Organization Admin",
             "internal_user": "Internal User (Create/Delete/View)",
             "internal_user_viewer": "Internal User (View Only)",
             "team": "Team",
