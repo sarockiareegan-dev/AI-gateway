@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import React, { useCallback, useEffect, useState } from "react";
 import { CircleHelp } from "lucide-react";
 import { z } from "zod/v4";
@@ -109,7 +110,7 @@ const PromptCompressionTab: React.FC<PromptCompressionTabProps> = ({ accessToken
             Headroom is a native Iagami guardrail that compresses your prompts before they reach the model, so you pay
             for fewer input tokens. The tokens it removes are priced and shown on the Usage tab as compression savings.{" "}
             <a
-              href="https://docs.litellm.ai/docs/proxy/headroom"
+              href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/headroom")}
               target="_blank"
               rel="noopener noreferrer"
               className="text-info underline"

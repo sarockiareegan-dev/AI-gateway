@@ -1,3 +1,4 @@
+import { brandSupportUrl } from "@/lib/brand";
 import { formatNumberWithCommas, getSpendString } from "@/utils/dataUtils";
 
 export type UsageUnits = Readonly<Record<string, number>>;
@@ -76,5 +77,5 @@ export const pricingIssueUrl = (unpriced: UsageUnits, provider?: string): string
     title: `[Feature]: add ${subject} pricing to the cost map`,
     "the-feature": `Iagami has no price for these ${subject} usage units, so the Guardrails Monitor leaves them out of the cost: ${Object.keys(unpriced).join(", ")}`,
   });
-  return `https://github.com/BerriAI/litellm/issues/new?${params.toString()}`;
+  return brandSupportUrl(`https://github.com/BerriAI/litellm/issues/new?${params.toString()}`);
 };

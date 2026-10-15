@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { UiLoadingSpinner } from "@/components/ui/ui-loading-spinner";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getProxyBaseUrl, getGlobalLitellmHeaderName } from "@/components/networking";
+import { setBrandLinks } from "@/lib/brand";
 import { toast } from "@/lib/toast";
 
 interface UIThemeSettingsProps {
@@ -14,11 +15,23 @@ interface UIThemeSettingsProps {
   accessToken: string | null;
 }
 
+const EMPTY_THEME = {
+  logo_url: null,
+  logo_url_dark: null,
+  favicon_url: null,
+  docs_url: null,
+  support_url: null,
+  license_contact_email: null,
+};
+
 const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, accessToken }) => {
   const { setLogoUrl, setLogoUrlDark, setFaviconUrl } = useTheme();
   const [logoUrlInput, setLogoUrlInput] = useState<string>("");
   const [logoUrlDarkInput, setLogoUrlDarkInput] = useState<string>("");
   const [faviconUrlInput, setFaviconUrlInput] = useState<string>("");
+  const [docsUrlInput, setDocsUrlInput] = useState<string>("");
+  const [supportUrlInput, setSupportUrlInput] = useState<string>("");
+  const [licenseEmailInput, setLicenseEmailInput] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -27,11 +40,14 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
     }
   }, [accessToken]);
 
+  const themeSettingsUrl = (path: string) => {
+    const proxyBaseUrl = getProxyBaseUrl();
+    return proxyBaseUrl ? `${proxyBaseUrl}${path}` : path;
+  };
+
   const fetchThemeSettings = async () => {
     try {
-      const proxyBaseUrl = getProxyBaseUrl();
-      const url = proxyBaseUrl ? `${proxyBaseUrl}/get/ui_theme_settings` : "/get/ui_theme_settings";
-      const response = await fetch(url, {
+      const response = await fetch(themeSettingsUrl("/get/ui_theme_settings"), {
         method: "GET",
         headers: {
           [getGlobalLitellmHeaderName()]: `Bearer ${accessToken}`,
@@ -43,6 +59,9 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
         setLogoUrlInput(data.values?.logo_url || "");
         setLogoUrlDarkInput(data.values?.logo_url_dark || "");
         setFaviconUrlInput(data.values?.favicon_url || "");
+        setDocsUrlInput(data.values?.docs_url || "");
+        setSupportUrlInput(data.values?.support_url || "");
+        setLicenseEmailInput(data.values?.license_contact_email || "");
         setLogoUrl(data.values?.logo_url || null);
         setLogoUrlDark(data.values?.logo_url_dark || null);
         setFaviconUrl(data.values?.favicon_url || null);
@@ -52,28 +71,33 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
     }
   };
 
+  const patchThemeSettings = (body: Record<string, string | null>) =>
+    fetch(themeSettingsUrl("/update/ui_theme_settings"), {
+      method: "PATCH",
+      headers: {
+        [getGlobalLitellmHeaderName()]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
   const handleSave = async () => {
     setLoading(true);
     try {
-      const proxyBaseUrl = getProxyBaseUrl();
-      const url = proxyBaseUrl ? `${proxyBaseUrl}/update/ui_theme_settings` : "/update/ui_theme_settings";
-      const response = await fetch(url, {
-        method: "PATCH",
-        headers: {
-          [getGlobalLitellmHeaderName()]: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          logo_url: logoUrlInput || null,
-          logo_url_dark: logoUrlDarkInput || null,
-          favicon_url: faviconUrlInput || null,
-        }),
+      const response = await patchThemeSettings({
+        logo_url: logoUrlInput || null,
+        logo_url_dark: logoUrlDarkInput || null,
+        favicon_url: faviconUrlInput || null,
+        docs_url: docsUrlInput.trim() || null,
+        support_url: supportUrlInput.trim() || null,
+        license_contact_email: licenseEmailInput.trim() || null,
       });
       if (response.ok) {
         toast.success("Theme settings updated successfully!");
         setLogoUrl(logoUrlInput || null);
         setLogoUrlDark(logoUrlDarkInput || null);
         setFaviconUrl(faviconUrlInput || null);
+        setBrandLinks({ docsUrl: docsUrlInput, supportUrl: supportUrlInput, licenseContactEmail: licenseEmailInput });
       } else {
         throw new Error("Failed to update settings");
       }
@@ -89,21 +113,16 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
     setLogoUrlInput("");
     setLogoUrlDarkInput("");
     setFaviconUrlInput("");
+    setDocsUrlInput("");
+    setSupportUrlInput("");
+    setLicenseEmailInput("");
     setLogoUrl(null);
     setLogoUrlDark(null);
     setFaviconUrl(null);
+    setBrandLinks({});
     setLoading(true);
     try {
-      const proxyBaseUrl = getProxyBaseUrl();
-      const url = proxyBaseUrl ? `${proxyBaseUrl}/update/ui_theme_settings` : "/update/ui_theme_settings";
-      const response = await fetch(url, {
-        method: "PATCH",
-        headers: {
-          [getGlobalLitellmHeaderName()]: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ logo_url: null, logo_url_dark: null, favicon_url: null }),
-      });
+      const response = await patchThemeSettings(EMPTY_THEME);
       if (response.ok) {
         toast.success("Theme settings reset to default!");
       } else {
@@ -126,7 +145,7 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
       <div className="mb-8">
         <h1 className="mb-2 text-2xl font-bold">UI Theme Customization</h1>
         <p className="text-sm text-muted-foreground">
-          Customize your Iagami admin dashboard with a custom logo and favicon.
+          Customize your Iagami admin dashboard with a custom logo, favicon, and help links.
         </p>
       </div>
       <Card>
@@ -145,7 +164,7 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
               }}
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              Enter a URL for your custom logo or leave empty for default
+              Enter a URL for your custom logo or leave empty for the Iagami logo
             </p>
           </div>
           <div>
@@ -182,18 +201,66 @@ const UIThemeSettings: React.FC<UIThemeSettingsProps> = ({ userID, userRole, acc
               Enter a URL for your custom favicon (.ico, .png, or .svg) or leave empty for default
             </p>
           </div>
-          <div className="flex gap-3 pt-4">
-            <Button onClick={handleSave} disabled={loading}>
-              {loading && <UiLoadingSpinner className="size-4" />}
-              Save Changes
-            </Button>
-            <Button variant="outline" onClick={handleReset} disabled={loading}>
-              {loading && <UiLoadingSpinner className="size-4" />}
-              Reset to Default
-            </Button>
+        </CardContent>
+      </Card>
+      <h2 className="mb-2 mt-8 text-lg font-semibold">Links and contact</h2>
+      <Card>
+        <CardContent className="space-y-6">
+          <div>
+            <Label htmlFor="ui-theme-docs-url" className="mb-2">
+              Documentation URL
+            </Label>
+            <Input
+              id="ui-theme-docs-url"
+              placeholder="https://docs.example.com"
+              value={docsUrlInput}
+              onChange={(event) => setDocsUrlInput(event.target.value)}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Where the Docs button and help links open. Leave empty to keep the upstream documentation pages
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="ui-theme-support-url" className="mb-2">
+              Support URL
+            </Label>
+            <Input
+              id="ui-theme-support-url"
+              placeholder="https://support.example.com or mailto:support@example.com"
+              value={supportUrlInput}
+              onChange={(event) => setSupportUrlInput(event.target.value)}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Where &quot;report an issue&quot; and feedback links open. Accepts an https:// link or a mailto: address
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="ui-theme-license-email" className="mb-2">
+              License contact email
+            </Label>
+            <Input
+              id="ui-theme-license-email"
+              type="email"
+              placeholder="sales@example.com"
+              value={licenseEmailInput}
+              onChange={(event) => setLicenseEmailInput(event.target.value)}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Shown when the license is about to expire, so users know whom to contact
+            </p>
           </div>
         </CardContent>
       </Card>
+      <div className="flex gap-3 pt-6">
+        <Button onClick={handleSave} disabled={loading}>
+          {loading && <UiLoadingSpinner className="size-4" />}
+          Save Changes
+        </Button>
+        <Button variant="outline" onClick={handleReset} disabled={loading}>
+          {loading && <UiLoadingSpinner className="size-4" />}
+          Reset to Default
+        </Button>
+      </div>
     </div>
   );
 };

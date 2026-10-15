@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import { Edit, ExternalLink, Info, KeyRound, PlugZap, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -165,7 +166,7 @@ export default function CyberArk() {
               <AlertTitle>Configuration changes are hot-reloaded across all proxy instances</AlertTitle>
               <AlertDescription>
                 <a
-                  href="https://docs.litellm.ai/docs/secret_managers/cyberark"
+                  href={brandDocsUrl("https://docs.litellm.ai/docs/secret_managers/cyberark")}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1"

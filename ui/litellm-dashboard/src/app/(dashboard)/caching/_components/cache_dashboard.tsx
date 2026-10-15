@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import type { DateRangePickerValue } from "@/components/shared/date_picker_types";
 import React, { useEffect, useState } from "react";
 import { toast } from "@/lib/toast";
@@ -184,7 +185,7 @@ const CacheDashboard: React.FC<CachePageProps> = ({ accessToken, token, userRole
             <p className="text-sm text-muted-foreground">
               Analytics for Iagami&apos;s{" "}
               <a
-                href="https://docs.litellm.ai/docs/proxy/caching"
+                href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/caching")}
                 target="_blank"
                 rel="noreferrer"
                 className="underline"
@@ -193,7 +194,7 @@ const CacheDashboard: React.FC<CachePageProps> = ({ accessToken, token, userRole
               </a>{" "}
               (e.g. Redis / in-memory): requests answered from cache without calling the LLM provider. Provider-side{" "}
               <a
-                href="https://docs.litellm.ai/docs/completion/prompt_caching"
+                href={brandDocsUrl("https://docs.litellm.ai/docs/completion/prompt_caching")}
                 target="_blank"
                 rel="noreferrer"
                 className="underline"

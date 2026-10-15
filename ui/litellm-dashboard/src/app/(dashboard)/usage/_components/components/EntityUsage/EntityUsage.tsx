@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import useTeams from "@/app/(dashboard)/hooks/useTeams";
 import { BarChart, DonutChart } from "@/components/shared/charts";
 import { DataTable } from "@/components/shared/DataTable";
@@ -493,7 +494,7 @@ const EntityUsage: React.FC<EntityUsageProps> = ({
               <div className="flex items-center text-sm text-muted-foreground">
                 <span>Get Started by Tracking cost per {capitalizedEntityLabel} </span>
                 <a
-                  href="https://docs.litellm.ai/docs/proxy/enterprise#spend-tracking"
+                  href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/enterprise#spend-tracking")}
                   className="text-info hover:text-info/80 ml-1"
                 >
                   here

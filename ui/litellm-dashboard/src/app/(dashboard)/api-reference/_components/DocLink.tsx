@@ -1,6 +1,7 @@
 import React from "react";
 import { ExternalLink } from "lucide-react";
 
+import { brandDocsUrl } from "@/lib/brand";
 import { cn } from "@/lib/cva.config";
 
 export type DocLinkProps = {
@@ -11,7 +12,7 @@ export type DocLinkProps = {
 const DocLink = ({ href, className }: DocLinkProps) => {
   return (
     <a
-      href={href}
+      href={href && brandDocsUrl(href)}
       target="_blank"
       rel="noopener noreferrer"
       title="Open documentation in a new tab"

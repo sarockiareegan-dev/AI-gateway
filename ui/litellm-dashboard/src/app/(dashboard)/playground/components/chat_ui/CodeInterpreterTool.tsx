@@ -1,3 +1,4 @@
+import { brandSupportUrl } from "@/lib/brand";
 import React from "react";
 import { toast } from "@/lib/toast";
 import { Code, Info, TriangleAlert } from "lucide-react";
@@ -76,7 +77,7 @@ const CodeInterpreterTool: React.FC<CodeInterpreterToolProps> = ({
             <div className="text-xs text-muted-foreground">
               <span>Code Interpreter is currently only supported for OpenAI models. </span>
               <a
-                href={GITHUB_FEATURE_REQUEST_URL}
+                href={brandSupportUrl(GITHUB_FEATURE_REQUEST_URL)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-info hover:text-info/80 underline"

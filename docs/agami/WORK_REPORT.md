@@ -16,7 +16,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #9 | `e70ef8d` | Guardrail owner shown in the Admin UI table and overview |
 | #10 | `4ad7fb9` | Batch cost poller rebuilt |
 | #11 | `f5c17dd` | Managed vector stores hook rebuilt |
-| #12 | pending | Admin UI rebrand, first part (text, links, brand constants) |
+| #12 | `27dfee6` | Admin UI rebrand, first part (text, links, brand constants) |
+| #13 | pending | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -709,23 +710,43 @@ Goal: the Admin UI (`ui/litellm-dashboard`) should present itself as Iagami (the
 
 Files:
 
-- `src/lib/brand.ts`: `BRAND_NAME` ("Iagami"), `PRODUCT_NAME` ("Iagami Gateway") and `LICENSE_CONTACT_EMAIL` (empty until a contact address is chosen). The navbar logo alt text, the sidebar account menu, the "Thanks for using" tooltip and the license expiry banner read these
+- `src/lib/brand.ts`: `BRAND_NAME` ("Iagami") and `PRODUCT_NAME` ("Iagami Gateway"). The navbar logo alt text, the sidebar account menu and the "Thanks for using" tooltip read these. The license contact email moved to the UI Theme page in #13 (see 9.9)
 - About 80 components: user-facing prose "LiteLLM" became "Iagami", "LiteLLM Proxy" became "Iagami Gateway", and the "LiteLLM Enterprise feature" notices now say the feature needs an Iagami license and to ask the administrator, without LiteLLM's pricing link. Page title "Iagami Dashboard", login and loading screens say "Iagami"
 - Removed: the LiteLLM Slack and GitHub buttons (`CommunityEngagementButtons`), the LiteLLM blog dropdown (`BlogDropdown`, `useBlogPosts`, `useDisableBlogPosts` and the "Hide Blog Posts" toggles), and the version badge links to LiteLLM's release notes (the badge stays, unlinked)
-- The license expiry banner showed `sales@berri.ai`; it now says to contact your Iagami license provider, or shows `LICENSE_CONTACT_EMAIL` once that is set
+- The license expiry banner showed `sales@berri.ai`; it now says to contact your Iagami license provider, or shows the license contact email once an admin sets it (9.9)
 
 Kept on purpose: terms that name an API concept or a value the backend matches on, such as "LiteLLM Model Name" and "LiteLLM Params" (the `litellm_params` fields), the guardrail provider values "LiteLLM Content Filter" and "LiteLLM LLM as a Judge", and the pgvector provider label. Code comments were not touched
 
 How it was done: a script replaced `\bLiteLLM\b` in non-comment lines of `src/**/*.ts(x)` (skipping tests and the generated `schema.d.ts`) and left lines containing the protected terms above. The same replacement ran on the 17 test files that asserted the old text
 
-How to change the brand name: edit `brand.ts` for the shared spots, then search the UI for "Agami" for the prose
+How to change the brand name: edit `brand.ts` for the shared spots, then search the UI for "Iagami" for the prose
 
-Not done yet (needs input or a decision):
+The logo, favicon and links listed as not done here were finished in #13, see 9.9
 
-- Logo and favicon: the default logos are `litellm/proxy/logo.jpg` and `logo_dark.png` (served by `/get_image`), the favicons are `ui/litellm-dashboard/src/app/favicon.ico`, `litellm/proxy/_experimental/out/favicon.ico` and `litellm/proxy/swagger/favicon.*`. Until replaced, operators can already override them at runtime with `UI_LOGO_PATH`, `UI_LOGO_PATH_DARK`, `LITELLM_FAVICON_URL` or the UI Theme page
-- About 210 links to `docs.litellm.ai` and about 15 to LiteLLM's GitHub issues and discussions, plus `berri.ai` example emails in the email settings and `product@berri.ai` in the agent builder
-- The prebuilt UI in `litellm/proxy/_experimental/out` (used when running from source) still says LiteLLM until it is rebuilt; Docker images build the UI from source and are already rebranded
-- Per-feature UI gating: the UI still reads one `premium_user` flag
+### 9.9 Admin UI rebrand, second part (#13)
+
+Goal: ship the Iagami logo, favicon and colour, and let an admin choose where the UI's docs, support and license-contact links point without a rebuild
+
+Assets (made from the logo and icon the user supplied, by a throwaway Pillow script):
+
+- `litellm/proxy/logo_dark.png`: the Iagami wordmark (purple mark and text on a transparent background), trimmed to 78x38
+- `litellm/proxy/logo.jpg`: the same wordmark flattened on white, since the light default must stay a JPEG for `/get_image`, the non-root Dockerfile and the logo tests. Both themes therefore show the same logo
+- Favicons: the Iagami mark cut from the supplied icon (its opaque pixels, so the pink backdrop drops out), centred on a transparent square and saved as a 16 to 256 px `.ico` to `ui/litellm-dashboard/src/app/favicon.ico`, `litellm/proxy/_experimental/out/favicon.ico` and `litellm/proxy/swagger/favicon.ico`, plus a 256 px `swagger/favicon.png`
+
+Colour: `src/app/globals.css` sets `--primary` and `--sidebar-primary` to the brand purple `#842988` (`oklch(0.458 0.169 326.12)`) with white text, the focus ring to `#c77dcb`, and the hover accent to a pale purple. Dark mode uses `#c77dcb` for `--primary` so purple text stays readable on dark grey, and a deep purple for the active sidebar item
+
+Configurable links:
+
+- Backend: `UIThemeConfig` in `proxy_setting_endpoints.py` gains `docs_url` (http or https), `support_url` (http, https or `mailto:`) and `license_contact_email` (a single address). `/update/ui_theme_settings` validates them (400 naming the field otherwise) and stores them in `ui_theme_config`. `/get/ui_theme_settings` already returns everything stored there, publicly, like the logo
+- UI: `src/lib/brand.ts` keeps the three values in a small store that `ThemeContext` fills on load and the UI Theme page refreshes on save. `brandDocsUrl(url)` returns the configured docs URL for any `https://docs.litellm.ai...` URL and leaves other URLs alone; `brandSupportUrl(url)` does the same for `https://github.com/BerriAI/litellm/...`. `useBrandLinks()` gives components a re-rendering view (the navbar Docs link and the license expiry banner use it)
+- A script wrapped every `docs.litellm.ai` and LiteLLM issue or discussion link in `src` (about 45 files), and `DocsMenu`, the API reference `DocLink`, the Fallbacks docs button and the guardrail pricing issue link were done by hand. The agent builder's `product@berri.ai` became a support link, and the email settings examples use `example.com`
+- UI Theme page: a new Links and contact card with Documentation URL, Support URL and License contact email, saved with the logo fields. Reset to Default clears them too
+
+Behaviour when nothing is configured: docs and support links open the upstream LiteLLM pages as before, and the banner says to contact your Iagami license provider. Links that point at upstream resources rather than docs or support (the model price map, `litellm-pgvector`, `litellm-guardrails`, `models.litellm.ai`) stay
+
+Tests: two new backend tests (links stored and returned, bad values rejected for each field); the UI tests related to the changed files pass
+
+Not done: the prebuilt UI bundle in `_experimental/out` still needs a rebuild, the UI still gates on one `premium_user` flag, and the backend still names `support@berri.ai` in alert emails and the "License is over limit" errors
 
 ---
 
@@ -895,7 +916,7 @@ rg "agami-org/" litellm agami                      # org model naming
 ## 16. What is still open
 
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
-- UI rebrand, second part (see 9.8): the logo and favicon files, docs and support links, the prebuilt UI bundle, and per-feature UI gating instead of the single `premium_user` flag
+- UI rebrand, third part (see 9.9): the prebuilt UI bundle, per-feature UI gating instead of the single `premium_user` flag, and the backend's `support@berri.ai`
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
 

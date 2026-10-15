@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import React, { useState, useEffect, useCallback } from "react";
 import { useDebouncedValue } from "@tanstack/react-pacer/debouncer";
 import { DEBOUNCE_WAIT_MS } from "@/utils/debounceConstants";
@@ -706,7 +707,7 @@ function DetailPanel({
               This guardrail runs on a separate instance. It receives the user request and forwards the result to the
               next step in the pipeline. See{" "}
               <a
-                href="https://docs.litellm.ai/docs/adding_provider/generic_guardrail_api"
+                href={brandDocsUrl("https://docs.litellm.ai/docs/adding_provider/generic_guardrail_api")}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-info hover:underline"

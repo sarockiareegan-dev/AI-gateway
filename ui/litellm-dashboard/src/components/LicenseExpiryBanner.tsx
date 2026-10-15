@@ -6,16 +6,13 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/s
 import { Button } from "@/components/ui/button";
 import { LicenseInfo } from "@/components/networking";
 import { useLicenseInfo } from "@/app/(dashboard)/hooks/license/useLicenseInfo";
-import { BRAND_NAME, LICENSE_CONTACT_EMAIL } from "@/lib/brand";
+import { BRAND_NAME, useBrandLinks } from "@/lib/brand";
 import { formatExpiryDate, getDaysUntilExpiration, getLicenseExpiryTier } from "@/utils/licenseUtils";
 
 const DISMISS_KEY_PREFIX = "litellm:licenseExpiryBannerDismissed:";
 
-const salesLink = LICENSE_CONTACT_EMAIL ? (
-  <a href={`mailto:${LICENSE_CONTACT_EMAIL}`}>{LICENSE_CONTACT_EMAIL}</a>
-) : (
-  <>your {BRAND_NAME} license provider</>
-);
+const contactLink = (email: string): React.ReactNode =>
+  email ? <a href={`mailto:${email}`}>{email}</a> : <>your {BRAND_NAME} license provider</>;
 
 interface LicenseExpiryBannerProps {
   accessToken: string | null;
@@ -35,7 +32,8 @@ const describeCountdown = (days: number): string => {
   return `expires in ${days} days`;
 };
 
-const expiryDescription = (tier: "warning" | "critical" | "expired"): React.ReactNode => {
+const expiryDescription = (tier: "warning" | "critical" | "expired", email: string): React.ReactNode => {
+  const salesLink = contactLink(email);
   if (tier === "expired") {
     return <>Enterprise features are now disabled. Reach out to {salesLink} to restore access</>;
   }
@@ -47,6 +45,7 @@ const expiryDescription = (tier: "warning" | "critical" | "expired"): React.Reac
 
 export const LicenseExpiryBannerView: React.FC<LicenseExpiryBannerViewProps> = ({ licenseInfo }) => {
   const [locallyDismissed, setLocallyDismissed] = useState(false);
+  const { licenseContactEmail } = useBrandLinks();
 
   const expirationDate = licenseInfo?.expiration_date ?? null;
   const tier = getLicenseExpiryTier(expirationDate);
@@ -72,7 +71,7 @@ export const LicenseExpiryBannerView: React.FC<LicenseExpiryBannerViewProps> = (
       ? `Your Iagami license expired on ${formattedDate}`
       : `Your Iagami license ${describeCountdown(days)} (${formattedDate})`;
 
-  const description = expiryDescription(tier);
+  const description = expiryDescription(tier, licenseContactEmail);
 
   const handleClose = () => {
     if (typeof window !== "undefined") {

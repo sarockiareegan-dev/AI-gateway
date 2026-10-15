@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { getProxyBaseUrl } from "@/components/networking";
+import { setBrandLinks } from "@/lib/brand";
 
 interface ThemeContextType {
   logoUrl: string | null;
@@ -51,6 +52,11 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children, accessTo
           if (data.values?.favicon_url) {
             setFaviconUrl(data.values.favicon_url);
           }
+          setBrandLinks({
+            docsUrl: data.values?.docs_url ?? "",
+            supportUrl: data.values?.support_url ?? "",
+            licenseContactEmail: data.values?.license_contact_email ?? "",
+          });
         }
       } catch (error) {
         console.warn("Failed to load theme settings from backend:", error);

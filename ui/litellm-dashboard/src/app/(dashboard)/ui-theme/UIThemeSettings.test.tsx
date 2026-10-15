@@ -80,6 +80,9 @@ describe("UIThemeSettings", () => {
 
     fireEvent.change(screen.getByPlaceholderText(LOGO_PLACEHOLDER), { target: { value: "https://a.test/logo.png" } });
     fireEvent.change(screen.getByPlaceholderText(FAVICON_PLACEHOLDER), { target: { value: "https://a.test/fav.ico" } });
+    fireEvent.change(screen.getByLabelText("Documentation URL"), { target: { value: "https://docs.a.test" } });
+    fireEvent.change(screen.getByLabelText("Support URL"), { target: { value: "mailto:help@a.test" } });
+    fireEvent.change(screen.getByLabelText("License contact email"), { target: { value: " sales@a.test " } });
     await user.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => expect(patchCalls()).toHaveLength(1));
@@ -87,6 +90,9 @@ describe("UIThemeSettings", () => {
       logo_url: "https://a.test/logo.png",
       logo_url_dark: null,
       favicon_url: "https://a.test/fav.ico",
+      docs_url: "https://docs.a.test",
+      support_url: "mailto:help@a.test",
+      license_contact_email: "sales@a.test",
     });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Theme settings updated successfully!"));
   });
@@ -139,7 +145,14 @@ describe("UIThemeSettings", () => {
     await user.click(screen.getByRole("button", { name: "Reset to Default" }));
 
     await waitFor(() => expect(patchCalls()).toHaveLength(1));
-    expect(bodyOf(patchCalls()[0])).toEqual({ logo_url: null, logo_url_dark: null, favicon_url: null });
+    expect(bodyOf(patchCalls()[0])).toEqual({
+      logo_url: null,
+      logo_url_dark: null,
+      favicon_url: null,
+      docs_url: null,
+      support_url: null,
+      license_contact_email: null,
+    });
     expect(screen.getByPlaceholderText(LOGO_PLACEHOLDER)).toHaveValue("");
     expect(screen.getByPlaceholderText(LOGO_DARK_PLACEHOLDER)).toHaveValue("");
     expect(screen.getByPlaceholderText(FAVICON_PLACEHOLDER)).toHaveValue("");

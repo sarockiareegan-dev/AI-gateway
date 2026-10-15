@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import {
   HIDE_AUTO_ROUTER_ANNOUNCEMENT_KEY,
   useHideAutoRouterAnnouncement,
@@ -34,7 +35,7 @@ export const NotificationsBell: React.FC = () => {
       <div className="flex flex-wrap items-center gap-2">
         <a
           className={cn(buttonVariants({ size: "sm" }))}
-          href={AUTO_ROUTER_DOCS_URL}
+          href={brandDocsUrl(AUTO_ROUTER_DOCS_URL)}
           target="_blank"
           rel="noopener noreferrer"
         >

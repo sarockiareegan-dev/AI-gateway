@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CircleHelp } from "lucide-react";
 import type { Dayjs } from "dayjs";
@@ -570,7 +571,7 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
                 Guardrails
                 <DocsHint
                   text="Apply safety guardrails to this model to filter content or enforce policies"
-                  href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start"
+                  href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/quick_start")}
                 />
               </FieldLabel>
               {isEditing ? (
@@ -591,7 +592,7 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
                 Attached Knowledge Bases (RAG)
                 <DocsHint
                   text="Vector stores used for RAG. Every request to this model will automatically retrieve context from these knowledge bases."
-                  href="https://docs.litellm.ai/docs/completion/knowledgebase"
+                  href={brandDocsUrl("https://docs.litellm.ai/docs/completion/knowledgebase")}
                 />
               </FieldLabel>
               {isEditing ? (
@@ -784,7 +785,7 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
                 LiteLLM Params
                 <DocsHint
                   text="Optional litellm params used for making a litellm.completion() call. Some params are automatically added by Iagami."
-                  href="https://docs.litellm.ai/docs/completion/input"
+                  href={brandDocsUrl("https://docs.litellm.ai/docs/completion/input")}
                 />
               </FieldLabel>
               {isEditing ? (

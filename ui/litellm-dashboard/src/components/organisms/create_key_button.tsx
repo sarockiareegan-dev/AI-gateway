@@ -1,4 +1,5 @@
 "use client";
+import { brandDocsUrl } from "@/lib/brand";
 import { keyKeys } from "@/app/(dashboard)/hooks/keys/useKeys";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
 import { useProjects } from "@/app/(dashboard)/hooks/projects/useProjects";
@@ -1260,7 +1261,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             Guardrails{" "}
                             <SimpleTooltip content="Apply safety guardrails to this key to filter content or enforce policies">
                               <a
-                                href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start"
+                                href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/quick_start")}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1299,7 +1300,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             Disable Global Guardrails{" "}
                             <SimpleTooltip content="When enabled, this key will bypass any guardrails configured to run on every request (global guardrails)">
                               <a
-                                href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start"
+                                href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/quick_start")}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1334,7 +1335,9 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                               Policies{" "}
                               <SimpleTooltip content="Apply policies to this key to control guardrails and other settings">
                                 <a
-                                  href="https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies"
+                                  href={brandDocsUrl(
+                                    "https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies",
+                                  )}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1375,7 +1378,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                               Prompts{" "}
                               <SimpleTooltip content="Allow this key to use specific prompt templates">
                                 <a
-                                  href="https://docs.litellm.ai/docs/proxy/prompt_management"
+                                  href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/prompt_management")}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -1436,7 +1439,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             Allowed Pass Through Routes{" "}
                             <SimpleTooltip content="Allow this key to use specific pass through routes">
                               <a
-                                href="https://docs.litellm.ai/docs/proxy/pass_through"
+                                href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/pass_through")}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link

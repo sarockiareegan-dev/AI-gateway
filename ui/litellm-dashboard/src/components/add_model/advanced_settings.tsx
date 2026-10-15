@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import React from "react";
 import { MultiSelect } from "@/components/shared/MultiSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -124,7 +125,7 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   Attached Knowledge Bases (RAG){" "}
                   <SimpleTooltip content="Vector stores to use for RAG. Every request to this model will automatically retrieve context from these knowledge bases.">
                     <a
-                      href="https://docs.litellm.ai/docs/completion/knowledgebase"
+                      href={brandDocsUrl("https://docs.litellm.ai/docs/completion/knowledgebase")}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
@@ -154,7 +155,7 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                   Guardrails{" "}
                   <SimpleTooltip content="Apply safety guardrails to this key to filter content or enforce policies">
                     <a
-                      href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start"
+                      href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/quick_start")}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()} // Prevent accordion from collapsing when clicking link
@@ -421,7 +422,7 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                 <span>
                   Allow using these credentials in pass through routes.{" "}
                   <a
-                    href="https://docs.litellm.ai/docs/pass_through/vertex_ai"
+                    href={brandDocsUrl("https://docs.litellm.ai/docs/pass_through/vertex_ai")}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary underline-offset-4 hover:underline"
@@ -492,7 +493,7 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
               <p className="col-start-11 col-span-10 text-muted-foreground text-sm">
                 Pass JSON of litellm supported params{" "}
                 <a
-                  href="https://docs.litellm.ai/docs/completion/input"
+                  href={brandDocsUrl("https://docs.litellm.ai/docs/completion/input")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline-offset-4 hover:underline"

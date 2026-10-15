@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,8 +21,8 @@ const FIELD_HELP: Record<string, React.ReactNode> = {
   SMTP_PORT: <>Enter the SMTP port number, e.g. `587`{REQUIRED_MARKER}</>,
   SMTP_USERNAME: <>Enter the SMTP username, e.g. `username`{REQUIRED_MARKER}</>,
   SMTP_PASSWORD: REQUIRED_MARKER,
-  SMTP_SENDER_EMAIL: <>Enter the sender email address, e.g. `sender@berri.ai`{REQUIRED_MARKER}</>,
-  TEST_EMAIL_ADDRESS: <>Email Address to send `Test Email Alert` to. example: `info@berri.ai`{REQUIRED_MARKER}</>,
+  SMTP_SENDER_EMAIL: <>Enter the sender email address, e.g. `sender@example.com`{REQUIRED_MARKER}</>,
+  TEST_EMAIL_ADDRESS: <>Email Address to send `Test Email Alert` to. example: `info@example.com`{REQUIRED_MARKER}</>,
   EMAIL_LOGO_URL: <>(Optional) Customize the Logo that appears in the email, pass a url to your logo</>,
   EMAIL_SUPPORT_CONTACT: (
     <>(Optional) Customize the support email address that appears in the email. Default is support@berri.ai</>
@@ -94,7 +95,7 @@ const EmailSettings: React.FC<EmailSettingsProps> = ({ accessToken, premiumUser,
           <CardTitle className="text-base">Email Server Settings</CardTitle>
           <p className="text-sm">
             <a
-              href="https://docs.litellm.ai/docs/proxy/email"
+              href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/email")}
               target="_blank"
               rel="noreferrer"
               className="text-primary underline underline-offset-4"

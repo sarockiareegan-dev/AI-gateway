@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import React from "react";
 import { CircleHelp, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/shared/Alert";
@@ -72,7 +73,7 @@ const PassThroughGuardrailsSection: React.FC<PassThroughGuardrailsSectionProps> 
           <AlertTitle>
             Field-Level Targeting{" "}
             <a
-              href="https://docs.litellm.ai/docs/proxy/pass_through_guardrails#field-level-targeting"
+              href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/pass_through_guardrails#field-level-targeting")}
               target="_blank"
               rel="noopener noreferrer"
               className="text-info underline hover:text-info/80"

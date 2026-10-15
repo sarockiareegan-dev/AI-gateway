@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import { Edit, ExternalLink, Info, KeyRound, PlugZap, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -162,7 +163,7 @@ export default function HashicorpVault() {
                 <AlertDescription>
                   <code className="block font-mono">vault kv put secret/SECRET_NAME key=secret_value</code>
                   <a
-                    href="https://docs.litellm.ai/docs/secret_managers/hashicorp_vault"
+                    href={brandDocsUrl("https://docs.litellm.ai/docs/secret_managers/hashicorp_vault")}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1"

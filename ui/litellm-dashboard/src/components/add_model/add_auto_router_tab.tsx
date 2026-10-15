@@ -1,3 +1,4 @@
+import { brandSupportUrl } from "@/lib/brand";
 import AutoRouterClassifierTabs from "./AutoRouterClassifierTabs";
 import { getForecastConfigError, isForecastClassifier } from "../add_model/forecast_classifier_config";
 import React, { useEffect, useState } from "react";
@@ -766,7 +767,7 @@ const AddAutoRouterTab: React.FC<AddAutoRouterTabProps> = ({
                     <TooltipTrigger
                       render={
                         <a
-                          href="https://github.com/BerriAI/litellm/issues"
+                          href={brandSupportUrl("https://github.com/BerriAI/litellm/issues")}
                           className="text-sm text-primary underline-offset-4 hover:underline"
                         >
                           Need Help?
