@@ -19,7 +19,7 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #12 | `27dfee6` | Admin UI rebrand, first part (text, links, brand constants) |
 | #13 | `b01b46a` | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
 | #14 | `2bf6e14` | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
-| #15 | pending | Role labels and descriptions |
+| #16 | pending | Role labels and descriptions |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -772,7 +772,7 @@ Bundle: `litellm/proxy/_experimental/out` is rebuilt with `npm run build` and co
 
 Tests: new `test_email_branding.py` (support contact default, logo URL from `PROXY_BASE_URL`, empty without it), two `licensed_features` tests, `licenseFeatures.test.ts`, and updated license error, deleted-page and Team-BYOK tooltip assertions. The UI tests related to the changed files pass
 
-### 9.11 Role labels and descriptions (#15)
+### 9.11 Role labels and descriptions (#16)
 
 The global role picker (Users page, invite and edit) reads `/user/available_roles`, which returns `ui_label` and `description` from `LitellmUserRoles` in `litellm/proxy/_types.py`. The descriptions were upstream text, so they now describe the Iagami roles:
 
