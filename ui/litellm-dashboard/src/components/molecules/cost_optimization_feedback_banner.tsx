@@ -1,3 +1,4 @@
+import { brandSupportUrl } from "@/lib/brand";
 import React, { useState } from "react";
 import { ExternalLink, MessageSquare, X } from "lucide-react";
 
@@ -33,7 +34,7 @@ const CostOptimizationFeedbackBanner: React.FC = () => {
       <Button
         className="shrink-0"
         nativeButton={false}
-        render={<a href={DISCUSSION_URL} target="_blank" rel="noopener noreferrer" />}
+        render={<a href={brandSupportUrl(DISCUSSION_URL)} target="_blank" rel="noopener noreferrer" />}
       >
         Share Feedback
         <ExternalLink />

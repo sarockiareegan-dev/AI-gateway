@@ -1,3 +1,4 @@
+import { brandDocsUrl, brandSupportUrl } from "@/lib/brand";
 import { useProviderFields } from "@/app/(dashboard)/hooks/providers/useProviderFields";
 import { useGuardrails } from "@/app/(dashboard)/hooks/guardrails/useGuardrails";
 import { useTags } from "@/app/(dashboard)/hooks/tags/useTags";
@@ -273,7 +274,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                           <p className="text-sm mb-5 mt-1">
                             <strong>Optional</strong> - Iagami endpoint to use when health checking this model{" "}
                             <a
-                              href="https://docs.litellm.ai/docs/proxy/health#health"
+                              href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/health#health")}
                               target="_blank"
                               rel="noreferrer"
                               className="text-primary hover:underline"
@@ -419,7 +420,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                   <div className="flex justify-between items-center mb-4">
                     <SimpleTooltip content="Get help on our github">
                       <a
-                        href="https://github.com/BerriAI/litellm/issues"
+                        href={brandSupportUrl("https://github.com/BerriAI/litellm/issues")}
                         className="text-sm text-primary hover:underline"
                       >
                         Need Help?

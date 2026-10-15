@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import React, { useState, useEffect, useCallback } from "react";
 import { Alert, AlertDescription, AlertTitle, AlertAction } from "@/components/shared/Alert";
 import { Button } from "@/components/ui/button";
@@ -71,7 +72,7 @@ const AboutPoliciesAlert = () => (
       <li>Inherit from existing policies and override what you need</li>
     </ul>
     <a
-      href="https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies"
+      href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies")}
       target="_blank"
       rel="noopener noreferrer"
       className="mt-1 inline-block text-primary underline underline-offset-4"
@@ -562,7 +563,7 @@ const PoliciesPanel: React.FC<PoliciesPanelProps> = ({ accessToken, userRole }) 
               </li>
             </ul>
             <a
-              href="https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies#attachments"
+              href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies#attachments")}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-1 inline-block text-primary underline underline-offset-4"

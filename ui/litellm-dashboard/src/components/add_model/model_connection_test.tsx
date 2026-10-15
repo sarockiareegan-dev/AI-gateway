@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import React from "react";
 import { AlertTriangle, CircleCheck, Copy, ExternalLink, Info, LoaderCircle } from "lucide-react";
 
@@ -206,7 +207,9 @@ ${formattedBody}
         variant="link"
         className="px-0"
         nativeButton={false}
-        render={<a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener noreferrer" />}
+        render={
+          <a href={brandDocsUrl("https://docs.litellm.ai/docs/providers")} target="_blank" rel="noopener noreferrer" />
+        }
       >
         <Info data-icon="inline-start" />
         View Documentation

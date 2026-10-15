@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import React, { useState, useEffect } from "react";
 import { MultiSelect } from "@/components/shared/MultiSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1096,7 +1097,7 @@ const MCPServerEdit: React.FC<MCPServerEditProps> = ({
                     <p className="text-sm text-muted-foreground mb-2">
                       For MCP servers hosted on AWS Bedrock AgentCore.{" "}
                       <a
-                        href="https://docs.litellm.ai/docs/mcp_aws_sigv4"
+                        href={brandDocsUrl("https://docs.litellm.ai/docs/mcp_aws_sigv4")}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-info hover:text-info/80"

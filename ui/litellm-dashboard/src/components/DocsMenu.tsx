@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ExternalLink, ChevronDown } from "lucide-react";
+import { brandDocsUrl } from "@/lib/brand";
 
 interface DocMenuItem {
   label: string;
@@ -50,7 +51,7 @@ export const DocsMenu: React.FC<DocsMenuProps> = ({ items, children = "Docs", cl
           {items.map((item, index) => (
             <a
               key={index}
-              href={item.href}
+              href={brandDocsUrl(item.href)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-between px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"

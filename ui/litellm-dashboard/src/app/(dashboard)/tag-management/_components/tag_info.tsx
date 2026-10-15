@@ -1,5 +1,6 @@
 "use client";
 
+import { brandSupportUrl } from "@/lib/brand";
 import React, { useState, useEffect } from "react";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { z } from "zod/v4";
@@ -119,7 +120,7 @@ const TagEditForm: React.FC<TagEditFormProps> = ({ tag, seedBudgetFields, userMo
             <p className="text-sm text-muted-foreground">
               TPM/RPM limits for tags are not currently supported. If you need this feature, please{" "}
               <a
-                href="https://github.com/BerriAI/litellm/issues/new"
+                href={brandSupportUrl("https://github.com/BerriAI/litellm/issues/new")}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-info underline hover:text-info/80"

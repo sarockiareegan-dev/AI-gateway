@@ -1,3 +1,4 @@
+import { brandSupportUrl } from "@/lib/brand";
 import React from "react";
 import { z } from "zod/v4";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -85,7 +86,7 @@ const ReuseCredentialsModal: React.FC<ReuseCredentialsModalProps> = ({
                   <TooltipTrigger
                     render={
                       <a
-                        href="https://github.com/BerriAI/litellm/issues"
+                        href={brandSupportUrl("https://github.com/BerriAI/litellm/issues")}
                         className="text-sm text-primary underline-offset-4 hover:underline"
                       >
                         Need Help?

@@ -1148,6 +1148,42 @@ class TestProxySettingEndpoints:
         assert response.status_code == 400
         assert "logo_url_dark" in str(response.json())
 
+    def test_update_ui_theme_settings_stores_brand_links(self, mock_proxy_config, mock_auth, monkeypatch):
+        monkeypatch.setenv("LITELLM_SALT_KEY", "test_salt_key")
+        monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
+
+        links = {
+            "docs_url": "https://docs.example.com",
+            "support_url": "mailto:support@example.com",
+            "license_contact_email": "sales@example.com",
+        }
+        response = client.patch("/update/ui_theme_settings", json=links)
+
+        assert response.status_code == 200, response.text
+        assert response.json()["theme_config"] == links
+        assert mock_proxy_config["config"]["litellm_settings"]["ui_theme_config"] == links
+        values = client.get("/get/ui_theme_settings").json()["values"]
+        assert {key: values[key] for key in links} == links
+
+    @pytest.mark.parametrize(
+        "payload,field",
+        [
+            ({"docs_url": "javascript:alert(1)"}, "docs_url"),
+            ({"support_url": "file:///etc/passwd"}, "support_url"),
+            ({"support_url": "mailto:not-an-email"}, "support_url"),
+            ({"license_contact_email": "a@b.com, c@d.com"}, "license_contact_email"),
+        ],
+    )
+    def test_update_ui_theme_settings_rejects_bad_brand_links(
+        self, mock_proxy_config, mock_auth, monkeypatch, payload, field
+    ):
+        monkeypatch.setattr("litellm.proxy.proxy_server.store_model_in_db", True)
+
+        response = client.patch("/update/ui_theme_settings", json=payload)
+
+        assert response.status_code == 400
+        assert field in str(response.json())
+
     def test_update_ui_theme_settings_persists_every_env_var_it_resolves(
         self, mock_proxy_config, mock_auth, monkeypatch
     ):

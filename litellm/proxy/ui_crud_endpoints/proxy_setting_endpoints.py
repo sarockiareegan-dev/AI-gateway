@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import re
 from collections import Counter
 from collections.abc import Mapping, MutableMapping, Sequence
 from types import MappingProxyType
@@ -186,6 +187,21 @@ class UIThemeConfig(BaseModel):
     favicon_url: str | None = Field(
         default=None,
         description="URL to custom favicon image. Must be an HTTP/HTTPS URL to a .ico, .png, or .svg file",
+    )
+
+    docs_url: str | None = Field(
+        default=None,
+        description="HTTP/HTTPS URL that documentation links in the admin UI open. Leave unset to keep the upstream docs",
+    )
+
+    support_url: str | None = Field(
+        default=None,
+        description="HTTP/HTTPS or mailto: URL that 'report an issue' and feedback links in the admin UI open",
+    )
+
+    license_contact_email: str | None = Field(
+        default=None,
+        description="Email address shown to users when the license is expiring or a feature needs a license",
     )
 
 
@@ -1324,6 +1340,29 @@ def _validate_public_image_url(value: str | None, field_name: str) -> None:
         )
 
 
+_EMAIL_PATTERN: Final = re.compile(r"^[^@\s<>\"']+@[^@\s<>\"']+\.[^@\s<>\"']+$")
+
+
+def _validate_contact_email(value: str | None, field_name: str = "license_contact_email") -> None:
+    if value is None or not value.strip():
+        return
+    if not _EMAIL_PATTERN.match(value.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"Invalid {field_name}: must be a single email address."},
+        )
+
+
+def _validate_support_url(value: str | None) -> None:
+    if value is None or not value.strip():
+        return
+    stripped: Final = value.strip()
+    if stripped.lower().startswith("mailto:"):
+        _validate_contact_email(stripped[len("mailto:") :], "support_url")
+        return
+    _validate_public_image_url(stripped, "support_url")
+
+
 @router.patch(
     "/update/ui_theme_settings",
     tags=["UI Theme Settings"],
@@ -1348,6 +1387,9 @@ async def update_ui_theme_settings(
     _validate_public_image_url(theme_config.logo_url, "logo_url")
     _validate_public_image_url(theme_config.logo_url_dark, "logo_url_dark")
     _validate_public_image_url(theme_config.favicon_url, "favicon_url")
+    _validate_public_image_url(theme_config.docs_url, "docs_url")
+    _validate_support_url(theme_config.support_url)
+    _validate_contact_email(theme_config.license_contact_email)
 
     if store_model_in_db is not True:
         raise HTTPException(

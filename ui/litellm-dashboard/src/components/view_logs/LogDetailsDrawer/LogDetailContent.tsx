@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import { useState } from "react";
 import { Check, ChevronDown, ChevronRight, CircleAlert, Copy, Info } from "lucide-react";
 import moment from "moment";
@@ -520,7 +521,7 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
                   <MetricLabel
                     label="Response Cache"
                     tooltip={RESPONSE_CACHE_TOOLTIP}
-                    docsUrl={RESPONSE_CACHE_DOCS_URL}
+                    docsUrl={brandDocsUrl(RESPONSE_CACHE_DOCS_URL)}
                   />
                 }
               >
@@ -531,7 +532,13 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
             )}
             {responseCacheKey && (
               <DescriptionItem
-                label={<MetricLabel label="Cache Key" tooltip={CACHE_KEY_TOOLTIP} docsUrl={RESPONSE_CACHE_DOCS_URL} />}
+                label={
+                  <MetricLabel
+                    label="Cache Key"
+                    tooltip={CACHE_KEY_TOOLTIP}
+                    docsUrl={brandDocsUrl(RESPONSE_CACHE_DOCS_URL)}
+                  />
+                }
               >
                 <TruncatedValue value={responseCacheKey} />
               </DescriptionItem>
@@ -542,7 +549,7 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
                   <MetricLabel
                     label="Prompt Cache Read Tokens"
                     tooltip={PROMPT_CACHE_READ_TOOLTIP}
-                    docsUrl={PROMPT_CACHE_DOCS_URL}
+                    docsUrl={brandDocsUrl(PROMPT_CACHE_DOCS_URL)}
                   />
                 }
               >
@@ -555,7 +562,7 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
                   <MetricLabel
                     label="Prompt Cache Creation Tokens"
                     tooltip={PROMPT_CACHE_CREATION_TOOLTIP}
-                    docsUrl={PROMPT_CACHE_DOCS_URL}
+                    docsUrl={brandDocsUrl(PROMPT_CACHE_DOCS_URL)}
                   />
                 }
               >

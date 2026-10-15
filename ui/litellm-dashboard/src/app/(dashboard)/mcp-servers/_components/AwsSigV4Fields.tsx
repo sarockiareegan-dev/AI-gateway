@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import { Info } from "lucide-react";
 import React from "react";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -27,7 +28,7 @@ const AwsSigV4Fields: React.FC = () => (
     <p className="text-sm text-muted-foreground mb-2">
       For MCP servers hosted on AWS Bedrock AgentCore.{" "}
       <a
-        href="https://docs.litellm.ai/docs/mcp_aws_sigv4"
+        href={brandDocsUrl("https://docs.litellm.ai/docs/mcp_aws_sigv4")}
         target="_blank"
         rel="noopener noreferrer"
         className="text-info hover:text-info/80"

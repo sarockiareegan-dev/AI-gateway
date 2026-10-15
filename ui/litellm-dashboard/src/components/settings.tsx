@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import React, { useEffect, useState } from "react";
 import { Controller, FormProvider, useForm, useFormContext } from "react-hook-form";
 
@@ -699,7 +700,7 @@ const Settings: React.FC<SettingsPageProps> = ({ accessToken, userRole, userID, 
             <DialogTitle>Add Logging Callback</DialogTitle>
           </DialogHeader>
           <a
-            href="https://docs.litellm.ai/docs/proxy/logging"
+            href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/logging")}
             className="mb-8 mt-4"
             target="_blank"
             style={{ color: "blue" }}

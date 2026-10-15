@@ -1,5 +1,6 @@
 "use client";
 
+import { brandSupportUrl } from "@/lib/brand";
 import React from "react";
 import { Info, PiggyBank } from "lucide-react";
 
@@ -74,7 +75,7 @@ const CostOptimizationView: React.FC<CostOptimizationViewProps> = ({ accessToken
           <p className="col-start-2 text-sm text-muted-foreground">
             Have feedback? Join the discussion{" "}
             <a
-              href="https://github.com/BerriAI/litellm/discussions/32168"
+              href={brandSupportUrl("https://github.com/BerriAI/litellm/discussions/32168")}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline underline-offset-2"

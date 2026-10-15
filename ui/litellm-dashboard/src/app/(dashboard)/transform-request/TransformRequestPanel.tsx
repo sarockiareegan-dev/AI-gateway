@@ -1,3 +1,4 @@
+import { brandSupportUrl } from "@/lib/brand";
 import React, { useState } from "react";
 import { ArrowRight, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -205,7 +206,7 @@ ${formattedBody}
           Found an error? File an issue{" "}
           <a
             className="underline underline-offset-4"
-            href="https://github.com/BerriAI/litellm/issues"
+            href={brandSupportUrl("https://github.com/BerriAI/litellm/issues")}
             target="_blank"
             rel="noopener noreferrer"
           >

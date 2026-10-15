@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import React from "react";
 import { TriangleAlert } from "lucide-react";
 import { useHealthReadinessDetails } from "@/app/(dashboard)/hooks/healthReadiness/useHealthReadinessDetails";
@@ -29,7 +30,7 @@ export const NoRedisWarningBanner: React.FC<NoRedisWarningBannerProps> = ({ acce
           This proxy is running more than one worker (or the worker count could not be verified). Without Redis, rate
           limits, budgets, router state, and cache invalidation are per worker, so limits are enforced once per worker
           and spend can overshoot.{" "}
-          <a className="underline" href={REDIS_DOCS_URL} target="_blank" rel="noreferrer">
+          <a className="underline" href={brandDocsUrl(REDIS_DOCS_URL)} target="_blank" rel="noreferrer">
             See everything that does not work without Redis
           </a>
           . Set <code className="font-mono">LITELLM_DISABLE_NO_REDIS_WARNING=true</code> to hide this banner anyway.

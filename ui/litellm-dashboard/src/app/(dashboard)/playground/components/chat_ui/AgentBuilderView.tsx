@@ -20,6 +20,7 @@ import { UiLoadingSpinner } from "@/components/ui/ui-loading-spinner";
 import { MultiSelect } from "@/components/shared/MultiSelect";
 import { useVisitedTabs } from "@/hooks/useVisitedTabs";
 import CodeBlock from "@/components/CodeBlock";
+import { brandSupportUrl } from "@/lib/brand";
 import { toast } from "@/lib/toast";
 import {
   keyCreateCall,
@@ -470,10 +471,14 @@ export default function AgentBuilderView({
         <div className="flex items-center gap-2 border-t border-warning/20 bg-warning/10 px-4 py-2 text-xs text-warning">
           <FlaskConical className="size-4 shrink-0 text-warning" />
           <span>
-            Agent Builder is experimental and may change or be removed without notice. We’d love your feedback—email us
-            at{" "}
-            <a href="mailto:product@berri.ai" className="font-medium text-warning underline hover:text-warning/80">
-              product@berri.ai
+            Agent Builder is experimental and may change or be removed without notice. Share feedback through{" "}
+            <a
+              href={brandSupportUrl("https://github.com/BerriAI/litellm/issues")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-warning underline hover:text-warning/80"
+            >
+              support
             </a>
             .
           </span>

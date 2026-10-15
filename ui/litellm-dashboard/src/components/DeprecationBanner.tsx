@@ -1,5 +1,6 @@
 "use client";
 
+import { brandSupportUrl } from "@/lib/brand";
 import React, { useState } from "react";
 import Link from "next/link";
 import { Info, X } from "lucide-react";
@@ -29,7 +30,7 @@ export const DeprecationBanner: React.FC<DeprecationBannerProps> = ({ featureNam
         <p className="mt-1 break-words text-muted-foreground">
           {`${featureName} is one of several experimental features we're considering removing, potentially as early as ${DEPRECATION_TARGET_DATE}. This list is a draft and is not final. If you rely on this feature, please share feedback on the `}
           <Link
-            href={DEPRECATION_DISCUSSION_URL}
+            href={brandSupportUrl(DEPRECATION_DISCUSSION_URL)}
             target="_blank"
             rel="noopener noreferrer"
             className="underline underline-offset-4"

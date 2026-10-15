@@ -1,5 +1,6 @@
 "use client";
 
+import { brandSupportUrl } from "@/lib/brand";
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, MessageSquare, LayoutGrid, KeyRound, Lock, BarChart3, ScrollText } from "lucide-react";
@@ -65,7 +66,7 @@ const ChatShell: React.FC<ChatShellProps> = ({ children }) => {
       <div className="shrink-0 border-b border-warning/20 bg-warning/10 px-4 py-1.5 text-center text-[13px] text-warning">
         This is a pre-v0 feature. Do not use in production, it may change unexpectedly. Please share feedback{" "}
         <a
-          href="https://github.com/BerriAI/litellm/discussions/32085"
+          href={brandSupportUrl("https://github.com/BerriAI/litellm/discussions/32085")}
           target="_blank"
           rel="noreferrer"
           className="font-medium underline"

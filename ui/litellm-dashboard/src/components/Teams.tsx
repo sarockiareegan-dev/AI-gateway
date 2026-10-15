@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
 import useCan from "@/app/(dashboard)/hooks/useCan";
 import AvailableTeamsPanel from "@/components/team/AvailableTeamsPanel";
@@ -739,7 +740,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                           label={labelWithDocsHint(
                             "Organization",
                             "Organizations can have multiple teams. Learn more about the user management hierarchy",
-                            "https://docs.litellm.ai/docs/proxy/user_management_heirarchy",
+                            brandDocsUrl("https://docs.litellm.ai/docs/proxy/user_management_heirarchy"),
                           )}
                           description={
                             isOrgAdmin && isSingleOrg
@@ -969,7 +970,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                           label={labelWithDocsHint(
                             "Guardrails",
                             "Setup your first guardrail",
-                            "https://docs.litellm.ai/docs/proxy/guardrails/quick_start",
+                            brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/quick_start"),
                           )}
                           description="Select existing guardrails or enter new ones"
                         >
@@ -1014,7 +1015,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                             label={labelWithDocsHint(
                               "Policies",
                               "Apply policies to this team to control guardrails and other settings",
-                              "https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies",
+                              brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies"),
                             )}
                             description="Select existing policies or enter new ones"
                           >

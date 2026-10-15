@@ -1,3 +1,4 @@
+import { brandSupportUrl } from "@/lib/brand";
 import { isAdminRole } from "@/utils/roles";
 import { useQuery } from "@tanstack/react-query";
 import { CircleHelp } from "lucide-react";
@@ -287,7 +288,7 @@ const CreateSearchTool: React.FC<CreateSearchToolProps> = ({
                     render={
                       <a
                         className="text-sm text-info hover:underline"
-                        href="https://github.com/BerriAI/litellm/issues"
+                        href={brandSupportUrl("https://github.com/BerriAI/litellm/issues")}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import useCan from "@/app/(dashboard)/hooks/useCan";
 import { organizationKeys, useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
@@ -1759,7 +1760,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     label={labelWithDocsHint(
                       "Guardrails",
                       "Select which guardrails apply to this team. Global guardrails are enabled by default, uncheck to opt out. Other guardrails are opt-in.",
-                      "https://docs.litellm.ai/docs/proxy/guardrails/quick_start",
+                      brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/quick_start"),
                     )}
                   >
                     {({ id, value, onChange }) => (
@@ -1807,7 +1808,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                       label={labelWithDocsHint(
                         "Policies",
                         "Apply policies to this team to control guardrails and other settings",
-                        "https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies",
+                        brandDocsUrl("https://docs.litellm.ai/docs/proxy/guardrails/guardrail_policies"),
                       )}
                     >
                       {({ id, value, onChange }) => (

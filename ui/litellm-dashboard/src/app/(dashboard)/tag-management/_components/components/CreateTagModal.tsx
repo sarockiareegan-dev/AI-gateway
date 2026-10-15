@@ -1,5 +1,6 @@
 "use client";
 
+import { brandSupportUrl } from "@/lib/brand";
 import { ChevronRight, CircleHelp } from "lucide-react";
 import React from "react";
 import { z } from "zod/v4";
@@ -156,7 +157,7 @@ const CreateTagModal: React.FC<CreateTagModalProps> = ({ visible, onCancel, onSu
                   <p className="text-sm text-muted-foreground">
                     TPM/RPM limits for tags are not currently supported. If you need this feature, please{" "}
                     <a
-                      href="https://github.com/BerriAI/litellm/issues/new"
+                      href={brandSupportUrl("https://github.com/BerriAI/litellm/issues/new")}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-info underline hover:text-info/80"

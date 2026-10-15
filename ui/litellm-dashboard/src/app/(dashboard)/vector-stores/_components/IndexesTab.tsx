@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl, brandSupportUrl } from "@/lib/brand";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import { toast } from "@/lib/toast";
@@ -68,7 +69,7 @@ const IndexesTab: React.FC<IndexesTabProps> = ({ accessToken, vectorStores, onVi
       <p className="mb-4 text-sm text-muted-foreground">
         Vector store indexes registered on this proxy via the <code>/v1/indexes</code> API. See the{" "}
         <a
-          href="https://docs.litellm.ai/docs/providers/azure_ai/azure_ai_vector_stores_passthrough"
+          href={brandDocsUrl("https://docs.litellm.ai/docs/providers/azure_ai/azure_ai_vector_stores_passthrough")}
           target="_blank"
           rel="noopener noreferrer"
           className="text-info hover:underline"
@@ -78,7 +79,7 @@ const IndexesTab: React.FC<IndexesTabProps> = ({ accessToken, vectorStores, onVi
         for how this works. Index passthrough is supported for Azure AI Search and Milvus today; support for more
         providers can be added, so please{" "}
         <a
-          href="https://github.com/BerriAI/litellm/issues"
+          href={brandSupportUrl("https://github.com/BerriAI/litellm/issues")}
           target="_blank"
           rel="noopener noreferrer"
           className="text-info hover:underline"

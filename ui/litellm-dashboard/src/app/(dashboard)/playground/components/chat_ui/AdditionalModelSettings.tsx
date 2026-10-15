@@ -1,3 +1,4 @@
+import { brandDocsUrl } from "@/lib/brand";
 import { Info } from "lucide-react";
 import React, { useEffect, useId, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -165,7 +166,7 @@ const AdditionalModelSettings: React.FC<AdditionalModelSettingsProps> = ({
               <p>
                 Behavior can differ when keys, teams, or router settings are configured.{" "}
                 <a
-                  href="https://docs.litellm.ai/docs/proxy/keys_teams_router_settings"
+                  href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/keys_teams_router_settings")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-info hover:text-info/80"

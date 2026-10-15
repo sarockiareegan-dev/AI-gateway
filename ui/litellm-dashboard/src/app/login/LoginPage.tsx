@@ -1,5 +1,6 @@
 "use client";
 
+import { brandDocsUrl } from "@/lib/brand";
 import { useLogin } from "@/app/(dashboard)/hooks/login/useLogin";
 import { useUIConfig } from "@/app/(dashboard)/hooks/uiConfig/useUIConfig";
 import LoadingScreen from "@/components/common_components/LoadingScreen";
@@ -242,7 +243,11 @@ function LoginPageContent() {
                     </p>
                     <p className="mt-2 text-sm">
                       Need to set UI credentials or SSO?{" "}
-                      <a href="https://docs.litellm.ai/docs/proxy/ui" target="_blank" rel="noopener noreferrer">
+                      <a
+                        href={brandDocsUrl("https://docs.litellm.ai/docs/proxy/ui")}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
                         Check the documentation
                       </a>
                       .
