@@ -542,9 +542,7 @@ export default function KeyInfoView({
         canModifyKey={canModifyKey}
         backButtonText={backButtonText}
         regenerateDisabled={!premiumUser}
-        regenerateTooltip={
-          !premiumUser ? "This is a LiteLLM Enterprise feature, and requires a valid key to use." : undefined
-        }
+        regenerateTooltip={!premiumUser ? "This feature needs an Agami license." : undefined}
       />
 
       {/* Add RegenerateKeyModal */}

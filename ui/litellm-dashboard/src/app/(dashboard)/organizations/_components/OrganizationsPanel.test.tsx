@@ -105,7 +105,7 @@ describe("OrganizationsPanel", () => {
   it("gates non-premium users behind the enterprise notice", () => {
     renderPanel({ premiumUser: false });
 
-    expect(screen.getByText(/LiteLLM Enterprise feature/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs an Agami license/i)).toBeInTheDocument();
     expect(screen.queryByText("+ Create New Organization")).not.toBeInTheDocument();
   });
 

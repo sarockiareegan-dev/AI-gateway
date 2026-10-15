@@ -6,12 +6,16 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/s
 import { Button } from "@/components/ui/button";
 import { LicenseInfo } from "@/components/networking";
 import { useLicenseInfo } from "@/app/(dashboard)/hooks/license/useLicenseInfo";
+import { BRAND_NAME, LICENSE_CONTACT_EMAIL } from "@/lib/brand";
 import { formatExpiryDate, getDaysUntilExpiration, getLicenseExpiryTier } from "@/utils/licenseUtils";
 
 const DISMISS_KEY_PREFIX = "litellm:licenseExpiryBannerDismissed:";
-const SALES_EMAIL = "sales@berri.ai";
 
-const salesLink = <a href={`mailto:${SALES_EMAIL}`}>{SALES_EMAIL}</a>;
+const salesLink = LICENSE_CONTACT_EMAIL ? (
+  <a href={`mailto:${LICENSE_CONTACT_EMAIL}`}>{LICENSE_CONTACT_EMAIL}</a>
+) : (
+  <>your {BRAND_NAME} license provider</>
+);
 
 interface LicenseExpiryBannerProps {
   accessToken: string | null;
@@ -65,8 +69,8 @@ export const LicenseExpiryBannerView: React.FC<LicenseExpiryBannerViewProps> = (
 
   const message =
     tier === "expired"
-      ? `Your LiteLLM Enterprise license expired on ${formattedDate}`
-      : `Your LiteLLM Enterprise license ${describeCountdown(days)} (${formattedDate})`;
+      ? `Your Agami license expired on ${formattedDate}`
+      : `Your Agami license ${describeCountdown(days)} (${formattedDate})`;
 
   const description = expiryDescription(tier);
 

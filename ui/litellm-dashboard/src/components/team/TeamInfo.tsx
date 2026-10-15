@@ -785,7 +785,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
       let errMsg = "Failed to add team member";
 
       if (error?.raw?.detail?.error?.includes("Assigning team admins is a premium feature")) {
-        errMsg = "Assigning admins is an enterprise-only feature. Please upgrade your LiteLLM plan to enable this.";
+        errMsg = "Assigning admins is an enterprise-only feature. Please add it to your Agami license.";
       } else if (error?.message) {
         errMsg = error.message;
       }
@@ -829,7 +829,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
     } catch (error: any) {
       let errMsg = "Failed to update team member";
       if (error?.raw?.detail?.includes("Assigning team admins is a premium feature")) {
-        errMsg = "Assigning admins is an enterprise-only feature. Please upgrade your LiteLLM plan to enable this.";
+        errMsg = "Assigning admins is an enterprise-only feature. Please add it to your Agami license.";
       } else if (error?.message) {
         errMsg = error.message;
       }

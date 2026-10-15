@@ -15,7 +15,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #8 | `8c2ebb6` | Demo config and Docker Compose override committed |
 | #9 | `e70ef8d` | Guardrail owner shown in the Admin UI table and overview |
 | #10 | `4ad7fb9` | Batch cost poller rebuilt |
-| #11 | pending | Managed vector stores hook rebuilt |
+| #11 | `f5c17dd` | Managed vector stores hook rebuilt |
+| #12 | pending | Admin UI rebrand, first part (text, links, brand constants) |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -702,6 +703,30 @@ How to debug:
 
 Limits: requests always go to the first deployment, deleting a store leaves its row, and `GET /v1/vector_stores` lists provider stores, not managed ones. Upstream's version was enterprise code; ours stores the same row shape so existing rows keep working
 
+### 9.8 Admin UI rebrand, first part (#12)
+
+Goal: the Admin UI (`ui/litellm-dashboard`) should present itself as Agami, not LiteLLM, and stop sending users to LiteLLM's community, blog and sales
+
+Files:
+
+- `src/lib/brand.ts`: `BRAND_NAME` ("Agami"), `PRODUCT_NAME` ("Agami Gateway") and `LICENSE_CONTACT_EMAIL` (empty until a contact address is chosen). The navbar logo alt text, the sidebar account menu, the "Thanks for using" tooltip and the license expiry banner read these
+- About 80 components: user-facing prose "LiteLLM" became "Agami", "LiteLLM Proxy" became "Agami Gateway", and the "LiteLLM Enterprise feature" notices now say the feature needs an Agami license and to ask the administrator, without LiteLLM's pricing link. Page title "Agami Dashboard", login and loading screens say "Agami"
+- Removed: the LiteLLM Slack and GitHub buttons (`CommunityEngagementButtons`), the LiteLLM blog dropdown (`BlogDropdown`, `useBlogPosts`, `useDisableBlogPosts` and the "Hide Blog Posts" toggles), and the version badge links to LiteLLM's release notes (the badge stays, unlinked)
+- The license expiry banner showed `sales@berri.ai`; it now says to contact your Agami license provider, or shows `LICENSE_CONTACT_EMAIL` once that is set
+
+Kept on purpose: terms that name an API concept or a value the backend matches on, such as "LiteLLM Model Name" and "LiteLLM Params" (the `litellm_params` fields), the guardrail provider values "LiteLLM Content Filter" and "LiteLLM LLM as a Judge", and the pgvector provider label. Code comments were not touched
+
+How it was done: a script replaced `\bLiteLLM\b` in non-comment lines of `src/**/*.ts(x)` (skipping tests and the generated `schema.d.ts`) and left lines containing the protected terms above. The same replacement ran on the 17 test files that asserted the old text
+
+How to change the brand name: edit `brand.ts` for the shared spots, then search the UI for "Agami" for the prose
+
+Not done yet (needs input or a decision):
+
+- Logo and favicon: the default logos are `litellm/proxy/logo.jpg` and `logo_dark.png` (served by `/get_image`), the favicons are `ui/litellm-dashboard/src/app/favicon.ico`, `litellm/proxy/_experimental/out/favicon.ico` and `litellm/proxy/swagger/favicon.*`. Until replaced, operators can already override them at runtime with `UI_LOGO_PATH`, `UI_LOGO_PATH_DARK`, `LITELLM_FAVICON_URL` or the UI Theme page
+- About 210 links to `docs.litellm.ai` and about 15 to LiteLLM's GitHub issues and discussions, plus `berri.ai` example emails in the email settings and `product@berri.ai` in the agent builder
+- The prebuilt UI in `litellm/proxy/_experimental/out` (used when running from source) still says LiteLLM until it is rebuilt; Docker images build the UI from source and are already rebranded
+- Per-feature UI gating: the UI still reads one `premium_user` flag
+
 ---
 
 ## 10. Dependency bumps (PR #2)
@@ -870,7 +895,7 @@ rg "agami-org/" litellm agami                      # org model naming
 ## 16. What is still open
 
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
-- UI rebrand (the UI still says LiteLLM and reads one `premium_user` flag instead of per-feature gating)
+- UI rebrand, second part (see 9.8): the logo and favicon files, docs and support links, the prebuilt UI bundle, and per-feature UI gating instead of the single `premium_user` flag
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
 

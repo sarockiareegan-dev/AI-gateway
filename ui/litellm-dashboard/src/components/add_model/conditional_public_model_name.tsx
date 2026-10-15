@@ -40,17 +40,17 @@ const ANTHROPIC_1M_HEADERS = JSON.stringify({ extra_headers: { "anthropic-beta":
 
 const publicNameTooltipContent = (
   <div className="flex flex-col gap-2 text-left font-normal">
-    <div>The name you specify in your API calls to LiteLLM Proxy</div>
+    <div>The name you specify in your API calls to Agami Gateway</div>
     <div>
       <strong>Example:</strong> If you name your public model <code className={tooltipCodeClassName}>example-name</code>
       , and choose <code className={tooltipCodeClassName}>openai/qwen-plus-latest</code> as the LiteLLM model
     </div>
     <div>
-      <strong>Usage:</strong> You make an API call to the LiteLLM proxy with{" "}
+      <strong>Usage:</strong> You make an API call to the Agami gateway with{" "}
       <code className={tooltipCodeClassName}>model = &quot;example-name&quot;</code>
     </div>
     <div>
-      <strong>Result:</strong> LiteLLM sends <code className={tooltipCodeClassName}>qwen-plus-latest</code> to the
+      <strong>Result:</strong> Agami sends <code className={tooltipCodeClassName}>qwen-plus-latest</code> to the
       provider
     </div>
   </div>
@@ -106,7 +106,7 @@ const columns: ColumnDef<ModelMapping>[] = [
     header: () => (
       <span className="flex items-center">
         LiteLLM Model Name
-        <SimpleTooltip content={<div>The model name LiteLLM will send to the LLM API</div>} width="360px" />
+        <SimpleTooltip content={<div>The model name Agami will send to the LLM API</div>} width="360px" />
       </span>
     ),
   },

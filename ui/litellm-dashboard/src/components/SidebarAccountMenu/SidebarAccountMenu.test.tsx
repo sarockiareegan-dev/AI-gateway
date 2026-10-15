@@ -37,10 +37,6 @@ vi.mock("@/app/(dashboard)/hooks/useDisableShowPrompts", () => ({
   useDisableShowPrompts: () => mockUseDisableShowPromptsImpl(),
 }));
 
-vi.mock("@/app/(dashboard)/hooks/useDisableBlogPosts", () => ({
-  useDisableBlogPosts: () => false,
-}));
-
 vi.mock("@/app/(dashboard)/hooks/useDisableBouncingIcon", () => ({
   useDisableBouncingIcon: () => mockUseDisableBouncingIconImpl(),
 }));
@@ -139,15 +135,14 @@ describe("SidebarAccountMenu", () => {
     expect(screen.getByText("Premium")).toBeInTheDocument();
   });
 
-  it("should render a clickable version badge linking to the release notes", async () => {
+  it("should show the version as a plain badge", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
 
     await openMenu(user);
 
-    const versionLink = screen.getByRole("link", { name: /v1\.99\.0/ });
-    expect(versionLink).toHaveAttribute("href", "https://docs.litellm.ai/release_notes");
-    expect(versionLink).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("v1.99.0")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /v1\.99\.0/ })).not.toBeInTheDocument();
   });
 
   it("should not render the version badge when the version is unavailable", async () => {
@@ -157,14 +152,14 @@ describe("SidebarAccountMenu", () => {
 
     await openMenu(user);
 
-    expect(screen.queryByRole("link", { name: /^v/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
   });
 
   it("should show the bouncing icon by default", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
     await openMenu(user);
-    expect(screen.getByTitle("Thanks for using LiteLLM!")).toBeInTheDocument();
+    expect(screen.getByTitle("Thanks for using Agami!")).toBeInTheDocument();
   });
 
   it("should hide the bouncing icon when Hide Bouncing Icon is enabled", async () => {
@@ -172,7 +167,7 @@ describe("SidebarAccountMenu", () => {
     mockUseDisableBouncingIconImpl = () => true;
     renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
     await openMenu(user);
-    expect(screen.queryByTitle("Thanks for using LiteLLM!")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Thanks for using Agami!")).not.toBeInTheDocument();
   });
 
   it("wires the email row to the shared copy button", async () => {

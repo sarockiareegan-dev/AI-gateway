@@ -44,7 +44,7 @@ describe("EmailSettings", () => {
     renderWithProviders(<EmailSettings accessToken="sk-test" premiumUser alerts={alerts} />);
 
     expect(screen.getByText("Email Server Settings")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /LiteLLM Docs: email alerts/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Agami Docs: email alerts/ })).toHaveAttribute(
       "href",
       "https://docs.litellm.ai/docs/proxy/email",
     );

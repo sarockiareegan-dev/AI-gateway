@@ -264,8 +264,8 @@ const AgentCardDiscovery: React.FC<AgentCardDiscoveryProps> = ({
               }
             />
             <TooltipContent>
-              LiteLLM will fetch /.well-known/agent-card.json from this URL and let you pick which skills and
-              capabilities to expose through the proxy.
+              Agami will fetch /.well-known/agent-card.json from this URL and let you pick which skills and capabilities
+              to expose through the proxy.
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -432,7 +432,7 @@ const AgentCardDiscovery: React.FC<AgentCardDiscoveryProps> = ({
                       }
                     />
                     <TooltipContent>
-                      Only capabilities LiteLLM can faithfully proxy today are listed. Others (push notifications,
+                      Only capabilities Agami can faithfully proxy today are listed. Others (push notifications,
                       extensions) are coming soon.
                     </TooltipContent>
                   </Tooltip>
