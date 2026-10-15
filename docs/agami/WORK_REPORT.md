@@ -18,7 +18,7 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #11 | `f5c17dd` | Managed vector stores hook rebuilt |
 | #12 | `27dfee6` | Admin UI rebrand, first part (text, links, brand constants) |
 | #13 | `b01b46a` | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
-| #14 | pending | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
+| #14 | `2bf6e14` | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -768,6 +768,8 @@ Per-feature UI gating:
 - Upsell text such as "Premium feature - Upgrade to ..." now says the feature needs an Iagami license. The license badge in the account menu still reads `premium_user` (any valid license)
 
 Bundle: `litellm/proxy/_experimental/out` is rebuilt with `npm run build` and copied the way the Dockerfiles do, so pip installs and source runs serve the Iagami UI. Docker images still build their own bundle
+
+A Windows `next build` writes the segment prefetch files as nested folders (`__next.!KGRhc2hib2FyZCk/access-groups/__PAGE__.txt`) while the client asks for the flat dotted name (`__next.!KGRhc2hib2FyZCk.access-groups.__PAGE__.txt`), so every page navigation got a 404. #15 flattens them back. After rebuilding the bundle on Windows, move each file under a `__next.*` folder to `<folder>.<path with / replaced by .>` and check the `__next.*` file list matches a Linux build
 
 Tests: new `test_email_branding.py` (support contact default, logo URL from `PROXY_BASE_URL`, empty without it), two `licensed_features` tests, `licenseFeatures.test.ts`, and updated license error, deleted-page and Team-BYOK tooltip assertions. The UI tests related to the changed files pass
 
