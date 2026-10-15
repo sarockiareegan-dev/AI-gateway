@@ -36,6 +36,7 @@ import {
   formatGuardrailMode,
   getGuardrailLogoAndName,
   guardrail_provider_map,
+  guardrailOwnerLabel,
   skipSystemMessageToChoice,
   skipToolMessageToChoice,
   type SkipSystemMessageChoice,
@@ -573,6 +574,13 @@ const GuardrailInfoView: React.FC<GuardrailInfoProps> = ({ guardrailId, onClose,
                 <div className="mt-2">
                   <h3 className="text-lg font-medium">{formatDate(guardrailData.created_at)}</h3>
                   <p>Last Updated: {formatDate(guardrailData.updated_at)}</p>
+                </div>
+              </Card>
+
+              <Card className="block p-6">
+                <p>Owner</p>
+                <div className="mt-2">
+                  <h3 className="text-lg font-medium">{guardrailOwnerLabel(guardrailData)}</h3>
                 </div>
               </Card>
             </div>

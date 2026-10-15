@@ -12,7 +12,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #5 | `5deb495` | Managed files hook rebuilt |
 | #6 | `2e1f70f` | This work report |
 | #7 | `dcdd0e4` | Guardrail owner (`team_id`, `organization_id`) in the guardrail list and info responses, guardrail info scoped like the list |
-| #8 | pending | Demo config and Docker Compose override committed |
+| #8 | `8c2ebb6` | Demo config and Docker Compose override committed |
+| #9 | pending | Guardrail owner shown in the Admin UI table and overview |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -513,6 +514,14 @@ Follow-up (Oct 14, #7):
 - Tests in `tests/test_litellm/proxy/guardrails/test_guardrail_endpoints.py`: `test_list_guardrails_v2_returns_each_guardrails_owner`, and `test_get_guardrail_info_follows_the_list_visibility`, which crosses every scoped guardrail (proxy-wide, org A, org B, team 1, team 2 in org A) with every caller (proxy admin, org and team member, org viewer, team key without user) and expects exactly the list's answer
 - If you change the visibility rule, change only `_guardrail_visible_to`; the two lists and the info endpoint all call it
 
+Admin UI (#9):
+
+- `ui/litellm-dashboard/src/components/guardrails/types.ts`: the `Guardrail` interface has optional `team_id` and `organization_id`
+- `guardrail_info_helpers.tsx`: `guardrailOwnerLabel({team_id, organization_id})` returns "Team <id>" when there is a team (a team wins, matching `_guardrail_visible_to`), else "Organization <id>", else "Proxy-wide"
+- `guardrailTableColumns.tsx`: new Owner column (between Mode and Default On). `guardrail_info.tsx`: new Owner card on the overview tab
+- Tests: `guardrail_table.test.tsx` checks the header and each of the three labels. Run with `npx vitest run "src/app/(dashboard)/guardrails"` from `ui/litellm-dashboard` (`npm ci --engine-strict=false` first if your Node is slightly older than `.nvmrc`)
+- The owner is shown, not edited. To add an owner picker later, send `organization_id` at the top level of the create and update bodies (not inside `guardrail`), and only show the picker to proxy admins
+
 ### 6.3 How to debug a "user sees too much / too little" report
 
 1. Identify the endpoint and the caller's `user_role`, `organization_memberships`, team roles
@@ -783,7 +792,6 @@ rg "agami-org/" litellm agami                      # org model naming
 - UI rebrand (the UI still says LiteLLM and reads one `premium_user` flag instead of per-feature gating)
 - Batch cost poller for managed batches
 - `managed_vector_stores` hook
-- Show the guardrail owner in the Admin UI (the API returns it since #7)
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
 

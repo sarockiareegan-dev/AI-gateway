@@ -114,6 +114,18 @@ export const toModeArray = (raw: unknown): string[] => {
   return [];
 };
 
+export const guardrailOwnerLabel = ({
+  team_id,
+  organization_id,
+}: {
+  team_id?: string | null;
+  organization_id?: string | null;
+}): string => {
+  if (team_id) return `Team ${team_id}`;
+  if (organization_id) return `Organization ${organization_id}`;
+  return "Proxy-wide";
+};
+
 export const formatGuardrailMode = (raw: unknown): string => {
   const flat: string[] = toModeArray(raw);
   if (flat.length > 0) return flat.join(", ");
