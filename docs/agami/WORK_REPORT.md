@@ -13,7 +13,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #6 | `2e1f70f` | This work report |
 | #7 | `dcdd0e4` | Guardrail owner (`team_id`, `organization_id`) in the guardrail list and info responses, guardrail info scoped like the list |
 | #8 | `8c2ebb6` | Demo config and Docker Compose override committed |
-| #9 | pending | Guardrail owner shown in the Admin UI table and overview |
+| #9 | `e70ef8d` | Guardrail owner shown in the Admin UI table and overview |
+| #10 | pending | Batch cost poller rebuilt |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -619,7 +620,55 @@ Access: the creator, their team and proxy admins (via `can_access_resource` in `
 
 ### 9.5 Comparison and limits
 
-Upstream's version lived in the enterprise package and used caching. Ours reads the DB each time (simpler, always consistent) and is tenant-scoped. Not rebuilt yet: the background batch cost poller (`check_batch_cost_job`, cost is recorded on retrieve after completion instead) and `managed_vector_stores`
+Upstream's version lived in the enterprise package and used caching. Ours reads the DB each time (simpler, always consistent) and is tenant-scoped. Not rebuilt yet: `managed_vector_stores`
+
+### 9.6 Batch cost poller (#10)
+
+Problem: a managed batch costs money when the provider finishes it, but upstream's code only charged it when somebody called `GET /v1/batches/{id}` after completion (or LiteLLM's enterprise poller did). A batch nobody re-checks was never billed
+
+File: `litellm/proxy/spend_tracking/batch_cost_poller.py`, class `CheckBatchCost`. Tests: `tests/test_litellm/proxy/spend_tracking/test_batch_cost_poller.py`
+
+Registration (`proxy_server.py`, end of `initialize_scheduled_background_jobs`):
+
+```python
+if llm_router is not None and PROXY_BATCH_POLLING_ENABLED:
+    batch_cost_poller = CheckBatchCost(prisma_client=prisma_client, llm_router=llm_router)
+    if await batch_cost_poller.confirm_batch_processed_support():
+        scheduler.add_job(batch_cost_poller.check_batch_cost, "interval",
+                          seconds=proxy_batch_polling_interval + random.randint(0, 30),
+                          id="check_batch_cost_job", ...)
+```
+
+Workflow of one run (`check_batch_cost`):
+
+1. Query `LiteLLM_ManagedObjectTable` where `file_purpose="batch"` and `batch_processed=False`, oldest first, at most `BATCH_COST_POLL_LIMIT` (100)
+2. For each row, decode `unified_object_id` (base64 of `litellm_proxy;model_id:<deployment>;llm_batch_id:<provider id>`). Skip rows that don't decode and LiteLLM-executed batches (`litellm_batch_` ids, priced elsewhere)
+3. Build the retrieve call: `batch_id` = provider id, `litellm_metadata` = the creator's attribution (`user_api_key` and `user_api_key_hash` = stored hashed key, `user_api_key_user_id`, `user_api_key_team_id`, `user_api_key_org_id`, `tags`), plus the deployment's credential snapshot (`add_internal_model_credentials` with `EVERY_MODEL`, because the poller is a system job and org models must resolve)
+4. `llm_router.aretrieve_batch(model=<deployment id>, ...)`. This runs the normal logging path: `litellm_logging.py` sees `call_type=aretrieve_batch` and a final batch, downloads the output file and prices it (`_handle_completed_batch`); `_ProxyDBLogger` writes the spend row with request id `<batch id>_batch_cost` and increments key, user, team and org spend
+5. Update the row: `status` (`completed` stored as `complete`), plus `batch_processed=True` only if `batch_cost_is_final(response)`. A "completed" batch whose output file hasn't arrived yet stays eligible, so its cost isn't pinned at $0
+6. One failing batch (deployment gone, provider down) is logged and counted (`record_check_batch_cost_error`) and the run continues. Prometheus gauges and counters that already existed (`litellm_check_batch_cost_*`) are fed when the Prometheus callback is on
+
+Why it can't double-charge:
+
+- The spend writer (`db_spend_update_writer.py`, `_claim_batch_cost_spend_log`) treats the `<batch id>_batch_cost` row as a claim: the first writer wins and later writers for the same id don't add spend. So a user retrieve and the poller racing on the same batch charge it once
+- `batch_cost_poller_is_active()` in `openai_files_endpoints/common_utils.py` returns true only when `check_batch_cost_job` is scheduled and the poller confirmed the `batch_processed` column. Only then does the retrieve path stop accounting by itself (`batch_ignore_default_logging`) and leave `batch_processed` for the poller. If the poller is off, the retrieve path keeps charging as before
+
+How to control it:
+
+| Setting | Effect |
+|---------|--------|
+| `PROXY_BATCH_POLLING_ENABLED=false` (env) | Poller off, retrieve path accounts |
+| `PROXY_BATCH_POLLING_INTERVAL` (env, seconds, default 3600) or `general_settings.proxy_batch_polling_interval` | How often it runs |
+| No database or no router | Poller not registered |
+| `general_settings.track_unmanaged_batch_cost` | Not supported, logs a warning. Only batches with a managed (unified) id are polled |
+
+How to debug:
+
+- Not running: look for `check_batch_cost_job` in the scheduler, or the warning `Batch cost poller disabled, batch_processed is not readable` (schema not migrated)
+- A batch never billed: check its row. `batch_processed=True` with no `_batch_cost` spend row means the cost callback failed after retirement; look for errors around the retrieve in the proxy log. `batch_processed=False` and an old `updated_at` means the poller can't reach it (`Batch cost poller could not check <id>` warning)
+- Billed to nobody: the row's `api_key`, `created_by`, `team_id`, `org_id` are empty (created by the master key, or before attribution was stored). The cost is still written, unattributed, on purpose
+
+Different from LiteLLM: theirs was enterprise code with its own licence. Ours reuses the existing logging and spend-claim path instead of writing spend itself, so there is only one place that prices a batch
 
 ---
 
@@ -790,7 +839,6 @@ rg "agami-org/" litellm agami                      # org model naming
 
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
 - UI rebrand (the UI still says LiteLLM and reads one `premium_user` flag instead of per-feature gating)
-- Batch cost poller for managed batches
 - `managed_vector_stores` hook
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)

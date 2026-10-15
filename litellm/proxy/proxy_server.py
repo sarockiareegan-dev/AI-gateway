@@ -274,6 +274,7 @@ from litellm.constants import (
     MONTHLY_SPEND_REPORT_JOB_ID,
     PROMETHEUS_FALLBACK_STATS_JOB_ID,
     PROMETHEUS_FALLBACK_STATS_SEND_TIME_HOURS,
+    PROXY_BATCH_POLLING_ENABLED,
     PROXY_BATCH_POLLING_INTERVAL,
     PROXY_BATCH_WRITE_AT,
     PROXY_BUDGET_RESCHEDULER_MAX_TIME,
@@ -10315,6 +10316,24 @@ class ProxyStartupEvent:
                     )
                 except ValueError:
                     verbose_proxy_logger.error("Invalid maximum_spend_logs_retention_interval value")
+
+        if llm_router is not None and PROXY_BATCH_POLLING_ENABLED:
+            from litellm.proxy.spend_tracking.batch_cost_poller import CheckBatchCost
+
+            if general_settings.get("track_unmanaged_batch_cost"):
+                verbose_proxy_logger.warning(
+                    "track_unmanaged_batch_cost is not supported; only managed batches are cost-polled"
+                )
+            batch_cost_poller: Final = CheckBatchCost(prisma_client=prisma_client, llm_router=llm_router)
+            if await batch_cost_poller.confirm_batch_processed_support():
+                scheduler.add_job(
+                    batch_cost_poller.check_batch_cost,
+                    "interval",
+                    seconds=proxy_batch_polling_interval + random.randint(0, 30),
+                    id="check_batch_cost_job",
+                    replace_existing=True,
+                    misfire_grace_time=APSCHEDULER_MISFIRE_GRACE_TIME,
+                )
 
         # MEMORY LEAK FIX: Start scheduler with paused=False to avoid backlog processing
         # Do NOT reset job times to "now" as this can trigger the memory leak
