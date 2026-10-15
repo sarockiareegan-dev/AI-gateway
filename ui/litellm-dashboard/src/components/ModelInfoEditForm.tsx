@@ -783,7 +783,7 @@ const ModelInfoEditForm: React.FC<ModelInfoEditFormProps> = ({
               <FieldLabel>
                 LiteLLM Params
                 <DocsHint
-                  text="Optional litellm params used for making a litellm.completion() call. Some params are automatically added by LiteLLM."
+                  text="Optional litellm params used for making a litellm.completion() call. Some params are automatically added by Iagami."
                   href="https://docs.litellm.ai/docs/completion/input"
                 />
               </FieldLabel>

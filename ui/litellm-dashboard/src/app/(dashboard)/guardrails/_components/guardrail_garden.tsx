@@ -74,7 +74,7 @@ const GuardrailGarden: React.FC<GuardrailGardenProps> = ({ accessToken, onGuardr
           </span>
         </div>
         <p className="mt-1 mb-5 text-[13px] text-muted-foreground">
-          Built-in guardrails powered by LiteLLM. Zero latency, no external dependencies, no additional cost.
+          Built-in guardrails powered by Iagami. Zero latency, no external dependencies, no additional cost.
         </p>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
           {(showAllLitellm ? litellmCards : litellmCards.slice(0, CARDS_PER_ROW * VISIBLE_ROWS)).map((card) => (

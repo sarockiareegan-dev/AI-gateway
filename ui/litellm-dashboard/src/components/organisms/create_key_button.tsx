@@ -765,7 +765,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                       }))}
                     />
                     <div className="text-xs text-muted-foreground mt-2">
-                      This key will be used by the selected agent to make requests to LiteLLM
+                      This key will be used by the selected agent to make requests to Iagami
                     </div>
                   </div>
                 )}
@@ -1660,14 +1660,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                       ) : (
                         <SimpleTooltip
                           className="w-full"
-                          content={
-                            <span>
-                              Key-level logging settings is an enterprise feature, get in touch -
-                              <a href="https://www.litellm.ai/enterprise" target="_blank">
-                                https://www.litellm.ai/enterprise
-                              </a>
-                            </span>
-                          }
+                          content={<span>Key-level logging settings need an Iagami license.</span>}
                           side="top"
                         >
                           <div style={{ position: "relative" }}>

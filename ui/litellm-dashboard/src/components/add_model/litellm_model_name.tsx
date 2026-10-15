@@ -195,8 +195,8 @@ const LiteLLMModelNameField: React.FC<LiteLLMModelNameFieldProps> = ({
       <div className="grid grid-cols-24">
         <p className="col-start-11 col-span-14 text-sm mb-3 mt-1">
           {selectedProvider === Providers.Azure
-            ? "Your deployment name will be saved as the public model name, and LiteLLM will use 'azure/deployment-name' internally"
-            : "The model name LiteLLM will send to the LLM API"}
+            ? "Your deployment name will be saved as the public model name, and Iagami will use 'azure/deployment-name' internally"
+            : "The model name Iagami will send to the LLM API"}
         </p>
       </div>
     </>

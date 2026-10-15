@@ -705,7 +705,7 @@ const Settings: React.FC<SettingsPageProps> = ({ accessToken, userRole, userID, 
             style={{ color: "blue" }}
           >
             {" "}
-            LiteLLM Docs: Logging
+            Iagami Docs: Logging
           </a>
 
           <FormProvider {...addForm}>

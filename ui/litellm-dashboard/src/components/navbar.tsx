@@ -1,6 +1,5 @@
 import { useHealthReadinessDetails } from "@/app/(dashboard)/hooks/healthReadiness/useHealthReadinessDetails";
 import { useDisableBouncingIcon } from "@/app/(dashboard)/hooks/useDisableBouncingIcon";
-import { useDisableShowPrompts } from "@/app/(dashboard)/hooks/useDisableShowPrompts";
 import { useWorker } from "@/hooks/useWorker";
 import { getProxyBaseUrl } from "@/components/networking";
 import { uiHref } from "@/utils/uiHref";
@@ -12,9 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Link from "next/link";
 import React from "react";
-import { BlogDropdown } from "./Navbar/BlogDropdown/BlogDropdown";
 import { DocsLink } from "./Navbar/DocsLink/DocsLink";
-import { CommunityEngagementButtons } from "./Navbar/CommunityEngagementButtons/CommunityEngagementButtons";
+import { BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/cva.config";
 import { NotificationsBell } from "./Navbar/NotificationsBell/NotificationsBell";
 import UserDropdown from "./Navbar/UserDropdown/UserDropdown";
@@ -43,7 +41,6 @@ const Navbar: React.FC<NavbarProps> = ({
   const { data: healthData } = useHealthReadinessDetails(accessToken);
   const version = healthData?.litellm_version;
   const disableBouncingIcon = useDisableBouncingIcon();
-  const hideCommunityLinks = useDisableShowPrompts();
   const { isControlPlane, selectedWorker } = useWorker();
   const showWorkerSwitch = isControlPlane && selectedWorker !== null;
 
@@ -90,7 +87,7 @@ const Navbar: React.FC<NavbarProps> = ({
               <Link href={uiHref("")} className="flex items-center">
                 <div className="relative">
                   <div className="flex h-10 max-w-48 items-center justify-center overflow-hidden">
-                    <img src={imageUrl} alt="LiteLLM Brand" className={cn(NAV_LOGO_CLASS_NAME, "dark:hidden")} />
+                    <img src={imageUrl} alt={BRAND_NAME} className={cn(NAV_LOGO_CLASS_NAME, "dark:hidden")} />
                     <img
                       src={darkImageUrl}
                       alt=""
@@ -106,20 +103,13 @@ const Navbar: React.FC<NavbarProps> = ({
                     <span
                       className="absolute -left-2 -top-1 animate-bounce text-lg"
                       style={{ animationDuration: "2s" }}
-                      title="Thanks for using LiteLLM!"
+                      title={`Thanks for using ${BRAND_NAME}!`}
                     >
                       🌑
                     </span>
                   )}
-                  <Badge variant="outline" className="relative z-raised cursor-pointer text-xs font-medium">
-                    <a
-                      href="https://docs.litellm.ai/release_notes"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0"
-                    >
-                      v{version}
-                    </a>
+                  <Badge variant="outline" className="relative z-raised text-xs font-medium">
+                    v{version}
                   </Badge>
                 </div>
               )}
@@ -144,14 +134,7 @@ const Navbar: React.FC<NavbarProps> = ({
               className={`flex min-w-0 items-center gap-2 ${showWorkerSwitch ? "border-l border-border pl-4" : ""}`}
             >
               <DocsLink />
-              <BlogDropdown />
             </nav>
-
-            {!hideCommunityLinks && (
-              <div className="flex shrink-0 items-center border-l border-border pl-4">
-                <CommunityEngagementButtons />
-              </div>
-            )}
 
             {!isPublicPage && (
               <div className="flex shrink-0 items-center border-l border-border pl-4">

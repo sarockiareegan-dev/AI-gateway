@@ -14,10 +14,6 @@ vi.mock("@/app/(dashboard)/hooks/useDisableBouncingIcon", () => ({
   useDisableBouncingIcon: () => false,
 }));
 
-vi.mock("./Navbar/BlogDropdown/BlogDropdown", () => ({
-  BlogDropdown: () => <div data-testid="blog-dropdown">Blog</div>,
-}));
-
 const mockUserDropdownData = vi.hoisted(() => ({
   current: () => ({
     userId: "test-user",
@@ -75,20 +71,6 @@ vi.mock("@/utils/proxyUtils", () => ({
     PROXY_BASE_URL: "",
     PROXY_LOGOUT_URL: "https://example.com/logout",
   }),
-}));
-
-// Mock CommunityEngagementButtons component
-vi.mock("./Navbar/CommunityEngagementButtons/CommunityEngagementButtons", () => ({
-  CommunityEngagementButtons: () => (
-    <div data-testid="community-engagement-buttons">
-      <a href="https://www.litellm.ai/support" target="_blank" rel="noopener noreferrer">
-        Join Slack
-      </a>
-      <a href="https://github.com/BerriAI/litellm" target="_blank" rel="noopener noreferrer">
-        Star us on GitHub
-      </a>
-    </div>
-  ),
 }));
 
 // Create mock functions that can be controlled in tests
@@ -154,13 +136,13 @@ describe("Navbar", () => {
   it("should link the logo to the UI home route rather than the proxy origin", () => {
     renderWithProviders(<Navbar {...defaultProps} />);
 
-    expect(screen.getByRole("link", { name: /litellm brand/i })).toHaveAttribute("href", "/ui");
+    expect(screen.getByRole("link", { name: /^iagami$/i })).toHaveAttribute("href", "/ui");
   });
 
   it("pairs the logo with a dark-mode variant that swaps on the dark class", () => {
     renderWithProviders(<Navbar {...defaultProps} />);
 
-    const [light, dark] = Array.from(screen.getByRole("link", { name: /litellm brand/i }).querySelectorAll("img"));
+    const [light, dark] = Array.from(screen.getByRole("link", { name: /^iagami$/i }).querySelectorAll("img"));
     const classesOf = (el: Element) => new Set(el.className.split(/\s+/));
 
     const lightSrc = light.getAttribute("src") ?? "";
@@ -231,6 +213,7 @@ describe("Navbar", () => {
     renderWithProviders(<Navbar {...defaultProps} />);
 
     expect(screen.getByText("v1.0.0")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "v1.0.0" })).not.toBeInTheDocument();
 
     // Reset mock
     mockUseHealthReadinessDetailsImpl = () => ({ data: null });
@@ -257,7 +240,7 @@ describe("Navbar", () => {
 
     renderWithProviders(<Navbar {...defaultProps} />);
 
-    const logoImg = screen.getByAltText("LiteLLM Brand");
+    const logoImg = screen.getByAltText("Iagami");
     expect(logoImg).toHaveAttribute("src", "https://example.com/custom-logo.png");
 
     // Reset mock

@@ -20,11 +20,6 @@ vi.mock("@/contexts/PluginModeContext", () => ({ usePluginMode: mockUsePluginMod
 vi.mock("@/app/(dashboard)/hooks/uiSettings/useUISettings", () => ({ useUISettings: mockUseUISettings }));
 vi.mock("next/navigation", () => ({ usePathname: () => state.pathname }));
 vi.mock("@/hooks/useWorker", () => ({ useWorker: () => ({ isControlPlane: false, selectedWorker: null }) }));
-vi.mock("@/app/(dashboard)/hooks/useDisableShowPrompts", () => ({ useDisableShowPrompts: () => false }));
-vi.mock("@/components/Navbar/BlogDropdown/BlogDropdown", () => ({ BlogDropdown: () => null }));
-vi.mock("@/components/Navbar/CommunityEngagementButtons/CommunityEngagementButtons", () => ({
-  CommunityEngagementButtons: () => null,
-}));
 vi.mock("@/components/Navbar/NotificationsBell/NotificationsBell", () => ({ NotificationsBell: () => null }));
 vi.mock("@/components/Navbar/WorkerDropdown/WorkerDropdown", () => ({ default: () => null }));
 

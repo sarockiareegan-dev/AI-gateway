@@ -75,9 +75,9 @@ export default function PassthroughAuthorizeSection({
   return (
     <div className="rounded-lg border border-dashed border-border p-4 space-y-2 mb-4">
       <p className="text-sm text-muted-foreground">
-        Callers bring their own upstream token for this auth type, so LiteLLM never stores tokens. To preview tools and
+        Callers bring their own upstream token for this auth type, so Iagami never stores tokens. To preview tools and
         configure the tool allowlist, authorize against the upstream here: the token stays in this browser session only
-        and is never saved to LiteLLM. An OAuth app configured below IS saved with the server, so internal users who
+        and is never saved to Iagami. An OAuth app configured below IS saved with the server, so internal users who
         authorize from the Tools page go through it.
       </p>
       {appMayNotMatchUpstream && (
@@ -131,7 +131,7 @@ export default function PassthroughAuthorizeSection({
       {oauthFlow.status === "success" && oauthFlow.tokenResponse?.access_token && (
         <p className="text-sm text-success">
           Token held for this browser session. Tools can now be previewed and configured; the token was not saved to
-          LiteLLM.
+          Iagami.
         </p>
       )}
     </div>

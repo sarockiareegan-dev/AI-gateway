@@ -131,6 +131,8 @@ The user's overall plan, mapped to the work above. Steps 1, 4 and 5 are done: th
 - [x] Work report, done Oct 14 in [#6](https://github.com/sarockiareegan-dev/AI-gateway/pull/6): `docs/agami/WORK_REPORT.md` explains every change above in reproducible detail. Update it in the same PR as any change it describes, like this file
 - [x] Demo files, done Oct 14 on the `agami_demo_files` PR. `agami_demo_config.yaml` (two Groq models, master key and provider key read from the environment) and `docker-compose.demo.yml`, an override that builds a local `agami-gateway:demo` image instead of pulling LiteLLM's and mounts the demo config. Run with `docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build`. The Compose run itself is not verified yet because Docker Desktop was not running; the same config was verified running from source on Oct 13
 - [x] Guardrail owner in the Admin UI, done Oct 14 on the `agami_guardrail_owner_ui` PR. The guardrail table has an Owner column and the guardrail overview an Owner card, both from `guardrailOwnerLabel` in `guardrail_info_helpers.tsx`: "Team <id>", "Organization <id>" or "Proxy-wide". Read-only on purpose: only proxy admins can change the owner, through `organization_id` on `POST /guardrails` and `PUT /guardrails/{id}`. An owner picker in the edit form is left for the UI rebrand
+- [x] Admin UI rebrand, first part, done Oct 15 on the `agami_ui_rebrand` PR. `ui/litellm-dashboard/src/lib/brand.ts` holds `BRAND_NAME`, `PRODUCT_NAME` and `LICENSE_CONTACT_EMAIL`. User-facing "LiteLLM" text in about 80 components now says Iagami ("Iagami Gateway" for "LiteLLM Proxy"), the page title is "Iagami Dashboard", and the "LiteLLM Enterprise feature" notices say the feature needs an Iagami license. The LiteLLM Slack, GitHub and blog buttons, the "Hide Blog Posts" toggles and the release-notes links are gone, and the license expiry banner no longer points at LiteLLM's sales email. Terms tied to API fields or backend values ("LiteLLM Model Name", "LiteLLM Params", the "LiteLLM Content Filter" guardrail type) stay
+- [ ] Admin UI rebrand, second part. Needs from the user: logo files (light and dark), a favicon, and where docs, support and license-contact links should point. Then: replace the bundled logos and favicons, repoint or drop the about 210 `docs.litellm.ai` links and about 15 LiteLLM GitHub links, rebuild `litellm/proxy/_experimental/out`, and move UI gating from `premium_user` to per-feature licence checks
 - [ ] Step 6, rename `litellm` to `agami` in the folder structure and module names. `litellm/` holds about 2,470 Python files and about 4,300 files import it, so the approach needs a decision first
 - [ ] Step 7, refactor and optimize. Needs a scope decision
 
@@ -173,7 +175,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-The user picks the next unchecked item under Remaining work. Open choices as of Oct 15: a Docker Compose run of the demo (needs Docker Desktop), the UI rebrand with per-feature UI gating instead of the single `premium_user` token flag, step 6 (rename) and step 7 (refactor)
+The user picks the next unchecked item under Remaining work. Open choices as of Oct 15: a Docker Compose run of the demo (needs Docker Desktop), the second part of the UI rebrand (waiting on brand assets and links from the user, plus per-feature UI gating), step 6 (rename) and step 7 (refactor)
 
 ## Session log
 
