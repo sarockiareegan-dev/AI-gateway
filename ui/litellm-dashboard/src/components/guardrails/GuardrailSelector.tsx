@@ -43,7 +43,7 @@ const GuardrailSelector: React.FC<GuardrailSelectorProps> = ({ onChange, value, 
     <div className="min-w-0">
       <MultiSelect
         disabled={disabled}
-        placeholder={disabled ? "Setting guardrails is a premium feature." : "Select guardrails"}
+        placeholder={disabled ? "Setting guardrails needs an Iagami license." : "Select guardrails"}
         onValueChange={handleGuardrailChange}
         value={value}
         loading={loading}

@@ -96,7 +96,7 @@ def require_metadata_field_licence(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail=ProxyErrorDetail(
-            error=f"{field_name} needs the '{feature.value}' feature on the Agami license. "
+            error=f"{field_name} needs the '{feature.value}' feature on the Iagami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
         ),
     )
@@ -113,7 +113,7 @@ def validate_team_model_max_budget(
         raise HTTPException(
             status_code=403,
             detail={
-                "error": "Setting model_max_budget on a team needs the 'budgets' feature on the Agami license. "
+                "error": "Setting model_max_budget on a team needs the 'budgets' feature on the Iagami license. "
                 f"{CommonProxyErrors.not_premium_user.value}"
             },
         )

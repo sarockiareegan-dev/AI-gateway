@@ -1901,7 +1901,7 @@ def _require_team_models_licence(entitlements: EntitlementService | None) -> Non
     raise HTTPException(
         status_code=403,
         detail=ProxyErrorDetail(
-            error="Team-scoped models need the 'team_models' feature on the Agami license. "
+            error="Team-scoped models need the 'team_models' feature on the Iagami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
         ),
     )

@@ -2,6 +2,7 @@
  * Allow proxy admin to add other people to view global spend
  * Use this to avoid sharing master key with others
  */
+import useLicenseFeature from "@/app/(dashboard)/hooks/useLicenseFeature";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { Alert, AlertDescription, AlertTitle } from "@/components/shared/Alert";
 import { Button } from "@/components/ui/button";
@@ -65,7 +66,9 @@ interface AdminPanelProps {
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ proxySettings }) => {
-  const { premiumUser, accessToken, userId: userID } = useAuthorized();
+  const { accessToken, userId: userID } = useAuthorized();
+  const hasSSO = useLicenseFeature("sso");
+  const hasAccessControl = useLicenseFeature("access_control");
   const form = useSSOSettingsForm("admin-panel");
   const [isAddSSOModalVisible, setIsAddSSOModalVisible] = useState(false);
   const [isInstructionsModalVisible, setIsInstructionsModalVisible] = useState(false);
@@ -106,8 +109,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ proxySettings }) => {
 
   const handleShowAllowedIPs = async () => {
     try {
-      if (premiumUser !== true) {
-        toast.fromError("This feature is only available for premium users. Please upgrade your account.");
+      if (!hasAccessControl) {
+        toast.fromError("Allowed IPs need an Iagami license with access control.");
         return;
       }
       if (accessToken) {
@@ -121,7 +124,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ proxySettings }) => {
       toast.fromError(`Failed to fetch allowed IPs ${error}`);
       setAllowedIPs([all_ip_address_allowed]);
     } finally {
-      if (premiumUser === true) {
+      if (hasAccessControl) {
         setIsAllowedIPModalVisible(true);
       }
     }
@@ -170,7 +173,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ proxySettings }) => {
   const handleAddSSOOk = () => {
     setIsAddSSOModalVisible(false);
     form.reset(emptySSOSettingsFormValues);
-    if (accessToken && premiumUser) {
+    if (accessToken && hasSSO) {
       checkSSOConfiguration();
     }
   };
@@ -187,21 +190,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ proxySettings }) => {
 
   const handleInstructionsOk = () => {
     setIsInstructionsModalVisible(false);
-    if (accessToken && premiumUser) {
+    if (accessToken && hasSSO) {
       checkSSOConfiguration();
     }
   };
 
   const handleInstructionsCancel = () => {
     setIsInstructionsModalVisible(false);
-    if (accessToken && premiumUser) {
+    if (accessToken && hasSSO) {
       checkSSOConfiguration();
     }
   };
 
   useEffect(() => {
     checkSSOConfiguration();
-  }, [accessToken, premiumUser, checkSSOConfiguration]);
+  }, [accessToken, hasSSO, checkSSOConfiguration]);
 
   const handleUIAccessControlOk = () => {
     setIsUIAccessControlModalVisible(false);
@@ -255,9 +258,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ proxySettings }) => {
                 <Button
                   style={{ width: "150px" }}
                   onClick={() =>
-                    premiumUser === true
+                    hasAccessControl
                       ? setIsUIAccessControlModalVisible(true)
-                      : toast.fromError("Only premium users can configure UI access control")
+                      : toast.fromError("UI access control needs an Iagami license with access control.")
                   }
                 >
                   UI Access Control

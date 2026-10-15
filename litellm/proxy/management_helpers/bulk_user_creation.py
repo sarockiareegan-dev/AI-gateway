@@ -20,6 +20,7 @@ from litellm._logging import verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.integrations.prometheus import PrometheusLogger
 from litellm.proxy._types import (
+    CommonProxyErrors,
     LiteLLM_TeamTable,
     LitellmUserRoles,
     Member,
@@ -800,7 +801,7 @@ async def bulk_create_users(
                 type=f"{PROBLEM_TYPE_BASE}license-limit-exceeded",
                 title="License limit exceeded",
                 status=403,
-                detail="License is over limit. Please contact support@berri.ai to upgrade your license.",
+                detail=CommonProxyErrors.license_over_limit.value,
             )
         )
 

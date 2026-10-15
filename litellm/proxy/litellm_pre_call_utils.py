@@ -2903,7 +2903,7 @@ def _enforced_params_check(
         raise HTTPException(
             status_code=403,
             detail=ProxyErrorDetail(
-                error="Enforced params need the 'enforced_params' feature on the Agami license. "
+                error="Enforced params need the 'enforced_params' feature on the Iagami license. "
                 f"Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
             ),
         )

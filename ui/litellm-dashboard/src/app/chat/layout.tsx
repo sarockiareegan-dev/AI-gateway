@@ -1,5 +1,6 @@
 "use client";
 
+import useLicenseFeature from "@/app/(dashboard)/hooks/useLicenseFeature";
 import { Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
@@ -12,7 +13,8 @@ import { uiHref } from "@/utils/uiHref";
 
 // ChatShellProvider uses useSearchParams(), which requires a Suspense boundary for static export.
 function ChatLayoutContent({ children }: { children: React.ReactNode }) {
-  const { accessToken, userRole, userId, userEmail, premiumUser } = useAuthorized();
+  const { accessToken, userRole, userId, userEmail } = useAuthorized();
+  const hasAdvancedKeys = useLicenseFeature("advanced_keys");
   const { data: uiSettings, isLoading: isUISettingsLoading } = useUISettings();
   const router = useRouter();
 
@@ -35,7 +37,7 @@ function ChatLayoutContent({ children }: { children: React.ReactNode }) {
             userId={userId ?? ""}
             userEmail={userEmail ?? ""}
             userRole={userRole ?? ""}
-            premiumUser={premiumUser ?? false}
+            premiumUser={hasAdvancedKeys}
           >
             <ChatShell>{children}</ChatShell>
           </ChatShellProvider>

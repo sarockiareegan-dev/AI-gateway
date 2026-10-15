@@ -1578,7 +1578,7 @@ async def _user_api_key_auth_builder(
         if (should_apply_global_oauth2 and not is_jwt) or should_apply_override_oauth2:
             if not is_licensed(LicenseFeature.JWT_AUTH):
                 raise ProxyException(
-                    message="OAuth2 token validation needs the 'jwt_auth' feature on the Agami license. "
+                    message="OAuth2 token validation needs the 'jwt_auth' feature on the Iagami license. "
                     + CommonProxyErrors.not_premium_user.value,
                     type=ProxyErrorTypes.auth_error,
                     param="license",
@@ -1596,7 +1596,7 @@ async def _user_api_key_auth_builder(
             if is_jwt:
                 if not is_licensed(LicenseFeature.JWT_AUTH):
                     raise ProxyException(
-                        message="JWT auth needs the 'jwt_auth' feature on the Agami license. "
+                        message="JWT auth needs the 'jwt_auth' feature on the Iagami license. "
                         f"{CommonProxyErrors.not_premium_user.value}",
                         type=ProxyErrorTypes.auth_error,
                         param="license",

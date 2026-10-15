@@ -35,7 +35,7 @@ def require_guardrails_licence(name: str) -> None:
     if is_licensed(LicenseFeature.GUARDRAILS):
         return
     raise ValueError(
-        f"'{name}' needs the 'guardrails' feature on the Agami license. {CommonProxyErrors.not_premium_user.value}"
+        f"'{name}' needs the 'guardrails' feature on the Iagami license. {CommonProxyErrors.not_premium_user.value}"
     )
 
 

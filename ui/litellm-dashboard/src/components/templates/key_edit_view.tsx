@@ -1,3 +1,4 @@
+import { hasLicenseFeature, type LicenseFeature } from "@/utils/licenseFeatures";
 import { canDetachKeyProject, KeyProjectField } from "./KeyProjectField";
 import GuardrailSelector from "@/components/guardrails/GuardrailSelector";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
@@ -86,6 +87,7 @@ interface KeyEditViewProps {
   userID: string | null;
   userRole: string | null;
   premiumUser?: boolean;
+  licenseFeatures?: readonly string[] | null;
 }
 
 export function KeyEditView({
@@ -97,8 +99,12 @@ export function KeyEditView({
   userID,
   userRole,
   premiumUser = false,
+  licenseFeatures,
 }: KeyEditViewProps) {
-  const canEditGuardrails = premiumUser || (userRole != null && rolesWithWriteAccess.includes(userRole));
+  const hasFeature = (feature: LicenseFeature) => hasLicenseFeature(licenseFeatures, premiumUser, feature);
+  const canSetPrompts = hasFeature("advanced_keys");
+  const canSetRoutes = hasFeature("access_control");
+  const canEditGuardrails = hasFeature("guardrails") || (userRole != null && rolesWithWriteAccess.includes(userRole));
   const canViewPolicies = hasCapability(userRole, "viewPolicies");
   const canViewPrompts = hasCapability(userRole, "viewPrompts");
   const canEditEstimates = userRole != null && isProxyAdminRole(userRole);
@@ -476,7 +482,7 @@ export function KeyEditView({
 
           <ModelMaxBudgetField
             key={keyData.token}
-            premiumUser={premiumUser}
+            premiumUser={hasFeature("budgets")}
             value={modelBudget.value}
             onChange={modelBudget.setValue}
             availableModels={availableModels}
@@ -643,7 +649,7 @@ export function KeyEditView({
                     onChange={onChange}
                     value={value as string[] | undefined}
                     accessToken={accessToken}
-                    disabled={!premiumUser}
+                    disabled={!hasFeature("guardrails")}
                   />
                 ) : (
                   <div />
@@ -668,7 +674,7 @@ export function KeyEditView({
             <FormField
               control={form.control}
               name="prompts"
-              label={premiumUser ? "Prompts" : labelWithHint("Prompts", "Setting prompts by key is a premium feature")}
+              label={canSetPrompts ? "Prompts" : labelWithHint("Prompts", "Needs an Iagami license")}
             >
               {({ value, onChange, id }) => (
                 <TagsInput
@@ -676,11 +682,11 @@ export function KeyEditView({
                   value={(value as string[] | undefined) ?? []}
                   onValueChange={onChange}
                   options={promptsList.map((name) => ({ value: name, label: name }))}
-                  disabled={!premiumUser}
+                  disabled={!canSetPrompts}
                   placeholder={currentValuePlaceholder(
-                    premiumUser,
+                    canSetPrompts,
                     keyData.metadata?.prompts,
-                    "Premium feature - Upgrade to set prompts by key",
+                    "Needs an Iagami license to set prompts by key",
                     "Select or enter prompts",
                   )}
                 />
@@ -709,12 +715,9 @@ export function KeyEditView({
             control={form.control}
             name="allowed_passthrough_routes"
             label={
-              premiumUser
+              canSetRoutes
                 ? "Allowed Pass Through Routes"
-                : labelWithHint(
-                    "Allowed Pass Through Routes",
-                    "Setting allowed pass through routes by key is a premium feature",
-                  )
+                : labelWithHint("Allowed Pass Through Routes", "Needs an Iagami license")
             }
           >
             {({ value, onChange }) => (
@@ -723,12 +726,12 @@ export function KeyEditView({
                 onChange={onChange}
                 accessToken={accessToken || ""}
                 placeholder={currentValuePlaceholder(
-                  premiumUser,
+                  canSetRoutes,
                   keyData.metadata?.allowed_passthrough_routes,
-                  "Premium feature - Upgrade to set allowed pass through routes by key",
+                  "Needs an Iagami license to set allowed pass through routes by key",
                   "Select or enter allowed pass through routes",
                 )}
-                disabled={!premiumUser}
+                disabled={!canSetRoutes}
               />
             )}
           </FormField>

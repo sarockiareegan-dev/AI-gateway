@@ -1,4 +1,4 @@
-"""Agami license verification and the entitlements a valid license grants.
+"""Iagami license verification and the entitlements a valid license grants.
 
 A license is an EdDSA (Ed25519) signed JWT issued by ``scripts/agami_license.py`` and
 verified offline against the public key bundled next to this module.
@@ -39,7 +39,7 @@ _DECODE_OPTIONS: Final[Options] = {
 }
 LICENSE_ALL_FEATURES: Final = "*"
 AUTO_ROUTER_LICENSE_FEATURE: Final = "auto_router"
-AUTO_ROUTER_LICENSE_REMEDY: Final = "An Agami license with the 'auto_router' feature lifts the limit."
+AUTO_ROUTER_LICENSE_REMEDY: Final = "An Iagami license with the 'auto_router' feature lifts the limit."
 BUNDLED_PUBLIC_KEY_PATH: Final = Path(__file__).with_name("agami_license_public_key.pem")
 
 Clock: TypeAlias = Callable[[], datetime]
@@ -132,7 +132,7 @@ def verify_license(token: str | None, public_key: Ed25519PublicKey | None, now: 
     if not token:
         return NoLicense()
     if public_key is None:
-        return InvalidLicense("no Agami license public key is bundled with this build")
+        return InvalidLicense("no Iagami license public key is bundled with this build")
     try:
         raw_claims: Final = jwt.decode(
             token,
@@ -163,11 +163,11 @@ def load_public_key(path: Path) -> Ed25519PublicKey | None:
     try:
         key: Final = load_pem_public_key(path.read_bytes())
     except (OSError, ValueError) as e:
-        verbose_proxy_logger.error("Could not load the Agami license public key from %s: %s", path, e)
+        verbose_proxy_logger.error("Could not load the Iagami license public key from %s: %s", path, e)
         return None
     if isinstance(key, Ed25519PublicKey):
         return key
-    verbose_proxy_logger.error("The Agami license public key at %s is not an Ed25519 key", path)
+    verbose_proxy_logger.error("The Iagami license public key at %s is not an Ed25519 key", path)
     return None
 
 
@@ -252,3 +252,9 @@ def is_licensed(feature: LicenseFeature, entitlements: EntitlementService | None
 
 def has_valid_license() -> bool:
     return get_entitlement_service().is_premium()
+
+
+def licensed_features() -> list[str]:
+    """Features the current license grants, empty without a valid license. ``*`` means every feature."""
+    entitlements: Final = get_entitlement_service().entitlements
+    return sorted(entitlements.features) if entitlements is not None else []

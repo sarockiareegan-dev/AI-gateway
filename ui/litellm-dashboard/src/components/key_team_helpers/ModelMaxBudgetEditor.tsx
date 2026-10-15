@@ -72,7 +72,7 @@ export const modelMaxBudgetToEntries = (budget: ModelMaxBudget | null | undefine
     extra: Object.fromEntries(Object.entries(config ?? {}).filter(([field]) => !MODELLED_FIELDS.includes(field))),
   }));
 
-export const MODEL_MAX_BUDGET_PREMIUM_HINT = "Premium feature - Upgrade to set per-model budgets";
+export const MODEL_MAX_BUDGET_PREMIUM_HINT = "Needs an Iagami license to set per-model budgets";
 
 interface ModelMaxBudgetEditorProps {
   value: ModelMaxBudget;

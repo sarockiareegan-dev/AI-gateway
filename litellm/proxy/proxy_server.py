@@ -341,6 +341,7 @@ from litellm.proxy.auth.entitlements import (
     get_entitlement_service,
     has_valid_license,
     is_licensed,
+    licensed_features,
 )
 from litellm.proxy.auth.fallback_budget import router_fallback_budget_check
 from litellm.proxy.auth.fallback_model_access import router_fallback_access_check
@@ -920,24 +921,18 @@ else:
 ui_link: Final = f"{server_root_path}/ui"
 fallback_login_link: Final = f"{server_root_path}/fallback/login"
 model_hub_link: Final = f"{server_root_path}/ui/model_hub_table"
-ui_message = f"👉 [```LiteLLM Admin Panel on /ui```]({ui_link}). Create, Edit Keys with SSO. Having issues? Try [```Fallback Login```]({fallback_login_link})"
-ui_message += "\n\n💸 [```LiteLLM Model Cost Map```](https://models.litellm.ai/)."
-
-ui_message += f"\n\n🔎 [```LiteLLM Model Hub```]({model_hub_link}). See available models on the proxy. [**Docs**](https://docs.litellm.ai/docs/proxy/ai_hub)"
-
-custom_swagger_message: Final = (
-    "[**Customize Swagger Docs**](https://docs.litellm.ai/docs/proxy/enterprise#swagger-docs---custom-routes--branding)"
-)
+ui_message = f"👉 [```Iagami Admin Panel on /ui```]({ui_link}). Create, Edit Keys with SSO. Having issues? Try [```Fallback Login```]({fallback_login_link})"
+ui_message += f"\n\n🔎 [```Iagami Model Hub```]({model_hub_link}). See available models on the gateway."
 
 ### CUSTOM BRANDING [ENTERPRISE FEATURE] ###
-_title: Final = os.getenv("DOCS_TITLE", "LiteLLM API") if _license_check.is_premium() else "LiteLLM API"
+_title: Final = os.getenv("DOCS_TITLE", "Iagami Gateway API") if _license_check.is_premium() else "Iagami Gateway API"
 _description: Final = (
     os.getenv(
         "DOCS_DESCRIPTION",
-        f"Enterprise Edition \n\nProxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}",
+        f"Enterprise Edition \n\nAI gateway to call 100+ LLMs in the OpenAI format.\n\n{ui_message}",
     )
     if _license_check.is_premium()
-    else f"Proxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}"
+    else f"AI gateway to call 100+ LLMs in the OpenAI format.\n\n{ui_message}"
 )
 
 
@@ -4525,14 +4520,14 @@ def _apply_config_licence(general_settings: Mapping[str, object], license_check:
         LicenseFeature.ACCESS_CONTROL, license_check
     ):
         raise ValueError(
-            "allowed_ips needs the 'access_control' feature on the Agami license. "
+            "allowed_ips needs the 'access_control' feature on the Iagami license. "
             f"Please add a valid {LICENSE_ENV_VAR} to your environment."
         )
     if general_settings.get("enforced_params") is not None and not is_licensed(
         LicenseFeature.ENFORCED_PARAMS, license_check
     ):
         raise ValueError(
-            "`enforced_params` needs the 'enforced_params' feature on the Agami license. "
+            "`enforced_params` needs the 'enforced_params' feature on the Iagami license. "
             + CommonProxyErrors.not_premium_user.value
         )
 
@@ -6583,7 +6578,7 @@ class ProxyConfig:
         if worker_registry_config:
             if not is_licensed(LicenseFeature.MODEL_AUDIT):
                 raise ValueError(
-                    "worker_registry needs the 'model_audit' feature on the Agami license. "
+                    "worker_registry needs the 'model_audit' feature on the Iagami license. "
                     + CommonProxyErrors.not_premium_user.value
                 )
             self.worker_registry = [WorkerRegistryEntry(**e) for e in worker_registry_config]
@@ -16462,6 +16457,7 @@ async def onboarding(invite_link: str, request: Request):
         user_role=user_obj.user_role,  # pyright: ignore[reportArgumentType]  # nullable DB column, no unset contract
         login_method="username_password",
         premium_user=has_valid_license(),
+        license_features=licensed_features(),
         auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
         disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
         server_root_path=get_server_root_path(),
@@ -16572,6 +16568,7 @@ async def _generate_onboarding_ui_session_token(user_obj: _UserTableRow) -> str:
         user_role=user_obj.user_role,  # pyright: ignore[reportArgumentType]  # nullable DB column, no unset contract
         login_method="username_password",
         premium_user=has_valid_license(),
+        license_features=licensed_features(),
         auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
         disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
         server_root_path=get_server_root_path(),

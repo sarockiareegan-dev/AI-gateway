@@ -135,7 +135,7 @@ const UsagePage: React.FC<UsagePageProps> = ({ accessToken, token, userRole, use
       .filter((tag) => tag !== ALL_TAGS)
       .map((tag) => ({
         value: tag,
-        label: premiumUser ? tag : `✨ ${tag} (Enterprise only Feature)`,
+        label: premiumUser ? tag : `${tag} (needs an Iagami license)`,
         disabled: !premiumUser,
       })),
   ];

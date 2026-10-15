@@ -25,7 +25,7 @@ const FIELD_HELP: Record<string, React.ReactNode> = {
   TEST_EMAIL_ADDRESS: <>Email Address to send `Test Email Alert` to. example: `info@example.com`{REQUIRED_MARKER}</>,
   EMAIL_LOGO_URL: <>(Optional) Customize the Logo that appears in the email, pass a url to your logo</>,
   EMAIL_SUPPORT_CONTACT: (
-    <>(Optional) Customize the support email address that appears in the email. Default is support@berri.ai</>
+    <>(Optional) Customize the support contact that appears in the email. Default is "your Iagami administrator"</>
   ),
 };
 

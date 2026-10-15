@@ -1,3 +1,4 @@
+import useLicenseFeature from "@/app/(dashboard)/hooks/useLicenseFeature";
 import React, { useId, useState } from "react";
 import { userBulkUpdateUserCall, teamBulkMemberAddCall, Member } from "@/components/networking";
 import { UserEditView } from "./user_edit_view";
@@ -10,7 +11,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 
 interface BulkEditUserModalProps {
   open: boolean;
@@ -37,7 +37,7 @@ const BulkEditUserModal: React.FC<BulkEditUserModalProps> = ({
   userModels,
   allowAllUsers = false,
 }) => {
-  const { premiumUser } = useAuthorized();
+  const hasBudgets = useLicenseFeature("budgets");
   const [loading, setLoading] = useState(false);
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [teamBudget, setTeamBudget] = useState<number | null>(null);
@@ -120,7 +120,7 @@ const BulkEditUserModal: React.FC<BulkEditUserModalProps> = ({
         return;
       }
 
-      let successMessages: string[] = [];
+      const successMessages: string[] = [];
 
       // Handle user property updates
       if (hasUserUpdates) {
@@ -364,7 +364,7 @@ const BulkEditUserModal: React.FC<BulkEditUserModalProps> = ({
           userModels={userModels}
           possibleUIRoles={possibleUIRoles}
           isBulkEdit={true}
-          premiumUser={premiumUser === true}
+          premiumUser={hasBudgets}
         />
 
         {loading && (

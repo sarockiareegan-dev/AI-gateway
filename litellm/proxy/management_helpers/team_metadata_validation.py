@@ -113,7 +113,7 @@ async def run_team_metadata_validation(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={  # mutable-ok: HTTPException.detail has no immutable form
-                "error": "custom_team_metadata_validate needs the 'team_models' feature on the Agami license. "
+                "error": "custom_team_metadata_validate needs the 'team_models' feature on the Iagami license. "
                 f"{CommonProxyErrors.not_premium_user.value}"
             },
         )

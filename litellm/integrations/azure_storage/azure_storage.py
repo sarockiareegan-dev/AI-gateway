@@ -322,7 +322,7 @@ class AzureBlobStorageLogger(CustomBatchLogger):
 
         if not is_licensed(LicenseFeature.LOGGING_INTEGRATIONS):
             raise ValueError(
-                "AzureBlobStorageLogger needs the 'logging_integrations' feature on the Agami license. "
+                "AzureBlobStorageLogger needs the 'logging_integrations' feature on the Iagami license. "
                 f"{CommonProxyErrors.not_premium_user.value}"
             )
 

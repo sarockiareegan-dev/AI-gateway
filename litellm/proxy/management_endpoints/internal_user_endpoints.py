@@ -546,7 +546,7 @@ async def new_user(
         if billable_users and _license_check.is_over_limit(total_users=billable_users):
             raise HTTPException(
                 status_code=403,
-                detail="License is over limit. Please contact support@berri.ai to upgrade your license.",
+                detail=CommonProxyErrors.license_over_limit.value,
             )
 
         # Only proxy admins can create administrative users

@@ -4115,10 +4115,11 @@ class CommonProxyErrors(str, enum.Enum):
     no_llm_router = "No models configured on proxy"
     not_allowed_access = "Admin-only endpoint. Not allowed to access this."
     not_premium_user = (
-        "This is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env or "
+        "This is a premium feature. If you have an Iagami license, set `AGAMI_LICENSE` in your env or "
         "`general_settings.agami_license` in your config."
     )
     max_parallel_request_limit_reached = "Crossed TPM / RPM / Max Parallel Request Limit"
+    license_over_limit = "License is over limit. Contact your Iagami license provider to upgrade your license."
 
 
 class SpendCalculateRequest(LiteLLMPydanticObjectBase):

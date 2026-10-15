@@ -266,7 +266,7 @@ def require_scim_licence() -> None:
     raise HTTPException(
         status_code=403,
         detail=ProxyErrorDetail(
-            error="SCIM provisioning needs the 'sso' feature on the Agami license. "
+            error="SCIM provisioning needs the 'sso' feature on the Iagami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
         ),
     )

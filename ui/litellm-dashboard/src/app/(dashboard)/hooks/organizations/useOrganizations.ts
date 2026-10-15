@@ -1,3 +1,4 @@
+import useLicenseFeature from "@/app/(dashboard)/hooks/useLicenseFeature";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { Organization, organizationInfoCall, organizationListCall } from "@/components/networking";
 import { useQuery, useQueryClient, UseQueryResult } from "@tanstack/react-query";
@@ -11,7 +12,8 @@ export interface OrganizationListFilters {
 }
 
 export const useOrganizations = (filters?: OrganizationListFilters): UseQueryResult<Organization[]> => {
-  const { accessToken, userId, userRole, premiumUser } = useAuthorized();
+  const { accessToken, userId, userRole } = useAuthorized();
+  const hasOrganizations = useLicenseFeature("organizations");
   const orgId = filters?.org_id || null;
   const orgAlias = filters?.org_alias || null;
   const hasSession = Boolean(accessToken && userId && userRole);
@@ -22,16 +24,17 @@ export const useOrganizations = (filters?: OrganizationListFilters): UseQueryRes
         : {},
     ),
     queryFn: async () => await organizationListCall(accessToken!, orgId, orgAlias),
-    enabled: hasSession && premiumUser === true,
+    enabled: hasSession && hasOrganizations,
   });
 };
 
 export const useOrganization = (organizationID?: string) => {
   const queryClient = useQueryClient();
-  const { accessToken, premiumUser } = useAuthorized();
+  const { accessToken } = useAuthorized();
+  const hasOrganizations = useLicenseFeature("organizations");
   return useQuery<Organization>({
     queryKey: organizationKeys.detail(organizationID!),
-    enabled: Boolean(accessToken && organizationID) && premiumUser === true,
+    enabled: Boolean(accessToken && organizationID) && hasOrganizations,
 
     queryFn: async () => {
       if (!accessToken || !organizationID) {

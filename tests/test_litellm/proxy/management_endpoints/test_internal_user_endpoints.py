@@ -860,7 +860,7 @@ async def test_new_user_license_over_limit(mocker):
     # Verify the exception details
     assert exc_info.value.code == 403 or exc_info.value.code == "403"
     assert "License is over limit" in str(exc_info.value.message)
-    assert "support@berri.ai" in str(exc_info.value.message)
+    assert "Iagami license provider" in str(exc_info.value.message)
 
     # Verify that the license check was called with the correct user count
     mock_license_check.is_over_limit.assert_called_once_with(total_users=1000)
