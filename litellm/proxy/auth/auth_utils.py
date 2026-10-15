@@ -843,7 +843,7 @@ async def check_if_request_size_is_safe(request: Request) -> bool:
     if max_request_size_mb is not None:
         if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             verbose_proxy_logger.warning(
-                "max_request_size_mb is not enforced: it needs the 'request_limits' feature on the Agami license. %s",
+                "max_request_size_mb is not enforced: it needs the 'request_limits' feature on the Iagami license. %s",
                 CommonProxyErrors.not_premium_user.value,
             )
             return True
@@ -903,7 +903,7 @@ async def check_response_size_is_safe(response: Any) -> bool:
     if max_response_size_mb is not None:
         if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             verbose_proxy_logger.warning(
-                "max_response_size_mb is not enforced: it needs the 'request_limits' feature on the Agami license. %s",
+                "max_response_size_mb is not enforced: it needs the 'request_limits' feature on the Iagami license. %s",
                 CommonProxyErrors.not_premium_user.value,
             )
             return True

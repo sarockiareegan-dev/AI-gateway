@@ -1,3 +1,4 @@
+import { hasLicenseFeature, type LicenseFeature } from "@/utils/licenseFeatures";
 import { brandDocsUrl } from "@/lib/brand";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import useCan from "@/app/(dashboard)/hooks/useCan";
@@ -330,6 +331,7 @@ export interface TeamInfoProps {
   userModels: string[];
   editTeam: boolean;
   premiumUser?: boolean;
+  licenseFeatures?: readonly string[] | null;
 }
 
 const SUPPRESSED_BY_DESCRIPTION = "";
@@ -545,8 +547,10 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
   userModels,
   editTeam,
   premiumUser = false,
+  licenseFeatures,
   onUpdate,
 }) => {
+  const hasFeature = (feature: LicenseFeature) => hasLicenseFeature(licenseFeatures, premiumUser, feature);
   const teamUpdateSchema = useMemo(
     () =>
       teamUpdateFieldsSchema.superRefine((values, ctx) => {
@@ -1593,7 +1597,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                   </FormField>
 
                   <ModelMaxBudgetField
-                    premiumUser={premiumUser}
+                    premiumUser={hasFeature("budgets")}
                     value={teamModelMaxBudget}
                     onChange={setTeamModelMaxBudget}
                     availableModels={availableRateLimitModels}
@@ -1855,10 +1859,10 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     control={form.control}
                     name="allowed_passthrough_routes"
                     label={
-                      !premiumUser
+                      !hasFeature("access_control")
                         ? labelWithHint(
                             "Allowed Pass Through Routes",
-                            "Premium feature - Upgrade to set allowed pass through routes",
+                            "Needs an Iagami license to set allowed pass through routes",
                           )
                         : !is_proxy_admin
                           ? labelWithHint(
@@ -1874,7 +1878,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                         onChange={onChange}
                         accessToken={accessToken || ""}
                         placeholder="Select pass through routes"
-                        disabled={!premiumUser || !is_proxy_admin}
+                        disabled={!hasFeature("access_control") || !is_proxy_admin}
                       />
                     )}
                   </FormField>
@@ -1988,9 +1992,9 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     name="secret_manager_settings"
                     label="Secret Manager Settings"
                     description={
-                      premiumUser
+                      hasFeature("secret_managers")
                         ? "Enter secret manager configuration as a JSON object."
-                        : "Premium feature - Upgrade to manage secret manager settings."
+                        : "Needs an Iagami license to manage secret manager settings."
                     }
                   >
                     {({ ref, value, ...field }) => (
@@ -2000,7 +2004,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                         value={value ?? ""}
                         rows={6}
                         placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "litellm"}'
-                        disabled={!premiumUser}
+                        disabled={!hasFeature("secret_managers")}
                       />
                     )}
                   </FormField>

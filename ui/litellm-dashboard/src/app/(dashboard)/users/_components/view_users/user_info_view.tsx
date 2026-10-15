@@ -1,3 +1,4 @@
+import useLicenseFeature from "@/app/(dashboard)/hooks/useLicenseFeature";
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -38,7 +39,6 @@ import { ArrowLeft, CheckIcon, CopyIcon, Plus, RefreshCw, Trash2 } from "lucide-
 import { toast } from "@/lib/toast";
 import { getBudgetDurationLabel } from "@/components/common_components/budget_duration_dropdown";
 import DeleteResourceModal from "@/components/common_components/DeleteResourceModal";
-import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import MCPServerPermissions from "@/components/permissions/MCPServerPermissions";
 import { useMCPServers } from "@/app/(dashboard)/hooks/mcpServers/useMCPServers";
 import { useMCPToolsets } from "@/app/(dashboard)/hooks/mcpServers/useMCPToolsets";
@@ -85,7 +85,7 @@ export default function UserInfoView({
   initialTab = 0,
   startInEditMode = false,
 }: UserInfoViewProps) {
-  const { premiumUser } = useAuthorized();
+  const hasBudgets = useLicenseFeature("budgets");
   const [userData, setUserData] = useState<UserInfoV2Response | null>(null);
   const [teamDetails, setTeamDetails] = useState<TeamDisplayInfo[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -587,7 +587,7 @@ export default function UserInfoView({
                 userModels={userModels}
                 possibleUIRoles={possibleUIRoles}
                 objectPermission={userData.object_permission}
-                premiumUser={premiumUser === true}
+                premiumUser={hasBudgets}
               />
             ) : (
               <div className="space-y-4">

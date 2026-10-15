@@ -1,3 +1,4 @@
+import useLicenseFeature from "@/app/(dashboard)/hooks/useLicenseFeature";
 import { brandDocsUrl, brandSupportUrl } from "@/lib/brand";
 import { useProviderFields } from "@/app/(dashboard)/hooks/providers/useProviderFields";
 import { useGuardrails } from "@/app/(dashboard)/hooks/guardrails/useGuardrails";
@@ -82,7 +83,8 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
   // Using a unique ID to force the ConnectionErrorDisplay to remount and run a fresh test
   const [connectionTestId, setConnectionTestId] = useState<string>("");
 
-  const { accessToken, userRole, premiumUser, userId, isViewOnly } = useAuthorized();
+  const { accessToken, userRole, userId, isViewOnly } = useAuthorized();
+  const hasTeamModels = useLicenseFeature("team_models");
   const {
     data: providerMetadata,
     isLoading: isProviderMetadataLoading,
@@ -336,8 +338,8 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                           </FieldLabel>
                           <SimpleTooltip
                             content={
-                              !premiumUser
-                                ? "This is an enterprise-only feature. Upgrade to premium to restrict model+credential combinations to a specific team."
+                              !hasTeamModels
+                                ? "Restricting a model and credential to one team needs an Iagami license with team models."
                                 : ""
                             }
                             side="top"
@@ -351,7 +353,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                                     form.setValue("team_id", undefined);
                                   }
                                 }}
-                                disabled={!premiumUser}
+                                disabled={!hasTeamModels}
                                 aria-label="Team-BYOK Model"
                               />
                             </span>
@@ -379,7 +381,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                             <TeamDropdown
                               value={control.value as string | undefined}
                               onChange={control.onChange}
-                              disabled={!premiumUser}
+                              disabled={!hasTeamModels}
                             />
                           )}
                         </MountedFormField>

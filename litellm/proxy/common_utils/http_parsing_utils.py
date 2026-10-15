@@ -372,7 +372,7 @@ def check_file_size_under_limit(
         )
         if not is_licensed(LicenseFeature.REQUEST_LIMITS):
             raise ProxyException(
-                message="max_file_size_mb needs the 'request_limits' feature on the Agami license. "
+                message="max_file_size_mb needs the 'request_limits' feature on the Iagami license. "
                 f"{CommonProxyErrors.not_premium_user.value}",
                 code=status.HTTP_400_BAD_REQUEST,
                 type="bad_request",

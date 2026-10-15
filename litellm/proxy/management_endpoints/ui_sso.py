@@ -95,7 +95,13 @@ from litellm.proxy.auth.auth_utils import (
     _get_request_ip_address,
     has_user_setup_sso,
 )
-from litellm.proxy.auth.entitlements import EntitlementService, LicenseFeature, has_valid_license, is_licensed
+from litellm.proxy.auth.entitlements import (
+    EntitlementService,
+    LicenseFeature,
+    has_valid_license,
+    is_licensed,
+    licensed_features,
+)
 from litellm.proxy.auth.handle_jwt import JWTHandler
 from litellm.proxy.auth.ip_address_utils import IPAddressUtils
 from litellm.proxy.auth.team_grants import TeamModelAliasTable
@@ -995,7 +1001,7 @@ async def _raise_if_sso_exceeds_free_user_limit(
     billable_users: Final = await UserRepository(prisma_client).count_billable_users()
     if billable_users and billable_users > 5:
         raise ProxyException(
-            message="SSO for more than 5 users is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you configured SSO (one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GENERIC_CLIENT_ID`, or SAML) in your env. Please unset it",
+            message="SSO for more than 5 users is a premium feature. If you have an Iagami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you configured SSO (one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GENERIC_CLIENT_ID`, or SAML) in your env. Please unset it",
             type=ProxyErrorTypes.auth_error,
             param="license",
             code=status.HTTP_403_FORBIDDEN,
@@ -3703,6 +3709,7 @@ class SSOAuthenticationHandler:
             user_role=user_role or LitellmUserRoles.INTERNAL_USER_VIEW_ONLY.value,
             login_method="sso",
             premium_user=has_valid_license(),
+            license_features=licensed_features(),
             auth_header_name=general_settings.get("litellm_key_header_name", "Authorization"),
             disabled_non_admin_personal_key_creation=disabled_non_admin_personal_key_creation,
             server_root_path=get_server_root_path(),
@@ -4673,7 +4680,7 @@ async def debug_sso_login(request: Request):
     if microsoft_client_id is not None or google_client_id is not None or generic_client_id is not None:
         if not is_licensed(LicenseFeature.SSO):
             raise ProxyException(
-                message="SSO is a premium feature. If you have an Agami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
+                message="SSO is a premium feature. If you have an Iagami license, set `AGAMI_LICENSE` in your env. You are seeing this error message because you set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
                 type=ProxyErrorTypes.auth_error,
                 param="license",
                 code=status.HTTP_403_FORBIDDEN,

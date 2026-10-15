@@ -112,7 +112,7 @@ def authorize_member_auto_router_team(
     if not is_licensed(LicenseFeature.AUTO_ROUTER, entitlements):
         raise HTTPException(
             status_code=403,
-            detail="Team member auto routers need the 'auto_router' feature on the Agami license. "
+            detail="Team member auto routers need the 'auto_router' feature on the Iagami license. "
             f"{CommonProxyErrors.not_premium_user.value}",
         )
     if (

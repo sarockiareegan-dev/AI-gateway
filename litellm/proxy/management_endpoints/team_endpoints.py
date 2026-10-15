@@ -1559,7 +1559,7 @@ async def new_team(
         if total_teams and _license_check.is_team_count_over_limit(team_count=total_teams):
             raise HTTPException(
                 status_code=403,
-                detail="License is over limit. Please contact support@berri.ai to upgrade your license.",
+                detail=CommonProxyErrors.license_over_limit.value,
             )
 
         if data.team_id is None:
@@ -2734,7 +2734,7 @@ async def handle_update_object_permission(data_json: dict, existing_team_row: _O
 
 
 _TEAM_ADMIN_LICENCE_MESSAGE: Final = (
-    "Assigning team admins needs the 'team_admin_roles' feature on the Agami license. "
+    "Assigning team admins needs the 'team_admin_roles' feature on the Iagami license. "
     + CommonProxyErrors.not_premium_user.value
 )
 

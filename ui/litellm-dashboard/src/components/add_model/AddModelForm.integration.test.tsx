@@ -341,7 +341,7 @@ describe("AddModelForm", () => {
 
       await user.hover(teamOnlySwitch);
 
-      expect(await screen.findByText(/enterprise-only feature/)).toBeInTheDocument();
+      expect(await screen.findByText(/Iagami license with team models/)).toBeInTheDocument();
     });
 
     it("says nothing on hover once the user is premium", async () => {
@@ -351,7 +351,7 @@ describe("AddModelForm", () => {
 
       await user.hover(teamOnlySwitch);
 
-      expect(screen.queryByText(/enterprise-only feature/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Iagami license with team models/)).not.toBeInTheDocument();
     });
   });
 

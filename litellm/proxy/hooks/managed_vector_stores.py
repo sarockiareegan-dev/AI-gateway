@@ -71,7 +71,7 @@ class _PROXY_LiteLLMManagedVectorStores(CustomLogger):
     ) -> VectorStoreCreateResponse:
         if not is_licensed(LicenseFeature.MANAGED_FILES):
             raise ProxyException(
-                message="Managed vector stores need the 'managed_files' feature on the Agami license. "
+                message="Managed vector stores need the 'managed_files' feature on the Iagami license. "
                 + CommonProxyErrors.not_premium_user.value,
                 type="auth_error",
                 param="target_model_names",

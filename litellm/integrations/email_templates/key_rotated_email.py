@@ -1,5 +1,5 @@
 """
-Modern Email Templates for LiteLLM Email Service with professional styling
+Modern Email Templates for Iagami Email Service with professional styling
 """
 
 from typing import Final
@@ -158,7 +158,7 @@ KEY_ROTATED_EMAIL_TEMPLATE: Final = """
 <body>
     <div class="container">
         <div class="header">
-            <img src="{email_logo_url}" alt="LiteLLM Logo" style="height: 32px; width: auto;">
+            <img src="{email_logo_url}" alt="Iagami" style="height: 32px; width: auto;">
         </div>
         <div class="content">
             <div class="greeting">
@@ -166,7 +166,7 @@ KEY_ROTATED_EMAIL_TEMPLATE: Final = """
             </div>
             
             <div class="message">
-                <p><strong>Your LiteLLM API key has been rotated</strong> as part of our ongoing commitment to security best practices.</p>
+                <p><strong>Your Iagami API key has been rotated</strong> as part of our ongoing commitment to security best practices.</p>
                 <p style="margin-top: 16px;">Your previous API key has been deactivated and will no longer work. Please update your applications with the new key below.</p>
             </div>
             
@@ -217,7 +217,7 @@ response = client.chat.completions.create(<br>
             <div class="separator"></div>
             
             <h2>Need Help?</h2>
-            <p>If you have any questions or need assistance updating your systems, please contact us at {email_support_contact}.</p>
+            <p>If you have any questions or need assistance updating your systems, please contact {email_support_contact}.</p>
         </div>
         {email_footer}
     </div>

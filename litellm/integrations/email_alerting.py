@@ -8,10 +8,7 @@ from typing import Final
 from litellm._logging import verbose_logger, verbose_proxy_logger
 from litellm.proxy._types import WebhookEvent
 from litellm.repositories.team_repository import TeamRepository
-
-# we use this for the email header, please send a test email if you change this. verify it looks good on email
-LITELLM_LOGO_URL: Final = "https://litellm-listing.s3.amazonaws.com/litellm_logo.png"
-LITELLM_SUPPORT_CONTACT: Final = "support@berri.ai"
+from litellm.types.integrations.slack_alerting import DEFAULT_EMAIL_SUPPORT_CONTACT, default_email_logo_url
 
 
 async def get_all_team_member_emails(team_id: str | None = None) -> list:
@@ -80,16 +77,16 @@ async def send_team_budget_alert(webhook_event: WebhookEvent) -> bool:
     email_support_contact = os.getenv("EMAIL_SUPPORT_CONTACT", None)
 
     if email_logo_url is None:
-        email_logo_url = LITELLM_LOGO_URL
+        email_logo_url = default_email_logo_url()
     if email_support_contact is None:
-        email_support_contact = LITELLM_SUPPORT_CONTACT
+        email_support_contact = DEFAULT_EMAIL_SUPPORT_CONTACT
     recipient_emails: Final = await get_all_team_member_emails(_team_id)
     recipient_emails_str: Final[str] = ",".join(recipient_emails)
     verbose_logger.debug("Email Alerting: Sending team budget alert to %s", recipient_emails_str)
 
     event_name: Final = webhook_event.event_message
     max_budget: Final = webhook_event.max_budget
-    email_html_content = "Alert from LiteLLM Server"
+    email_html_content = "Alert from Iagami Gateway"
 
     if recipient_emails_str is None:
         verbose_proxy_logger.warning(
@@ -98,7 +95,7 @@ async def send_team_budget_alert(webhook_event: WebhookEvent) -> bool:
         )
 
     email_html_content = f"""
-    <img src="{email_logo_url}" alt="LiteLLM Logo" width="150" height="50" /> <br/><br/><br/>
+    <img src="{email_logo_url}" alt="Iagami" width="150" height="50" /> <br/><br/><br/>
 
     Budget Crossed for Team <b> {team_alias} </b> <br/> <br/>
 
@@ -106,15 +103,15 @@ async def send_team_budget_alert(webhook_event: WebhookEvent) -> bool:
 
     API requests will be rejected until either (a) you increase your budget or (b) your budget gets reset <br /> <br />
 
-    If you have any questions, please send an email to {email_support_contact} <br /> <br />
+    If you have any questions, please contact {email_support_contact} <br /> <br />
 
     Best, <br />
-    The LiteLLM team <br />
+    The Iagami team <br />
     """
 
     email_event: Final = {
         "to": recipient_emails_str,
-        "subject": f"LiteLLM {event_name} for Team {team_alias}",
+        "subject": f"Iagami {event_name} for Team {team_alias}",
         "html": email_html_content,
     }
 

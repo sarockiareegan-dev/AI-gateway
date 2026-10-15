@@ -98,10 +98,8 @@ it("should render DeletedKeysPage component", () => {
 it("should show the enterprise notice for a non-premium user", () => {
   renderWithProviders(<DeletedKeysPage />);
 
-  expect(screen.getByText("Coming soon to Enterprise")).toBeInTheDocument();
-  expect(
-    screen.getByText("Deleted key auditing is graduating from beta into our Enterprise audit & compliance suite."),
-  ).toBeInTheDocument();
+  expect(screen.getByText("Audit logs not licensed")).toBeInTheDocument();
+  expect(screen.getByText("Deleted key auditing needs an Iagami license with audit logs")).toBeInTheDocument();
 });
 
 it("should show skeleton rows while the initial load is pending", () => {

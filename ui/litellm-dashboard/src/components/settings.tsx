@@ -1,3 +1,4 @@
+import { hasLicenseFeature, type LicenseFeature } from "@/utils/licenseFeatures";
 import { brandDocsUrl } from "@/lib/brand";
 import React, { useEffect, useState } from "react";
 import { Controller, FormProvider, useForm, useFormContext } from "react-hook-form";
@@ -42,6 +43,7 @@ interface SettingsPageProps {
   userRole: string | null;
   userID: string | null;
   premiumUser: boolean;
+  licenseFeatures?: readonly string[] | null;
 }
 
 type CallbackFormValues = Record<string, string>;
@@ -291,7 +293,8 @@ const buildCallbackPayload = (formValues: Record<string, any>, callbackName: str
   };
 };
 
-const Settings: React.FC<SettingsPageProps> = ({ accessToken, userRole, userID, premiumUser }) => {
+const Settings: React.FC<SettingsPageProps> = ({ accessToken, userRole, userID, premiumUser, licenseFeatures }) => {
+  const hasFeature = (feature: LicenseFeature) => hasLicenseFeature(licenseFeatures, premiumUser, feature);
   const [callbacks, setCallbacks] = useState<AlertingObject[]>([]);
   const [isLoadingCallbacks, setIsLoadingCallbacks] = useState(true);
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -620,7 +623,7 @@ const Settings: React.FC<SettingsPageProps> = ({ accessToken, userRole, userID, 
                     <TableRow key={index}>
                       <TableCell>
                         {key == "region_outage_alerts" ? (
-                          premiumUser ? (
+                          hasFeature("logging_integrations") ? (
                             <Switch
                               id="switch"
                               name="switch"
@@ -683,10 +686,10 @@ const Settings: React.FC<SettingsPageProps> = ({ accessToken, userRole, userID, 
             </Card>
           </TabsContent>
           <TabsContent value="alerting-settings" keepMounted>
-            <AlertingSettings accessToken={accessToken} premiumUser={premiumUser} />
+            <AlertingSettings accessToken={accessToken} premiumUser={hasFeature("logging_integrations")} />
           </TabsContent>
           <TabsContent value="email-alerts" keepMounted>
-            <EmailSettings accessToken={accessToken} premiumUser={premiumUser} alerts={alerts} />
+            <EmailSettings accessToken={accessToken} premiumUser={hasFeature("email_branding")} alerts={alerts} />
           </TabsContent>
           <TabsContent value="ms-teams-alerts" keepMounted>
             <MSTeamsSettings accessToken={accessToken} userID={userID} userRole={userRole} alerts={alerts} />

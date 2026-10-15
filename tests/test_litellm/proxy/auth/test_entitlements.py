@@ -18,10 +18,15 @@ from litellm.proxy.auth.entitlements import (
     NoLicense,
     ValidLicense,
     is_licensed,
+    licensed_features,
     load_public_key,
     verify_license,
 )
-from tests.test_litellm.proxy.auth.license_test_helpers import install_entitlements, licensed_entitlements
+from tests.test_litellm.proxy.auth.license_test_helpers import (
+    install_entitlements,
+    licensed_entitlements,
+    unlicensed_entitlements,
+)
 
 NOW: Final = datetime(2030, 6, 1, 12, 0, tzinfo=timezone.utc)
 SIGNING_KEY: Final = Ed25519PrivateKey.generate()
@@ -219,3 +224,15 @@ def test_is_licensed_reads_the_proxy_license_by_default(monkeypatch: pytest.Monk
 
     assert is_licensed(LicenseFeature.AUDIT_LOGS)
     assert not is_licensed(LicenseFeature.SSO)
+
+
+def test_licensed_features_lists_granted_features_sorted(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, licensed_entitlements(features=("sso", "audit_logs")))
+
+    assert licensed_features() == ["audit_logs", "sso"]
+
+
+def test_licensed_features_is_empty_without_a_license(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_entitlements(monkeypatch, unlicensed_entitlements())
+
+    assert licensed_features() == []

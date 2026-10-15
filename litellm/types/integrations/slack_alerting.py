@@ -33,9 +33,13 @@ class ProviderRegionOutageModel(BaseOutageModel):
     deployment_ids: set[str]  # mutable-ok: outage state accumulates ids via .add() and round-trips the cache as a list
 
 
-# we use this for the email header, please send a test email if you change this. verify it looks good on email
-LITELLM_LOGO_URL: Final = "https://litellm-listing.s3.amazonaws.com/litellm_logo.png"
-LITELLM_SUPPORT_CONTACT: Final = "support@berri.ai"
+DEFAULT_EMAIL_SUPPORT_CONTACT: Final = "your Iagami administrator"
+
+
+def default_email_logo_url() -> str:
+    """The gateway's own /get_image, so the email header logo only loads when PROXY_BASE_URL is reachable by mail clients."""
+    base_url: Final = os.getenv("PROXY_BASE_URL", "").rstrip("/")
+    return f"{base_url}/get_image" if base_url else ""
 
 
 class SlackAlertingArgsEnum(Enum):

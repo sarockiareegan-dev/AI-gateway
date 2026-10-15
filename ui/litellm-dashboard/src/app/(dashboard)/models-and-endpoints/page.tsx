@@ -80,7 +80,7 @@ const renderPanel = (key: string) => {
 };
 
 export default function ModelsAndEndpointsPage() {
-  const { accessToken, userRole, userId: userID, premiumUser, isViewOnly } = useAuthorized();
+  const { accessToken, userRole, userId: userID, premiumUser, licenseFeatures, isViewOnly } = useAuthorized();
   const { data: teams } = useTeams();
   const { data: uiSettings } = useUISettings();
   const queryClient = useQueryClient();
@@ -156,6 +156,7 @@ export default function ModelsAndEndpointsPage() {
           editTeam={false}
           onUpdate={invalidateModels}
           premiumUser={premiumUser}
+          licenseFeatures={licenseFeatures}
         />
       </div>
     );

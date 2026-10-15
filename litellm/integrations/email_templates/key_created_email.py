@@ -1,5 +1,5 @@
 """
-Modern Email Templates for LiteLLM Email Service with professional styling
+Modern Email Templates for Iagami Email Service with professional styling
 """
 
 from typing import Final
@@ -158,7 +158,7 @@ KEY_CREATED_EMAIL_TEMPLATE: Final = """
 <body>
     <div class="container">
         <div class="header">
-            <img src="{email_logo_url}" alt="LiteLLM Logo" style="height: 32px; width: auto;">
+            <img src="{email_logo_url}" alt="Iagami" style="height: 32px; width: auto;">
         </div>
         <div class="content">
             <div class="greeting">
@@ -166,7 +166,7 @@ KEY_CREATED_EMAIL_TEMPLATE: Final = """
             </div>
             
             <div class="message">
-                <p>Great news! Your LiteLLM API key is ready to use.</p>
+                <p>Great news! Your Iagami API key is ready to use.</p>
             </div>
             
             <div class="budget-info">
@@ -205,7 +205,7 @@ response = client.chat.completions.create(<br>
             <div class="separator"></div>
             
             <h2>Need Help?</h2>
-            <p>If you have any questions or need assistance, please contact us at {email_support_contact}.</p>
+            <p>If you have any questions or need assistance, please contact {email_support_contact}.</p>
         </div>
         {email_footer}
     </div>

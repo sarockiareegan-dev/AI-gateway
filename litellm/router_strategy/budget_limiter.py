@@ -833,7 +833,7 @@ class RouterBudgetLimiting(CustomLogger):
 
         if not is_licensed(LicenseFeature.BUDGETS):
             raise ValueError(
-                f"Tag budgets need the 'budgets' feature on the Agami license. {CommonProxyErrors.not_premium_user.value}"
+                f"Tag budgets need the 'budgets' feature on the Iagami license. {CommonProxyErrors.not_premium_user.value}"
             )
 
         if self.tag_budget_config is None:

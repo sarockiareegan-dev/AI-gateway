@@ -4378,7 +4378,7 @@ def _check_model_access_group(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ProxyErrorDetail(
                 error="Setting a model access group on a wildcard model needs the 'advanced_keys' feature on the "
-                f"Agami license. {CommonProxyErrors.not_premium_user.value}"
+                f"Iagami license. {CommonProxyErrors.not_premium_user.value}"
             ),
         )
     return True
@@ -4639,7 +4639,7 @@ async def generate_key_helper_fn(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=ProxyErrorDetail(
-                        error="get_spend_routes permission needs the 'advanced_keys' feature on the Agami license"
+                        error="get_spend_routes permission needs the 'advanced_keys' feature on the Iagami license"
                     ),
                 )
 
@@ -5693,7 +5693,7 @@ async def regenerate_key_fn(
             raise HTTPException(
                 status_code=403,
                 detail=ProxyErrorDetail(
-                    error="Regenerating virtual keys needs the 'advanced_keys' feature on the Agami license. "
+                    error="Regenerating virtual keys needs the 'advanced_keys' feature on the Iagami license. "
                     f"{CommonProxyErrors.not_premium_user.value}"
                 ),
             )
@@ -7692,7 +7692,7 @@ def validate_model_max_budget(model_max_budget: dict | None, entitlements: Entit
         raise HTTPException(
             status_code=403,
             detail=ProxyErrorDetail(
-                error="Setting model_max_budget needs the 'budgets' feature on the Agami license. "
+                error="Setting model_max_budget needs the 'budgets' feature on the Iagami license. "
                 f"{CommonProxyErrors.not_premium_user.value}"
             ),
         )

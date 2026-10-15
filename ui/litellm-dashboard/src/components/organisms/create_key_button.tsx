@@ -1,4 +1,5 @@
 "use client";
+import { hasLicenseFeature, type LicenseFeature } from "@/utils/licenseFeatures";
 import { brandDocsUrl } from "@/lib/brand";
 import { keyKeys } from "@/app/(dashboard)/hooks/keys/useKeys";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
@@ -218,8 +219,9 @@ export const fetchUserModels = async (
  * ─────────────────────────────────────────────────────────────────────────
  */
 const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOpenCreate, prefillData }) => {
-  const { accessToken, userId: userID, userRole, premiumUser } = useAuthorized();
-  const canEditGuardrails = premiumUser || (userRole != null && rolesWithWriteAccess.includes(userRole));
+  const { accessToken, userId: userID, userRole, premiumUser, licenseFeatures } = useAuthorized();
+  const hasFeature = (feature: LicenseFeature) => hasLicenseFeature(licenseFeatures, premiumUser, feature);
+  const canEditGuardrails = hasFeature("guardrails") || (userRole != null && rolesWithWriteAccess.includes(userRole));
   const canViewPolicies = useCan("viewPolicies");
   const canViewPrompts = useCan("viewPrompts");
   const { data: organizations, isLoading: isOrganizationsLoading } = useOrganizations();
@@ -1051,7 +1053,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                           value={modelMaxBudget}
                           onChange={setModelMaxBudget}
                           availableModels={modelsToPick}
-                          premiumUser={premiumUser === true}
+                          premiumUser={hasFeature("budgets")}
                         />
                       </Field>
                       <Field className="mt-4">
@@ -1276,7 +1278,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                         help={
                           canEditGuardrails
                             ? "Select existing guardrails or enter new ones"
-                            : "Premium feature - Upgrade to set guardrails by key"
+                            : "Needs an Iagami license to set guardrails by key"
                         }
                       >
                         {(control) => (
@@ -1287,7 +1289,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             disabled={!canEditGuardrails}
                             placeholder={
                               !canEditGuardrails
-                                ? "Premium feature - Upgrade to set guardrails by key"
+                                ? "Needs an Iagami license to set guardrails by key"
                                 : "Select or enter guardrails"
                             }
                             options={guardrailsList.map((name) => ({ value: name, label: name }))}
@@ -1315,7 +1317,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                         help={
                           canEditGuardrails
                             ? "Bypass global guardrails for this key"
-                            : "Premium feature - Upgrade to disable global guardrails by key"
+                            : "Needs an Iagami license to disable global guardrails by key"
                         }
                       >
                         {(control) => (
@@ -1350,9 +1352,9 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                           name="policies"
                           className="mt-4"
                           help={
-                            premiumUser
+                            hasFeature("guardrails")
                               ? "Select existing policies or enter new ones"
-                              : "Premium feature - Upgrade to set policies by key"
+                              : "Needs an Iagami license to set policies by key"
                           }
                         >
                           {(control) => (
@@ -1360,10 +1362,10 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                               id={control.id}
                               value={(control.value as string[] | undefined) ?? []}
                               onValueChange={control.onChange}
-                              disabled={!premiumUser}
+                              disabled={!hasFeature("guardrails")}
                               placeholder={
-                                !premiumUser
-                                  ? "Premium feature - Upgrade to set policies by key"
+                                !hasFeature("guardrails")
+                                  ? "Needs an Iagami license to set policies by key"
                                   : "Select or enter policies"
                               }
                               options={policiesList.map((name) => ({ value: name, label: name }))}
@@ -1391,9 +1393,9 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                           name="prompts"
                           className="mt-4"
                           help={
-                            premiumUser
+                            hasFeature("advanced_keys")
                               ? "Select existing prompts or enter new ones"
-                              : "Premium feature - Upgrade to set prompts by key"
+                              : "Needs an Iagami license to set prompts by key"
                           }
                         >
                           {(control) => (
@@ -1401,10 +1403,10 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                               id={control.id}
                               value={(control.value as string[] | undefined) ?? []}
                               onValueChange={control.onChange}
-                              disabled={!premiumUser}
+                              disabled={!hasFeature("advanced_keys")}
                               placeholder={
-                                !premiumUser
-                                  ? "Premium feature - Upgrade to set prompts by key"
+                                !hasFeature("advanced_keys")
+                                  ? "Needs an Iagami license to set prompts by key"
                                   : "Select or enter prompts"
                               }
                               options={promptsList.map((name) => ({ value: name, label: name }))}
@@ -1452,9 +1454,9 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                         name="allowed_passthrough_routes"
                         className="mt-4"
                         help={
-                          premiumUser
+                          hasFeature("access_control")
                             ? "Select existing pass through routes or enter new ones"
-                            : "Premium feature - Upgrade to set pass through routes by key"
+                            : "Needs an Iagami license to set pass through routes by key"
                         }
                       >
                         {(control) => (
@@ -1463,11 +1465,11 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                             onChange={control.onChange}
                             accessToken={accessToken}
                             placeholder={
-                              !premiumUser
-                                ? "Premium feature - Upgrade to set pass through routes by key"
+                              !hasFeature("access_control")
+                                ? "Needs an Iagami license to set pass through routes by key"
                                 : "Select or enter pass through routes"
                             }
-                            disabled={!premiumUser}
+                            disabled={!hasFeature("access_control")}
                             teamId={selectedCreateKeyTeam ? selectedCreateKeyTeam.team_id : null}
                           />
                         )}
@@ -1642,7 +1644,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                         </CollapsibleContent>
                       </Collapsible>
 
-                      {premiumUser ? (
+                      {hasFeature("logging_integrations") ? (
                         <Collapsible className="mt-4 mb-4 overflow-hidden rounded-lg border">
                           <CollapsibleTrigger className={SECTION_HEADER_CLASS}>
                             <b>Logging Settings</b>

@@ -129,7 +129,7 @@ class Oauth2Handler:
         """
         if not is_licensed(LicenseFeature.JWT_AUTH):
             raise ValueError(
-                "OAuth2 token validation needs the 'jwt_auth' feature on the Agami license. "
+                "OAuth2 token validation needs the 'jwt_auth' feature on the Iagami license. "
                 + CommonProxyErrors.not_premium_user.value
             )
 

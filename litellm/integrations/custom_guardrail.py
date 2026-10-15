@@ -157,7 +157,7 @@ def _raise_unless_licensed(guardrail_name: str | None, feature: "LicenseFeature"
     raise HTTPException(
         status_code=403,
         detail=ProxyErrorDetail(
-            error=f"Guardrail '{guardrail_name}' needs the '{feature.value}' feature on the Agami license. "
+            error=f"Guardrail '{guardrail_name}' needs the '{feature.value}' feature on the Iagami license. "
             f"{CommonProxyErrors.not_premium_user.value}"
         ),
     )
@@ -238,7 +238,7 @@ class CustomGuardrail(CustomLogger):
                 contract, since applying its mutations on top of a stale snapshot would silently
                 undo whatever later guardrails already did to the live request.
             required_license_feature: When set, every request this guardrail would run on is refused
-                with a 403 while the Agami license lacks the feature, so a lapsed license fails closed.
+                with a 403 while the Iagami license lacks the feature, so a lapsed license fails closed.
         """
         self.guardrail_name = guardrail_name
         self.required_license_feature: LicenseFeature | None = required_license_feature
@@ -1145,7 +1145,7 @@ class CustomGuardrail(CustomLogger):
                 if not _guardrails_licensed():
                     if isinstance(extra_body, dict) and extra_body:
                         verbose_logger.warning(
-                            "Guardrail %s: ignoring dynamic extra_body keys %s because the Agami license lacks the "
+                            "Guardrail %s: ignoring dynamic extra_body keys %s because the Iagami license lacks the "
                             "'guardrails' feature",
                             self.guardrail_name,
                             list(extra_body.keys()),

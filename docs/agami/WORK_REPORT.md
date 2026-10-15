@@ -17,7 +17,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #10 | `4ad7fb9` | Batch cost poller rebuilt |
 | #11 | `f5c17dd` | Managed vector stores hook rebuilt |
 | #12 | `27dfee6` | Admin UI rebrand, first part (text, links, brand constants) |
-| #13 | pending | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
+| #13 | `b01b46a` | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
+| #14 | pending | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -746,7 +747,29 @@ Behaviour when nothing is configured: docs and support links open the upstream L
 
 Tests: two new backend tests (links stored and returned, bad values rejected for each field); the UI tests related to the changed files pass
 
-Not done: the prebuilt UI bundle in `_experimental/out` still needs a rebuild, the UI still gates on one `premium_user` flag, and the backend still names `support@berri.ai` in alert emails and the "License is over limit" errors
+The prebuilt bundle, per-feature gating and backend branding left open here were finished in #14, see 9.10
+
+### 9.10 Admin UI rebrand, third part (#14)
+
+Goal: no LiteLLM branding left in what the backend sends, and UI gates that match the license's feature list
+
+Backend text:
+
+- `litellm/types/integrations/slack_alerting.py`: `LITELLM_LOGO_URL` and `LITELLM_SUPPORT_CONTACT` are replaced by `DEFAULT_EMAIL_SUPPORT_CONTACT` ("your Iagami administrator") and `default_email_logo_url()`, which is the gateway's own `/get_image` when `PROXY_BASE_URL` is set and empty otherwise. Mail clients fetch the header logo from that URL, so it only shows when `PROXY_BASE_URL` is reachable from outside
+- `email_alerting.py`, `SlackAlerting/slack_alerting.py` and `integrations/email_templates/*.py`: subjects, bodies and sign-offs say Iagami and "please contact {support contact}"
+- `CommonProxyErrors.license_over_limit`: "License is over limit. Contact your Iagami license provider to upgrade your license.", used by user creation, bulk user creation and team creation. "Agami license" error strings now say "Iagami license" (the `AGAMI_LICENSE` env names stay)
+- Swagger: the title defaults to "Iagami Gateway API" and the description no longer links LiteLLM docs or the cost map
+
+Per-feature UI gating:
+
+- `entitlements.licensed_features()` returns the license's sorted feature list (empty without a valid license, `*` for all). `ReturnedUITokenObject` gains `license_features`, set at the four places the UI token is built (password login, SSO, and the two invite onboarding steps)
+- UI: `useAuthorized` exposes `licenseFeatures`; `src/utils/licenseFeatures.ts` has `hasLicenseFeature(features, premiumUser, feature)` and `hooks/useLicenseFeature.ts` wraps it. A token without the field (issued before this change) falls back to `premium_user`, so open sessions keep working
+- Gates now check: SSO settings `sso`; allowed IPs and UI access control `access_control`; organizations `organizations`; deleted keys and teams `audit_logs`; audit log tab `audit_logs`; old usage tag filter `spend_reports`; key policies and team global guardrails `guardrails`; key prompts and regeneration, chat key rotation `advanced_keys`; pass-through routes and pass-through auth `access_control`; per-model budgets `budgets`; key and team logging `logging_integrations`; secret manager settings `secret_managers`; Team-BYOK models `team_models`; alerting `logging_integrations`; email logo and support contact `email_branding`. These match the backend's `is_licensed` checks and the field map in `management_endpoints/common_utils.py`
+- Upsell text such as "Premium feature - Upgrade to ..." now says the feature needs an Iagami license. The license badge in the account menu still reads `premium_user` (any valid license)
+
+Bundle: `litellm/proxy/_experimental/out` is rebuilt with `npm run build` and copied the way the Dockerfiles do, so pip installs and source runs serve the Iagami UI. Docker images still build their own bundle
+
+Tests: new `test_email_branding.py` (support contact default, logo URL from `PROXY_BASE_URL`, empty without it), two `licensed_features` tests, `licenseFeatures.test.ts`, and updated license error, deleted-page and Team-BYOK tooltip assertions. The UI tests related to the changed files pass
 
 ---
 
@@ -916,7 +939,6 @@ rg "agami-org/" litellm agami                      # org model naming
 ## 16. What is still open
 
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
-- UI rebrand, third part (see 9.9): the prebuilt UI bundle, per-feature UI gating instead of the single `premium_user` flag, and the backend's `support@berri.ai`
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
 

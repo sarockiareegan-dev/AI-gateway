@@ -1,3 +1,4 @@
+import { hasLicenseFeature, type LicenseFeature } from "@/utils/licenseFeatures";
 import { brandDocsUrl } from "@/lib/brand";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
 import useCan from "@/app/(dashboard)/hooks/useCan";
@@ -60,6 +61,7 @@ interface TeamProps {
   userID: string | null;
   userRole: string | null;
   premiumUser?: boolean;
+  licenseFeatures?: readonly string[] | null;
 }
 
 import DeleteResourceModal from "./common_components/DeleteResourceModal";
@@ -209,7 +211,8 @@ const getAdminOrganizations = (
 };
 
 // @deprecated
-const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser = false }) => {
+const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser = false, licenseFeatures }) => {
+  const hasFeature = (feature: LicenseFeature) => hasLicenseFeature(licenseFeatures, premiumUser, feature);
   const { data: organizationsData } = useOrganizations();
   const organizations = organizationsData ?? null;
   const { data: teamMetadataSchemaFields = [], isLoading: isTeamMetadataSchemaLoading } = useTeamMetadataSchema();
@@ -671,6 +674,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
           userModels={userModels}
           editTeam={editTeam}
           premiumUser={premiumUser}
+          licenseFeatures={licenseFeatures}
         />
       ) : (
         <Tabs defaultValue={tabItems[0].key} className="min-h-0 flex-1 gap-6">
@@ -823,7 +827,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                   </FormField>
                   <ModelMaxBudgetField
                     key={`model-max-budget-${routerSettingsKey}`}
-                    premiumUser={premiumUser}
+                    premiumUser={hasFeature("budgets")}
                     value={modelMaxBudget}
                     onChange={setModelMaxBudget}
                     availableModels={userModels}
@@ -947,9 +951,9 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                           name="secret_manager_settings"
                           label="Secret Manager Settings"
                           description={
-                            premiumUser
+                            hasFeature("secret_managers")
                               ? "Enter secret manager configuration as a JSON object."
-                              : "Premium feature - Upgrade to manage secret manager settings."
+                              : "Needs an Iagami license to manage secret manager settings."
                           }
                         >
                           {({ ref, value, ...field }) => (
@@ -959,7 +963,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                               value={value ?? ""}
                               rows={4}
                               placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "litellm"}'
-                              disabled={!premiumUser}
+                              disabled={!hasFeature("secret_managers")}
                             />
                           )}
                         </FormField>
@@ -993,15 +997,15 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                             "When enabled, this team will bypass any guardrails configured to run on every request (global guardrails)",
                           )}
                           description={
-                            premiumUser
+                            hasFeature("guardrails")
                               ? "Bypass global guardrails for this team"
-                              : "Premium feature - Upgrade to disable global guardrails by team"
+                              : "Needs an Iagami license to disable global guardrails by team"
                           }
                         >
                           {({ id, value, onChange }) => (
                             <Switch
                               id={id}
-                              disabled={!premiumUser}
+                              disabled={!hasFeature("guardrails")}
                               checked={value === true}
                               onCheckedChange={onChange}
                             />
@@ -1072,10 +1076,10 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                           name="allowed_passthrough_routes"
                           className="mt-8"
                           label={
-                            !premiumUser
+                            !hasFeature("access_control")
                               ? labelWithHint(
                                   "Allowed Pass Through Routes",
-                                  "Premium feature - Upgrade to set allowed pass through routes",
+                                  "Needs an Iagami license to set allowed pass through routes",
                                 )
                               : !isProxyAdminRole(userRole || "")
                                 ? labelWithHint(
@@ -1091,7 +1095,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                               onChange={onChange}
                               accessToken={accessToken || ""}
                               placeholder="Select pass through routes (optional)"
-                              disabled={!premiumUser || !isProxyAdminRole(userRole || "")}
+                              disabled={!hasFeature("access_control") || !isProxyAdminRole(userRole || "")}
                             />
                           )}
                         </FormField>
@@ -1249,7 +1253,7 @@ const Teams: React.FC<TeamProps> = ({ accessToken, userID, userRole, premiumUser
                         <PremiumLoggingSettings
                           value={loggingSettings}
                           onChange={setLoggingSettings}
-                          premiumUser={premiumUser}
+                          premiumUser={hasFeature("logging_integrations")}
                         />
                       </div>
                     </CollapsibleContent>

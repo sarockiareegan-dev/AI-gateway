@@ -1,3 +1,4 @@
+import { hasLicenseFeature, type LicenseFeature } from "@/utils/licenseFeatures";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { useProjects } from "@/app/(dashboard)/hooks/projects/useProjects";
 import { useUISettings } from "@/app/(dashboard)/hooks/uiSettings/useUISettings";
@@ -87,10 +88,11 @@ export default function KeyInfoView({
   onDelete,
   backButtonText = "Back to Keys",
 }: KeyInfoViewProps) {
-  const { accessToken, userId: userID, userRole, premiumUser } = useAuthorized();
+  const { accessToken, userId: userID, userRole, premiumUser, licenseFeatures } = useAuthorized();
+  const hasFeature = (feature: LicenseFeature) => hasLicenseFeature(licenseFeatures, premiumUser, feature);
   const activityDateRange = useActivityDateRange();
   const queryClient = useQueryClient();
-  const canEditGuardrails = premiumUser || (userRole != null && rolesWithWriteAccess.includes(userRole));
+  const canEditGuardrails = hasFeature("guardrails") || (userRole != null && rolesWithWriteAccess.includes(userRole));
   const { teams: teamsData } = useTeams();
   const { data: organizations } = useOrganizations();
   const { data: projects } = useProjects();
@@ -541,8 +543,10 @@ export default function KeyInfoView({
         isBlocked={isBlocked}
         canModifyKey={canModifyKey}
         backButtonText={backButtonText}
-        regenerateDisabled={!premiumUser}
-        regenerateTooltip={!premiumUser ? "This feature needs an Iagami license." : undefined}
+        regenerateDisabled={!hasFeature("advanced_keys")}
+        regenerateTooltip={
+          !hasFeature("advanced_keys") ? "Regenerating keys needs an Iagami license with advanced keys." : undefined
+        }
       />
 
       {/* Add RegenerateKeyModal */}
@@ -838,6 +842,7 @@ export default function KeyInfoView({
                   userID={userID}
                   userRole={userRole}
                   premiumUser={premiumUser}
+                  licenseFeatures={licenseFeatures}
                 />
               ) : (
                 <div className="space-y-4">
