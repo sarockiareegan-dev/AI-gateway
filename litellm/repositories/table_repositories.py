@@ -120,6 +120,10 @@ class ManagedFileRepository(PrismaTableRepository["prisma_models.LiteLLM_Managed
     table_name = "litellm_managedfiletable"
 
 
+class ManagedVectorStoreRepository(PrismaTableRepository["prisma_models.LiteLLM_ManagedVectorStoreTable"]):
+    table_name = "litellm_managedvectorstoretable"
+
+
 class MemoryRepository(PrismaTableRepository["prisma_models.LiteLLM_MemoryTable"]):
     table_name = "litellm_memorytable"
 

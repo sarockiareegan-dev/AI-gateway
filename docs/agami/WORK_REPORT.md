@@ -14,7 +14,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #7 | `dcdd0e4` | Guardrail owner (`team_id`, `organization_id`) in the guardrail list and info responses, guardrail info scoped like the list |
 | #8 | `8c2ebb6` | Demo config and Docker Compose override committed |
 | #9 | `e70ef8d` | Guardrail owner shown in the Admin UI table and overview |
-| #10 | pending | Batch cost poller rebuilt |
+| #10 | `4ad7fb9` | Batch cost poller rebuilt |
+| #11 | pending | Managed vector stores hook rebuilt |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -620,7 +621,7 @@ Access: the creator, their team and proxy admins (via `can_access_resource` in `
 
 ### 9.5 Comparison and limits
 
-Upstream's version lived in the enterprise package and used caching. Ours reads the DB each time (simpler, always consistent) and is tenant-scoped. Not rebuilt yet: `managed_vector_stores`
+Upstream's version lived in the enterprise package and used caching. Ours reads the DB each time (simpler, always consistent) and is tenant-scoped. Managed vector stores follow the same model, see 9.7
 
 ### 9.6 Batch cost poller (#10)
 
@@ -669,6 +670,37 @@ How to debug:
 - Billed to nobody: the row's `api_key`, `created_by`, `team_id`, `org_id` are empty (created by the master key, or before attribution was stored). The cost is still written, unattributed, on purpose
 
 Different from LiteLLM: theirs was enterprise code with its own licence. Ours reuses the existing logging and spend-claim path instead of writing spend itself, so there is only one place that prices a batch
+
+### 9.7 Managed vector stores (#11)
+
+Problem: `POST /v1/vector_stores` with `target_model_names` asked for the `managed_vector_stores` proxy hook, which lived in LiteLLM's deleted enterprise package, so it answered 500. Unified vector store IDs were also decoded by the vector store file routes with no owner check, so anyone holding an ID could add or read files in another tenant's store
+
+Files: `litellm/proxy/hooks/managed_vector_stores.py` (class `_PROXY_LiteLLMManagedVectorStores`, registered as `managed_vector_stores` in `litellm/proxy/hooks/__init__.py`), `ManagedVectorStoreRepository` in `litellm/repositories/table_repositories.py`, and the owner check in `assert_user_can_access_vector_store_id` (`litellm/proxy/vector_store_endpoints/utils.py`). Tests: `tests/test_litellm/proxy/hooks/test_managed_vector_stores.py`
+
+ID format, built with the shared helpers in `litellm/llms/base_llm/managed_resources/utils.py` and base64url encoded without padding:
+
+```
+litellm_proxy:vector_store;unified_id,<uuid>;target_model_names,<a>,<b>;resource_id,<first provider vs id>;model_id,<first deployment id>
+```
+
+Create workflow (`acreate_vector_store`):
+
+1. Refuse with 403 unless the licence has `managed_files`
+2. For each target model, ask the router for a deployment (`async_get_available_deployment`) with `litellm_metadata` carrying the caller's key, org and team, so org-owned deployments follow the normal visibility rules
+3. Create the store on that deployment (`avector_store_create(model=<deployment id>)`) and record `deployment id -> provider store id`
+4. Build the unified ID from the first deployment, store the row (`model_mappings`, `flat_model_resource_ids`, `created_by` from `resolve_resource_owner_id`, `team_id`, `resource_object`) and return the first response with the unified ID
+
+Request workflow: the hook's `async_pre_call_hook` runs on every proxy request. When `vector_store_id` is a unified vector store ID it loads the row, checks `can_access_resource` (creator, their team or proxy admin, 404 otherwise), then sets `model` to the deployment ID and `vector_store_id` to the provider ID. Provider-native IDs pass through untouched. The file routes call the same `assert_can_access` before they decode the ID; with no database the hook isn't registered and unified IDs answer 404
+
+How to control it: give the licence the `managed_files` feature and run with a database. Without a database the hook is skipped (it needs `prisma_client`), and creating with `target_model_names` answers 500 as before
+
+How to debug:
+
+- 403 on create: the licence lacks `managed_files`
+- 404 on a unified ID: no row (created on another proxy database) or the caller isn't the owner. Check `LiteLLM_ManagedVectorStoreTable` for `unified_resource_id`, `created_by` and `team_id`
+- "no healthy deployments" on create: a target model has no deployment visible to the caller's organization
+
+Limits: requests always go to the first deployment, deleting a store leaves its row, and `GET /v1/vector_stores` lists provider stores, not managed ones. Upstream's version was enterprise code; ours stores the same row shape so existing rows keep working
 
 ---
 
@@ -839,7 +871,6 @@ rg "agami-org/" litellm agami                      # org model naming
 
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
 - UI rebrand (the UI still says LiteLLM and reads one `premium_user` flag instead of per-feature gating)
-- `managed_vector_stores` hook
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
 

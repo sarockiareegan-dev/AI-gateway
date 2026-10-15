@@ -341,6 +341,20 @@ async def assert_user_can_access_vector_store_id(
 
     Unknown ids are treated as provider-native ids and are not rejected here.
     """
+    from litellm.proxy.hooks.managed_vector_stores import (
+        _PROXY_LiteLLMManagedVectorStores,
+        parse_managed_vector_store_id,
+    )
+
+    if parse_managed_vector_store_id(vector_store_id) is not None:
+        from litellm.proxy.proxy_server import proxy_logging_obj
+
+        managed_vector_stores: Final = proxy_logging_obj.get_proxy_hook("managed_vector_stores")
+        if not isinstance(managed_vector_stores, _PROXY_LiteLLMManagedVectorStores):
+            raise HTTPException(status_code=404, detail=f"Vector store {vector_store_id} not found")
+        await managed_vector_stores.assert_can_access(vector_store_id, user_api_key_dict)
+        return None
+
     vector_store: Final = await get_litellm_managed_vector_store(vector_store_id=vector_store_id)
     if vector_store is not None:
         await assert_user_can_access_vector_store(
