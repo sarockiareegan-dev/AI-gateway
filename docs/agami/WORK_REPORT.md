@@ -705,14 +705,14 @@ Limits: requests always go to the first deployment, deleting a store leaves its 
 
 ### 9.8 Admin UI rebrand, first part (#12)
 
-Goal: the Admin UI (`ui/litellm-dashboard`) should present itself as Agami, not LiteLLM, and stop sending users to LiteLLM's community, blog and sales
+Goal: the Admin UI (`ui/litellm-dashboard`) should present itself as Iagami (the company name), not LiteLLM, and stop sending users to LiteLLM's community, blog and sales
 
 Files:
 
-- `src/lib/brand.ts`: `BRAND_NAME` ("Agami"), `PRODUCT_NAME` ("Agami Gateway") and `LICENSE_CONTACT_EMAIL` (empty until a contact address is chosen). The navbar logo alt text, the sidebar account menu, the "Thanks for using" tooltip and the license expiry banner read these
-- About 80 components: user-facing prose "LiteLLM" became "Agami", "LiteLLM Proxy" became "Agami Gateway", and the "LiteLLM Enterprise feature" notices now say the feature needs an Agami license and to ask the administrator, without LiteLLM's pricing link. Page title "Agami Dashboard", login and loading screens say "Agami"
+- `src/lib/brand.ts`: `BRAND_NAME` ("Iagami"), `PRODUCT_NAME` ("Iagami Gateway") and `LICENSE_CONTACT_EMAIL` (empty until a contact address is chosen). The navbar logo alt text, the sidebar account menu, the "Thanks for using" tooltip and the license expiry banner read these
+- About 80 components: user-facing prose "LiteLLM" became "Iagami", "LiteLLM Proxy" became "Iagami Gateway", and the "LiteLLM Enterprise feature" notices now say the feature needs an Iagami license and to ask the administrator, without LiteLLM's pricing link. Page title "Iagami Dashboard", login and loading screens say "Iagami"
 - Removed: the LiteLLM Slack and GitHub buttons (`CommunityEngagementButtons`), the LiteLLM blog dropdown (`BlogDropdown`, `useBlogPosts`, `useDisableBlogPosts` and the "Hide Blog Posts" toggles), and the version badge links to LiteLLM's release notes (the badge stays, unlinked)
-- The license expiry banner showed `sales@berri.ai`; it now says to contact your Agami license provider, or shows `LICENSE_CONTACT_EMAIL` once that is set
+- The license expiry banner showed `sales@berri.ai`; it now says to contact your Iagami license provider, or shows `LICENSE_CONTACT_EMAIL` once that is set
 
 Kept on purpose: terms that name an API concept or a value the backend matches on, such as "LiteLLM Model Name" and "LiteLLM Params" (the `litellm_params` fields), the guardrail provider values "LiteLLM Content Filter" and "LiteLLM LLM as a Judge", and the pgvector provider label. Code comments were not touched
 

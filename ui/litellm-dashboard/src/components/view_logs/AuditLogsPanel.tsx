@@ -101,7 +101,7 @@ export default function AuditLogsPanel({
     return (
       <div style={{ textAlign: "center", marginTop: "20px" }}>
         <h1 style={{ display: "block", marginBottom: "10px" }}>✨ Enterprise Feature.</h1>
-        <p style={{ display: "block", marginBottom: "10px" }}>This feature needs an Agami license.</p>
+        <p style={{ display: "block", marginBottom: "10px" }}>This feature needs an Iagami license.</p>
         <p style={{ display: "block", marginBottom: "20px", fontStyle: "italic" }}>
           Here&apos;s a preview of what Audit Logs offer:
         </p>

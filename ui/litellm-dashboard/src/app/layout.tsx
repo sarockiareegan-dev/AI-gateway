@@ -12,8 +12,8 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Agami Dashboard",
-  description: "Agami Gateway Admin UI",
+  title: "Iagami Dashboard",
+  description: "Iagami Gateway Admin UI",
   icons: { icon: "/get_favicon" },
 };
 

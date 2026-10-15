@@ -99,7 +99,7 @@ const OrganizationsPanel: React.FC<OrganizationsPanelProps> = ({ userRole, acces
     return (
       <div className="mx-4 mt-4">
         <p className="text-sm text-muted-foreground">
-          This feature needs an Agami license. Ask your administrator for a license that includes it.
+          This feature needs an Iagami license. Ask your administrator for a license that includes it.
         </p>
       </div>
     );

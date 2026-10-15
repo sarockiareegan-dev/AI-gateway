@@ -75,9 +75,9 @@ export const AGENT_FORM_CONFIG: {
         options: ["1.0", "0.3"],
         defaultValue: "1.0",
         tooltip:
-          "The A2A protocol version Agami serves to clients for this agent. Agami converts the upstream agent's responses to this version, so clients always see the version you pick here regardless of the original agent's version.",
+          "The A2A protocol version Iagami serves to clients for this agent. Iagami converts the upstream agent's responses to this version, so clients always see the version you pick here regardless of the original agent's version.",
         helpText:
-          "Agami serves this version to clients and converts the upstream agent's responses to match it, regardless of the original agent's version.",
+          "Iagami serves this version to clients and converts the upstream agent's responses to match it, regardless of the original agent's version.",
       },
     ],
   },

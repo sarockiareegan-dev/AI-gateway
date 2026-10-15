@@ -765,7 +765,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                       }))}
                     />
                     <div className="text-xs text-muted-foreground mt-2">
-                      This key will be used by the selected agent to make requests to Agami
+                      This key will be used by the selected agent to make requests to Iagami
                     </div>
                   </div>
                 )}
@@ -1660,7 +1660,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey, autoOp
                       ) : (
                         <SimpleTooltip
                           className="w-full"
-                          content={<span>Key-level logging settings need an Agami license.</span>}
+                          content={<span>Key-level logging settings need an Iagami license.</span>}
                           side="top"
                         >
                           <div style={{ position: "relative" }}>

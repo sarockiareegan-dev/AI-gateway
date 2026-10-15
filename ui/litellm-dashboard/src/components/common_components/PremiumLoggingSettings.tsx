@@ -30,8 +30,8 @@ export function PremiumLoggingSettings({
         </div>
         <div className="p-3 bg-muted border border-border rounded-lg">
           <p className="text-sm text-muted-foreground">
-            Setting Key/Team logging settings needs an Agami license. Global Logging Settings are available for all free
-            users. Ask your administrator for a license that includes it.
+            Setting Key/Team logging settings needs an Iagami license. Global Logging Settings are available for all
+            free users. Ask your administrator for a license that includes it.
           </p>
         </div>
       </div>

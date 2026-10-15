@@ -30,7 +30,7 @@ describe("GuardrailGarden", () => {
     expect(screen.getByText("LiteLLM Content Filter")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Built-in guardrails powered by Agami. Zero latency, no external dependencies, no additional cost.",
+        "Built-in guardrails powered by Iagami. Zero latency, no external dependencies, no additional cost.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Partner Guardrails")).toBeInTheDocument();

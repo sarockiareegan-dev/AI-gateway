@@ -27,7 +27,7 @@ export const NotificationsBell: React.FC = () => {
 
   const content = (
     <div className="max-w-[280px]">
-      <PopoverTitle className="mt-0! mb-2!">Agami Auto Router</PopoverTitle>
+      <PopoverTitle className="mt-0! mb-2!">Iagami Auto Router</PopoverTitle>
       <PopoverDescription className="mb-3! text-sm leading-snug">
         Route every request to the cheapest model that can handle it, no prompt changes needed.
       </PopoverDescription>

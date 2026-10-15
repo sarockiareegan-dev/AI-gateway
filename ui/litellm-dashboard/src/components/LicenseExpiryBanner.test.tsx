@@ -49,7 +49,7 @@ describe("LicenseExpiryBannerView", () => {
     expect(screen.getByText(/expires in 20 days/)).toBeInTheDocument();
     expect(screen.getByText(/Renew before it lapses to keep enterprise features/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
-    expect(screen.getByText(/Reach out to your Agami license provider/)).toBeInTheDocument();
+    expect(screen.getByText(/Reach out to your Iagami license provider/)).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 

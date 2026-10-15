@@ -542,7 +542,7 @@ export default function KeyInfoView({
         canModifyKey={canModifyKey}
         backButtonText={backButtonText}
         regenerateDisabled={!premiumUser}
-        regenerateTooltip={!premiumUser ? "This feature needs an Agami license." : undefined}
+        regenerateTooltip={!premiumUser ? "This feature needs an Iagami license." : undefined}
       />
 
       {/* Add RegenerateKeyModal */}

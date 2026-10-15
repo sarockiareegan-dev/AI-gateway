@@ -47,12 +47,12 @@ const SessionManagement: React.FC<SessionManagementProps> = ({
   const getSessionDescription = () => {
     if (!responsesSessionId) {
       return useApiSessionManagement
-        ? "Agami will manage session using previous_response_id"
+        ? "Iagami will manage session using previous_response_id"
         : "UI will manage session using chat history";
     }
 
     return useApiSessionManagement
-      ? "Agami API session active - context maintained server-side"
+      ? "Iagami API session active - context maintained server-side"
       : "UI session active - context maintained client-side";
   };
 
@@ -67,7 +67,7 @@ const SessionManagement: React.FC<SessionManagementProps> = ({
               <Info className="size-3 text-muted-foreground" />
             </TooltipTrigger>
             <TooltipContent>
-              Choose between Agami API session management (using previous_response_id) or UI-based session management
+              Choose between Iagami API session management (using previous_response_id) or UI-based session management
               (using chat history)
             </TooltipContent>
           </Tooltip>

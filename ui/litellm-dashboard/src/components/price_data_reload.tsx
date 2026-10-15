@@ -442,7 +442,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
             <DialogHeader>
               <DialogTitle>Set Up Periodic Reload</DialogTitle>
               <DialogDescription>
-                Set how often Agami should fetch the latest pricing data from the remote source.
+                Set how often Iagami should fetch the latest pricing data from the remote source.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">

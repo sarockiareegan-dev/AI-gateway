@@ -69,8 +69,8 @@ export const LicenseExpiryBannerView: React.FC<LicenseExpiryBannerViewProps> = (
 
   const message =
     tier === "expired"
-      ? `Your Agami license expired on ${formattedDate}`
-      : `Your Agami license ${describeCountdown(days)} (${formattedDate})`;
+      ? `Your Iagami license expired on ${formattedDate}`
+      : `Your Iagami license ${describeCountdown(days)} (${formattedDate})`;
 
   const description = expiryDescription(tier);
 

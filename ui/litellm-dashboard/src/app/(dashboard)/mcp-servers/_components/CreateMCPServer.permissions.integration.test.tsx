@@ -124,7 +124,7 @@ describe("CreateMCPServer permission toggles reaching the payload", () => {
     render(<CreateMCPServer {...defaultProps} />);
     await fillMinimalHttpServer("Perm_Server");
 
-    const allowAllKeys = await switchFor("Allow All Agami Keys");
+    const allowAllKeys = await switchFor("Allow All Iagami Keys");
     await act(async () => {
       fireEvent.click(allowAllKeys);
     });
@@ -155,7 +155,7 @@ describe("CreateMCPServer permission toggles reaching the payload", () => {
     render(<CreateMCPServer {...defaultProps} />);
     await fillMinimalHttpServer("Perm_Server");
 
-    expect(screen.getByText("Allow All Agami Keys")).toBeInTheDocument();
+    expect(screen.getByText("Allow All Iagami Keys")).toBeInTheDocument();
     expect(screen.queryByText("Delegate auth to upstream (PKCE passthrough)")).not.toBeInTheDocument();
 
     const payload = await submitAndReadPayload();

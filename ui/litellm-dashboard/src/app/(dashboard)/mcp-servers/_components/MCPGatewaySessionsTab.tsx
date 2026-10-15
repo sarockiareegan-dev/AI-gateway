@@ -283,7 +283,7 @@ export function MCPGatewaySessionsTab({ accessToken, canTerminate }: MCPGatewayS
           <h2 className="text-base font-semibold text-foreground">Live Connections</h2>
           <p className="text-sm text-muted-foreground">
             Stateful Streamable HTTP sessions currently open on this proxy worker, grouped by the AI client that sent
-            the MCP initialize request and by the authenticated Agami user. Stateless requests and SSE connections are
+            the MCP initialize request and by the authenticated Iagami user. Stateless requests and SSE connections are
             not counted.
           </p>
         </div>

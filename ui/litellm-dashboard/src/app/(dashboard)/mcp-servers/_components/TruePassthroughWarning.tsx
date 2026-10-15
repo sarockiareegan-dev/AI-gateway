@@ -13,12 +13,12 @@ export default function TruePassthroughWarning({ authType }: { authType?: string
   return (
     <Alert className="mb-4">
       <TriangleAlert />
-      <AlertTitle>True Passthrough disables Agami authentication for this server</AlertTitle>
+      <AlertTitle>True Passthrough disables Iagami authentication for this server</AlertTitle>
       <AlertDescription>
-        Anyone who can reach the gateway can call this server without an Agami key. The caller&apos;s Authorization
+        Anyone who can reach the gateway can call this server without an Iagami key. The caller&apos;s Authorization
         header is forwarded to the upstream verbatim, per-key and per-team rate limits and spend tracking do not apply,
         and the upstream is fully responsible for authenticating callers. Choose OAuth Delegate instead if callers
-        should still authenticate to Agami.
+        should still authenticate to Iagami.
       </AlertDescription>
     </Alert>
   );

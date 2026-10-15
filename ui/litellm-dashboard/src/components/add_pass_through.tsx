@@ -164,8 +164,8 @@ const AddPassThroughEndpoint: React.FC<AddFallbacksProps> = ({
                 <Info />
                 <AlertTitle>What is a Pass-Through Endpoint?</AlertTitle>
                 <AlertDescription>
-                  Route requests from your Agami gateway to any external API. Perfect for custom models, image
-                  generation APIs, or any service you want to proxy through Agami.
+                  Route requests from your Iagami gateway to any external API. Perfect for custom models, image
+                  generation APIs, or any service you want to proxy through Iagami.
                 </AlertDescription>
               </Alert>
 

@@ -141,7 +141,7 @@ function CredentialsHeader() {
                 Reusable
               </span>
               <span className="text-xs text-muted-foreground">
-                Credentials saved in Agami that can be added to models repeatedly.
+                Credentials saved in Iagami that can be added to models repeatedly.
               </span>
             </div>
             <div className="flex flex-col gap-1">
