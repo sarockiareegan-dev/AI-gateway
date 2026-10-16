@@ -13,6 +13,7 @@ BACKEND_PATH_PREFIXES: tuple[str, ...] = (
     # Identity / access
     "/key/",
     "/v2/key/",
+    "/key_request/",
     "/user/",
     "/v2/user/",
     "/team/",

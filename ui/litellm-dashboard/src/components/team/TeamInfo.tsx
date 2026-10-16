@@ -339,7 +339,7 @@ const SUPPRESSED_BY_DESCRIPTION = "";
 
 const numericInputSchema = z.union([z.string(), z.number()]).nullish();
 
-const teamUpdateFieldsSchema = z.object({
+const teamUpdateFieldsShape = {
   team_alias: z.string().min(1, "Please input a team name"),
   models: z.array(z.string()).optional(),
   max_budget: numericInputSchema,
@@ -405,7 +405,9 @@ const teamUpdateFieldsSchema = z.object({
   logging_settings: z.array(z.unknown()).optional(),
   secret_manager_settings: z.string().optional(),
   metadata: metadataPairsSchema.optional(),
-});
+};
+
+const teamUpdateFieldsSchema = z.object(teamUpdateFieldsShape);
 
 type TeamUpdateFormValues = z.infer<typeof teamUpdateFieldsSchema>;
 
