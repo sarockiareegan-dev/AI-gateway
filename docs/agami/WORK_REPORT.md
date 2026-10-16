@@ -803,13 +803,15 @@ UI: Key Requests tab on the team page (always visible; the API filters by role).
 
 Tests: `test_key_request_endpoints.py` (access matrix, validation, approve with narrowing, reject, cancel, one-time collect, ContextVar bypass, issuer as requester). UI: `KeyRequestsTab.test.tsx` and updated tab visibility tests
 
-### 9.13 Agami RBAC handoff (Oct 16, not implemented yet)
+### 9.13 Agami RBAC handoff (Oct 16)
 
 User clarified the product RBAC. Documented in `PROGRESS.md` ("Agami RBAC (next)") and `docs/agami/HANDOFF_AGAMI_RBAC.md` for the next agent (Antigravity or Cursor).
 
 Hierarchy: proxy admin → org admin → team admin → member. Invite is scoped by inviter. Each admin has a view-only twin. Member requests virtual keys; team admin approves.
 
 Shipped so far is not full Agami RBAC: #16 only changed LiteLLM role text; #17 added key requests on LiteLLM membership roles. `agami/auth/*` and `litellm_compat` exist but Invite User and most routes still use `LitellmUserRoles`. After Agami RBAC is complete, remove the LiteLLM RBAC surface from invite UI and live checks.
+
+Also landed a pure invite-scope helper (not wired): `agami/auth/invite.py` with `invite_options` / `validate_invite` and unit tests. Next agent wires it into `/user/new`, bulk create, and Invite User UI.
 
 ---
 

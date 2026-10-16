@@ -166,13 +166,14 @@ What already exists (do not redo):
 - PR #16: LiteLLM picker labels/descriptions only (did not wire Agami into Invite User)
 - PR #17: virtual key requests (member request → team/org/proxy admin decide)
 - Partial invite helpers in `common_utils.py` (`admin_can_invite_user`) for invitations to existing users; `/user/new` does not yet enforce the Agami invite hierarchy
+- Pure invite-scope module started: `agami/auth/invite.py` + `tests/test_agami/auth/test_invite.py` (`invite_options`, `validate_invite`). Not wired to `/user/new` or the UI yet
 
 Gap: Invite User still uses LiteLLM global roles (`proxy_admin`, `proxy_admin_viewer`, `internal_user`, `internal_user_viewer`). Org Admin and Team Admin are only membership roles (Organization → Members, Team → Members as `admin`). Live routes mostly still check `LitellmUserRoles`, not `authorize()`.
 
 Implementation order (also in `HANDOFF_AGAMI_RBAC.md`):
 
 1. Role model + docs contract (this section)
-2. Invite authorization API for `/user/new` (and bulk) with Agami scope + tests
+2. Invite authorization API for `/user/new` (and bulk) with Agami scope + tests (pure module + unit tests landed; wire next)
 3. Invite User UI: scoped org/team pickers and Agami role choices
 4. View-only twins enforcement under each admin scope
 5. Align member + key requests with hierarchy; sweep leftover LiteLLM checks

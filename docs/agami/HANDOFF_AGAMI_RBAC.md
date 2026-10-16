@@ -23,6 +23,7 @@ Paste the prompt at the bottom into Antigravity (or Cursor). Read `docs/agami/PR
 | Role picker text only | PR #16 → `b3d8c17` (LiteLLM descriptions/labels; org_admin still not in global picker) |
 | Virtual key requests | PR #17 → `2cc9f72` (`/key_request/*`, Key Requests tab, team/org/proxy can decide) |
 | Partial invite helper | `admin_can_invite_user` in `common_utils.py` (existing-user invitations; not full `/user/new` Agami scope) |
+| Invite scope module (unwired) | `agami/auth/invite.py` + `tests/test_agami/auth/test_invite.py` (`invite_options`, `validate_invite`) |
 
 ## Product requirements (user, Oct 16)
 
@@ -48,7 +49,7 @@ After Agami RBAC is complete and enforced live: **remove LiteLLM RBAC** from Inv
 ## Implementation order
 
 1. **Contract** — keep `PROGRESS` / this handoff accurate (done in the docs PR)
-2. **Invite API** — pure Agami invite-scope module (e.g. `agami/auth/invite.py`); wire `/user/new` and bulk create; refuse out-of-scope org/team and forbidden role assignments; tests for proxy/org/team admin and view-only cannot invite
+2. **Invite API** — pure module + unit tests exist (`agami/auth/invite.py`); still need to wire `/user/new` and bulk create; refuse out-of-scope org/team and forbidden role assignments
 3. **Invite UI** — scoped org/team pickers; role choices that match Agami hierarchy; optional `GET` invite-scope endpoint for the UI
 4. **View-only twins** — enforce read-only under each admin scope (proxy/org/team viewers)
 5. **Align** — member personal scope + key requests vs hierarchy; sweep leftover LiteLLM checks
@@ -93,7 +94,7 @@ Product rules:
 4. Member: personal resources only; request team virtual key; team admin approves; member uses key
 5. When Agami RBAC is fully wired and tested, remove LiteLLM RBAC from Invite User UI and live authorization paths that duplicate tenant scope. Keep DB/compat mapping only while storage still uses LiteLLM membership fields
 
-Already done (do not redo): agami/auth matrix + litellm_compat Actor mapping; PR #16 role label text only; PR #17 virtual key requests (2cc9f72). Gap: Invite User and most routes still use LitellmUserRoles.
+Already done (do not redo): agami/auth matrix + litellm_compat Actor mapping; PR #16 role label text only; PR #17 virtual key requests (2cc9f72); pure invite module agami/auth/invite.py with unit tests (not wired). Gap: Invite User and most routes still use LitellmUserRoles; wire invite.py into /user/new next.
 
 Implement in this order:
 1. Invite authorization API for /user/new (and bulk) using Agami Actor/authorize or a pure invite-scope module; tests for the matrix
