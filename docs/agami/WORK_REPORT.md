@@ -19,7 +19,8 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #12 | `27dfee6` | Admin UI rebrand, first part (text, links, brand constants) |
 | #13 | `b01b46a` | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
 | #14 | `2bf6e14` | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
-| #16 | pending | Role labels and descriptions |
+| #16 | `b3d8c17` | Role labels and descriptions |
+| #17 | pending | Virtual key requests |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -783,6 +784,25 @@ The global role picker (Users page, invite and edit) reads `/user/available_role
 
 `org_admin` gets the label "Organization Admin" and a description, but stays out of the picker: it is a membership role set per organization under Members, like team admin is set per team. `test_user_role_labels.py` checks every role the UI shows has a label and a description without LiteLLM branding
 
+### 9.12 Virtual key requests (#17)
+
+A team member asks for a key, a team admin (or an org admin of that team's organization, or a proxy admin) decides, and approval creates the key for the member. Members can still create team keys directly. No licence gate
+
+Schema: `LiteLLM_KeyRequestTable` in all three Prisma schemas, migration `20261015000000_add_key_request_table`. Status is `pending`, `approved`, `rejected` or `cancelled`. The approved key is stored encrypted and cleared when the requester collects it
+
+API (`litellm/proxy/management_endpoints/key_request_endpoints.py`), registered on the proxy and listed in `self_managed_routes`:
+
+- `POST /key_request/new`: team member, not view-only. Models must be in the team's list, budget finite and non-negative, duration parseable. Cap of 10 pending requests per user per team
+- `GET /key_request/list?team_id=&status=`: reviewers see the team's requests; members see their own; without `team_id`, the caller's own
+- `POST /key_request/{id}/approve`: optional narrower models, lower budget, duration, alias and note. Claims the pending row, issues the key, stores `key_token` and `encrypted_key`. On issue failure the row goes back to pending
+- `POST /key_request/{id}/reject`, `.../cancel` (requester, pending only), `.../key` (requester, one-time; 410 once collected)
+
+Approve issues the key by calling `generate_key_fn` as the requester (so team and budget checks still apply), with `litellm_changed_by` set to the approver. A ContextVar `approved_key_request` in `key_management_endpoints.py` lets `/key/generate` skip only the `allowed_team_member_roles` and team-member permission checks while the flag is set; the requester must still be in the team. The plaintext key is never returned to the approver
+
+UI: Key Requests tab on the team page (always visible; the API filters by role). Members request and collect; reviewers approve or reject. `canReview` follows `canEditTeam` (team admin, org admin or proxy admin). `litellm/proxy/_experimental/out` is rebuilt from this source
+
+Tests: `test_key_request_endpoints.py` (access matrix, validation, approve with narrowing, reject, cancel, one-time collect, ContextVar bypass, issuer as requester). UI: `KeyRequestsTab.test.tsx` and updated tab visibility tests
+
 ---
 
 ## 10. Dependency bumps (PR #2)
@@ -950,7 +970,6 @@ rg "agami-org/" litellm agami                      # org model naming
 
 ## 16. What is still open
 
-- Virtual key requests: members request a team key, the team admin approves or rejects it
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)

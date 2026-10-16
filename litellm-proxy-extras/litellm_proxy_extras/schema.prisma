@@ -1113,6 +1113,29 @@ model LiteLLM_ManagedFileContentTable {
   created_at DateTime @default(now())
 }
 
+// A team member's request for a virtual key, decided by a team admin, org admin or proxy admin
+model LiteLLM_KeyRequestTable {
+  request_id    String    @id @default(uuid())
+  team_id       String
+  user_id       String
+  key_alias     String?
+  models        String[]  @default([])
+  max_budget    Float?
+  duration      String?
+  reason        String?
+  status        String    @default("pending") // pending, approved, rejected or cancelled
+  reviewed_by   String?
+  reviewed_at   DateTime?
+  review_note   String?
+  key_token     String?
+  encrypted_key String? // cleared once the requester collects the key
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @default(now()) @updatedAt
+
+  @@index([team_id, status])
+  @@index([user_id])
+}
+
 model LiteLLM_ManagedVectorStoreTable {
   id String @id @default(uuid())
   unified_resource_id String @unique // The base64 encoded unified vector store ID

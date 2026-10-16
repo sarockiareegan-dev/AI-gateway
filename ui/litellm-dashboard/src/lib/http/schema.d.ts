@@ -8329,6 +8329,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/key_request/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Key Requests
+         * @description A team's requests for its reviewers, otherwise the caller's own requests
+         */
+        get: operations["list_key_requests_key_request_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/key_request/new": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * New Key Request
+         * @description Ask the admins of a team you belong to for a virtual key
+         */
+        post: operations["new_key_request_key_request_new_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/key_request/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Key Request
+         * @description Create the key for the requester. The approver may narrow the models, lower the budget or change the expiry
+         */
+        post: operations["approve_key_request_key_request__request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/key_request/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Key Request */
+        post: operations["cancel_key_request_key_request__request_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/key_request/{request_id}/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collect Requested Key
+         * @description Return the approved key to its requester. It is shown once and then removed
+         */
+        post: operations["collect_requested_key_key_request__request_id__key_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/key_request/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Key Request
+         * @description Turn the request down. The note is shown to the requester
+         */
+        post: operations["reject_key_request_key_request__request_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/langfuse/{endpoint}": {
         parameters: {
             query?: never;
@@ -23495,6 +23612,19 @@ export interface components {
             /** Response Text */
             response_text: string;
         };
+        /** ApproveKeyRequest */
+        ApproveKeyRequest: {
+            /** Duration */
+            duration?: string | null;
+            /** Key Alias */
+            key_alias?: string | null;
+            /** Max Budget */
+            max_budget?: number | null;
+            /** Models */
+            models?: string[] | null;
+            /** Note */
+            note?: string | null;
+        };
         /**
          * AttachmentImpactResponse
          * @description Response for estimating the impact of a policy attachment.
@@ -26191,6 +26321,13 @@ export interface components {
              * @description Timezone for date handling
              */
             timezone?: string | null;
+        };
+        /** CollectedKey */
+        CollectedKey: {
+            /** Key */
+            key: string;
+            /** Key Token */
+            key_token: string | null;
         };
         /**
          * ComplexityRouterConfigValidationRequest
@@ -29204,11 +29341,53 @@ export interface components {
             metrics: components["schemas"]["SpendMetrics"];
         };
         /** KeyRequest */
-        KeyRequest: {
+        "KeyRequest-Input": {
             /** Key Aliases */
             key_aliases?: string[] | null;
             /** Keys */
             keys?: string[] | null;
+        };
+        /** KeyRequest */
+        "KeyRequest-Output": {
+            /** Created At */
+            created_at?: string | null;
+            /** Duration */
+            duration?: string | null;
+            /** Key Alias */
+            key_alias?: string | null;
+            /**
+             * Key Ready
+             * @default false
+             */
+            key_ready: boolean;
+            /** Key Token */
+            key_token?: string | null;
+            /** Max Budget */
+            max_budget?: number | null;
+            /** Models */
+            models?: string[];
+            /** Reason */
+            reason?: string | null;
+            /** Request Id */
+            request_id: string;
+            /** Review Note */
+            review_note?: string | null;
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /** Reviewed By */
+            reviewed_by?: string | null;
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected" | "cancelled";
+            /** Team Id */
+            team_id: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** User Id */
+            user_id: string;
         };
         /**
          * KeyUpdateFields
@@ -33240,6 +33419,21 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** NewKeyRequest */
+        NewKeyRequest: {
+            /** Duration */
+            duration?: string | null;
+            /** Key Alias */
+            key_alias?: string | null;
+            /** Max Budget */
+            max_budget?: number | null;
+            /** Models */
+            models?: string[];
+            /** Reason */
+            reason?: string | null;
+            /** Team Id */
+            team_id: string;
+        };
         /** NewMCPServerRequest */
         NewMCPServerRequest: {
             /** Alias */
@@ -35979,6 +36173,11 @@ export interface components {
              * @description Operation status
              */
             status: string;
+        };
+        /** RejectKeyRequest */
+        RejectKeyRequest: {
+            /** Note */
+            note?: string | null;
         };
         /** RejectMCPServerRequest */
         RejectMCPServerRequest: {
@@ -38955,10 +39154,20 @@ export interface components {
          */
         UIThemeConfig: {
             /**
+             * Docs Url
+             * @description HTTP/HTTPS URL that documentation links in the admin UI open. Leave unset to keep the upstream docs
+             */
+            docs_url?: string | null;
+            /**
              * Favicon Url
              * @description URL to custom favicon image. Must be an HTTP/HTTPS URL to a .ico, .png, or .svg file
              */
             favicon_url?: string | null;
+            /**
+             * License Contact Email
+             * @description Email address shown to users when the license is expiring or a feature needs a license
+             */
+            license_contact_email?: string | null;
             /**
              * Logo Url
              * @description URL or path to custom logo image. Can be a local file path or HTTP/HTTPS URL
@@ -38969,6 +39178,11 @@ export interface components {
              * @description URL or path to a custom logo image for dark mode. Can be a local file path or HTTP/HTTPS URL. Leave unset to reuse logo_url in dark mode
              */
             logo_url_dark?: string | null;
+            /**
+             * Support Url
+             * @description HTTP/HTTPS or mailto: URL that 'report an issue' and feedback links in the admin UI open
+             */
+            support_url?: string | null;
         };
         /**
          * UIThemeSettingsResponse
@@ -51623,7 +51837,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["KeyRequest"];
+                "application/json": components["schemas"]["KeyRequest-Input"];
             };
         };
         responses: {
@@ -52054,6 +52268,203 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_key_requests_key_request_list_get: {
+        parameters: {
+            query?: {
+                team_id?: string | null;
+                status?: ("pending" | "approved" | "rejected" | "cancelled") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyRequest-Output"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    new_key_request_key_request_new_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyRequest-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_key_request_key_request__request_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyRequest-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_key_request_key_request__request_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyRequest-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collect_requested_key_key_request__request_id__key_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectedKey"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_key_request_key_request__request_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyRequest-Output"];
                 };
             };
             /** @description Validation Error */
@@ -68932,7 +69343,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["KeyRequest"] | null;
+                "application/json": components["schemas"]["KeyRequest-Input"] | null;
             };
         };
         responses: {

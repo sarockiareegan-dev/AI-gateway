@@ -880,6 +880,13 @@ class LiteLLMRoutes(enum.Enum):
         "/team/daily/activity/aggregated",
         "/team/spend/by_user",
         "/team/{team_id}/members/me",
+        # key requests check team membership and reviewer rights themselves
+        "/key_request/new",
+        "/key_request/list",
+        "/key_request/{request_id}/approve",
+        "/key_request/{request_id}/reject",
+        "/key_request/{request_id}/cancel",
+        "/key_request/{request_id}/key",
         # POST/GET the team's logging callbacks, and DELETE one of them. Every
         # handler calls _verify_team_access, which admits only a proxy admin, an
         # org admin for the team, or an admin of this team.

@@ -111,6 +111,7 @@ import EditLoggingSettings from "./EditLoggingSettings";
 import RouterSettingsAccordion, { RouterSettingsAccordionRef } from "../common_components/RouterSettingsAccordion";
 import MemberModal from "./EditMembership";
 import MemberPermissions from "./member_permissions";
+import KeyRequestsTab from "./KeyRequestsTab";
 import MyUserTab from "./MyUserTab";
 import {
   getTeamInfoDefaultTab,
@@ -338,7 +339,7 @@ const SUPPRESSED_BY_DESCRIPTION = "";
 
 const numericInputSchema = z.union([z.string(), z.number()]).nullish();
 
-const teamUpdateFieldsSchema = z.object({
+const teamUpdateFieldsShape = {
   team_alias: z.string().min(1, "Please input a team name"),
   models: z.array(z.string()).optional(),
   max_budget: numericInputSchema,
@@ -404,7 +405,9 @@ const teamUpdateFieldsSchema = z.object({
   logging_settings: z.array(z.unknown()).optional(),
   secret_manager_settings: z.string().optional(),
   metadata: metadataPairsSchema.optional(),
-});
+};
+
+const teamUpdateFieldsSchema = z.object(teamUpdateFieldsShape);
 
 type TeamUpdateFormValues = z.infer<typeof teamUpdateFieldsSchema>;
 
@@ -1356,6 +1359,17 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
       key: TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS,
       label: TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS],
       children: <TeamVirtualKeysTable teamId={teamId} teamAlias={info.team_alias} organization={organization} />,
+    },
+    {
+      key: TEAM_INFO_TAB_KEYS.KEY_REQUESTS,
+      label: TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.KEY_REQUESTS],
+      children: (
+        <KeyRequestsTab
+          teamId={teamId}
+          teamModels={(info.models ?? []).filter((m: string) => m !== "all-proxy-models")}
+          canReview={canEditTeam}
+        />
+      ),
     },
     {
       key: TEAM_INFO_TAB_KEYS.MEMBERS,
