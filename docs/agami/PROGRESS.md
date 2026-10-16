@@ -135,9 +135,49 @@ The user's overall plan, mapped to the work above. Steps 1, 4 and 5 are done: th
 - [x] Admin UI rebrand, second part, done Oct 15 on the `iagami_brand_settings` PR. The Iagami wordmark is the default logo for both themes (`litellm/proxy/logo.jpg` and `logo_dark.png`), the Iagami mark is the favicon (the UI, the prebuilt bundle and Swagger), and the UI primary colour is the brand purple `#842988` (a lighter `#c77dcb` in dark mode). The UI Theme page has a new Links and contact section: Documentation URL, Support URL (https or mailto) and License contact email, stored in `ui_theme_config` next to the logo and served by the public `/get/ui_theme_settings`. Every `docs.litellm.ai` link in the UI goes through `brandDocsUrl` and every LiteLLM GitHub issue or discussion link through `brandSupportUrl`, which open the configured URL when one is set and the upstream page otherwise. The license expiry banner shows the configured email
 - [x] Admin UI rebrand, third part, done Oct 15 on the `iagami_rebrand_finish` PR. Alert and budget emails, Slack alert text, Swagger and the license errors say Iagami, and the email support contact defaults to "your Iagami administrator" instead of `support@berri.ai`. The UI login token carries `license_features`, and each UI gate checks the feature the backend enforces (SSO, organizations, audit logs, guardrails, budgets, advanced keys, access control, secret managers, logging, email branding, team models, spend reports) instead of the single `premium_user` flag. `litellm/proxy/_experimental/out` is rebuilt from this source
 - [x] Role labels and descriptions, done Oct 15 on the `iagami_role_descriptions` PR. The role picker's descriptions (from `LitellmUserRoles.description` in `_types.py`) still had upstream text such as "admin over litellm proxy". They now describe the Iagami roles: proxy admin manages the whole gateway, Organization Viewer reads the teams, users, keys and spend of its organizations, internal users manage their own keys, and a team admin also manages the team's members and keys. `org_admin` gains the label "Organization Admin"; it stays out of the global picker because it is set per organization under Members
-- [x] Virtual key requests, done Oct 15 on the `iagami_key_requests` PR. A team member requests a key for their team (alias, models from the team's list, optional budget, expiry and reason). The team's team admin, an org admin of the team's organization, or a proxy admin approves or rejects it. Approval creates the key for the member through the normal key path (the approver can narrow models and lower the budget); the member collects it once from the request. Members can still create team keys directly. New table `LiteLLM_KeyRequestTable`, routes under `/key_request`, and a Key Requests tab on the team page. No licence gate
+- [x] Virtual key requests, done Oct 15 on the `iagami_key_requests` PR (merged as `2cc9f72`). A team member requests a key for their team (alias, models from the team's list, optional budget, expiry and reason). The team's team admin, an org admin of the team's organization, or a proxy admin approves or rejects it. Approval creates the key for the member through the normal key path (the approver can narrow models and lower the budget); the member collects it once from the request. Members can still create team keys directly. New table `LiteLLM_KeyRequestTable`, routes under `/key_request`, and a Key Requests tab on the team page. No licence gate
+- [ ] Agami RBAC complete (invite hierarchy + view-only twins + wire `agami/auth` through live paths). Spec and handoff: section "Agami RBAC (next)" below and `docs/agami/HANDOFF_AGAMI_RBAC.md`. After this is done, remove LiteLLM RBAC from the invite UI and live authorization paths
+- [ ] Remove LiteLLM RBAC surface once Agami RBAC is complete (Invite User global role picker and leftover `LitellmUserRoles` checks that duplicate tenant scope). Keep DB/compat mapping only as long as storage still uses LiteLLM membership fields
 - [ ] Step 6, rename `litellm` to `agami` in the folder structure and module names. `litellm/` holds about 2,470 Python files and about 4,300 files import it, so the approach needs a decision first
 - [ ] Step 7, refactor and optimize. Needs a scope decision
+
+## Agami RBAC (next)
+
+Decided Oct 16 with the user. Hierarchy (high to low):
+
+1. Proxy admin (whole gateway)
+2. Org admin (their organization)
+3. Team admin (their team)
+4. Member (personal resources only; can request a team virtual key for team-admin approval)
+
+Invite User is for every admin role, scoped:
+
+- Proxy admin: any org, any team
+- Org admin: any team within their org
+- Team admin: their team only
+
+Every admin level has a view-only twin: same scope, no edit/change/invite/approve. Member is last and does not invite.
+
+What already exists (do not redo):
+
+- `agami/auth/roles.py` permission matrix (`org_admin`, `team_admin`, `team_member`, `viewer`)
+- `agami/adapters/litellm_compat.py` maps LiteLLM user/org/team rows → `Actor`
+- `agami/auth/service.py` `authorize()` / `effective_roles()`
+- PR #16: LiteLLM picker labels/descriptions only (did not wire Agami into Invite User)
+- PR #17: virtual key requests (member request → team/org/proxy admin decide)
+- Partial invite helpers in `common_utils.py` (`admin_can_invite_user`) for invitations to existing users; `/user/new` does not yet enforce the Agami invite hierarchy
+- Pure invite-scope module started: `agami/auth/invite.py` + `tests/test_agami/auth/test_invite.py` (`invite_options`, `validate_invite`). Not wired to `/user/new` or the UI yet
+
+Gap: Invite User still uses LiteLLM global roles (`proxy_admin`, `proxy_admin_viewer`, `internal_user`, `internal_user_viewer`). Org Admin and Team Admin are only membership roles (Organization → Members, Team → Members as `admin`). Live routes mostly still check `LitellmUserRoles`, not `authorize()`.
+
+Implementation order (also in `HANDOFF_AGAMI_RBAC.md`):
+
+1. Role model + docs contract (this section)
+2. Invite authorization API for `/user/new` (and bulk) with Agami scope + tests (pure module + unit tests landed; wire next)
+3. Invite User UI: scoped org/team pickers and Agami role choices
+4. View-only twins enforcement under each admin scope
+5. Align member + key requests with hierarchy; sweep leftover LiteLLM checks
+6. Remove LiteLLM RBAC from invite UI and live auth once Agami path is complete
 
 ## Open decisions
 
@@ -147,6 +187,7 @@ The user's overall plan, mapped to the work above. Steps 1, 4 and 5 are done: th
 - Decided Oct 6: leak 9, plain team members see only their own keys. Team admins see every key in the team
 - Decided Oct 6: A4, proxy-wide config reads are proxy-admin only
 - Decided Oct 6: Checkpoint C uses one `jwt_auth` feature for JWT, OAuth2 and the MCP token flows, and grouped features for the rest: `request_limits`, `enforced_params`, `team_admin_roles`, `advanced_keys`, `team_models`, `auto_router`, `model_audit`
+- Decided Oct 16: Agami RBAC hierarchy and scoped invite (section above). Complete Agami RBAC before removing LiteLLM RBAC. Member add stays org admin and team admin until invite API replaces that path
 
 ## Inputs for Checkpoint E
 
@@ -178,7 +219,7 @@ When a gate moves off `premium_user`, search the whole `tests/` tree for helpers
 
 ## Next step
 
-The user picks the next unchecked item under Remaining work. Open choices as of Oct 15: a Docker Compose run of the demo (needs Docker Desktop), step 6 (rename) and step 7 (refactor)
+Agami RBAC (invite hierarchy + view-only + wire `agami/auth`, then remove LiteLLM RBAC). Follow `docs/agami/HANDOFF_AGAMI_RBAC.md`. After that: Docker Compose demo run, step 6 (rename), step 7 (refactor)
 
 ## Session log
 
