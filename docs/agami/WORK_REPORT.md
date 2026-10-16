@@ -20,7 +20,7 @@ Repository: `https://github.com/sarockiareegan-dev/AI-gateway`, base branch `dev
 | #13 | `b01b46a` | Admin UI rebrand, second part (logo, favicon, colour, configurable links) |
 | #14 | `2bf6e14` | Admin UI rebrand, third part (backend branding, per-feature UI gating, rebuilt UI bundle) |
 | #16 | `b3d8c17` | Role labels and descriptions |
-| #17 | pending | Virtual key requests |
+| #17 | `2cc9f72` | Virtual key requests |
 
 PR #1 was squashed, so the individual commit hashes in `PROGRESS.md` (for example `e0c77f5`) live on the old `agami_remove_enterprise` branch, not on `dev`. Use `git log -S "<symbol>" origin/dev` or `git blame` to find where a line came from
 
@@ -803,6 +803,14 @@ UI: Key Requests tab on the team page (always visible; the API filters by role).
 
 Tests: `test_key_request_endpoints.py` (access matrix, validation, approve with narrowing, reject, cancel, one-time collect, ContextVar bypass, issuer as requester). UI: `KeyRequestsTab.test.tsx` and updated tab visibility tests
 
+### 9.13 Agami RBAC handoff (Oct 16, not implemented yet)
+
+User clarified the product RBAC. Documented in `PROGRESS.md` ("Agami RBAC (next)") and `docs/agami/HANDOFF_AGAMI_RBAC.md` for the next agent (Antigravity or Cursor).
+
+Hierarchy: proxy admin → org admin → team admin → member. Invite is scoped by inviter. Each admin has a view-only twin. Member requests virtual keys; team admin approves.
+
+Shipped so far is not full Agami RBAC: #16 only changed LiteLLM role text; #17 added key requests on LiteLLM membership roles. `agami/auth/*` and `litellm_compat` exist but Invite User and most routes still use `LitellmUserRoles`. After Agami RBAC is complete, remove the LiteLLM RBAC surface from invite UI and live checks.
+
 ---
 
 ## 10. Dependency bumps (PR #2)
@@ -970,6 +978,7 @@ rg "agami-org/" litellm agami                      # org model naming
 
 ## 16. What is still open
 
+- Agami RBAC complete (invite hierarchy, view-only twins, wire `agami/auth`), then remove LiteLLM RBAC. See section 9.13 and `HANDOFF_AGAMI_RBAC.md`
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)
