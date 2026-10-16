@@ -36,6 +36,10 @@ class PrismaTableRepository(Generic[RowT_co]):
         return wrap_table_actions_for_config_sync(actions=actions, table_name=self.table_name)
 
 
+class KeyRequestRepository(PrismaTableRepository["prisma_models.LiteLLM_KeyRequestTable"]):
+    table_name = "litellm_keyrequesttable"
+
+
 class PolicyRepository(PrismaTableRepository["prisma_models.LiteLLM_PolicyTable"]):
     table_name = "litellm_policytable"
 

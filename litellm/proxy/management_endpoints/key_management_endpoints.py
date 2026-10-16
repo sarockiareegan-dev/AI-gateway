@@ -10,6 +10,7 @@ All /key management endpoints
 """
 
 import asyncio
+import contextvars
 import copy
 import inspect
 import json
@@ -604,6 +605,9 @@ def _is_allowed_to_make_key_request(
     return True
 
 
+approved_key_request: Final = contextvars.ContextVar[bool]("approved_key_request", default=False)
+
+
 def _team_key_operation_team_member_check(
     assigned_user_id: str | None,
     team_table: LiteLLM_TeamTableCachedObj,
@@ -633,6 +637,8 @@ def _team_key_operation_team_member_check(
             status_code=400,
             detail=f"User={user_api_key_dict.user_id} not assigned to team={team_table.team_id}",
         )
+    elif approved_key_request.get() and route == KeyManagementRoutes.KEY_GENERATE:
+        return True
     elif (
         "allowed_team_member_roles" in team_key_generation
         and caller_team_role not in team_key_generation["allowed_team_member_roles"]

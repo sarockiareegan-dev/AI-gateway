@@ -13,6 +13,7 @@ describe("team_info_tabs", () => {
       expect(TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.OVERVIEW]).toBe("Overview");
       expect(TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.MY_USER]).toBe("My User");
       expect(TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS]).toBe("Virtual Keys");
+      expect(TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.KEY_REQUESTS]).toBe("Key Requests");
       expect(TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.MEMBERS]).toBe("Members");
       expect(TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.MEMBER_PERMISSIONS]).toBe("Member Permissions");
       expect(TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.SETTINGS]).toBe("Settings");
@@ -20,9 +21,14 @@ describe("team_info_tabs", () => {
   });
 
   describe("getTeamInfoVisibleTabs", () => {
-    it("returns overview, my user, and virtual keys when user cannot edit team", () => {
+    it("returns overview, my user, virtual keys and key requests when user cannot edit team", () => {
       const tabs = getTeamInfoVisibleTabs(false);
-      expect(tabs).toEqual([TEAM_INFO_TAB_KEYS.OVERVIEW, TEAM_INFO_TAB_KEYS.MY_USER, TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS]);
+      expect(tabs).toEqual([
+        TEAM_INFO_TAB_KEYS.OVERVIEW,
+        TEAM_INFO_TAB_KEYS.MY_USER,
+        TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS,
+        TEAM_INFO_TAB_KEYS.KEY_REQUESTS,
+      ]);
     });
 
     it("returns all tabs when user can edit team", () => {
@@ -31,6 +37,7 @@ describe("team_info_tabs", () => {
         TEAM_INFO_TAB_KEYS.OVERVIEW,
         TEAM_INFO_TAB_KEYS.MY_USER,
         TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS,
+        TEAM_INFO_TAB_KEYS.KEY_REQUESTS,
         TEAM_INFO_TAB_KEYS.MEMBERS,
         TEAM_INFO_TAB_KEYS.MEMBER_PERMISSIONS,
         TEAM_INFO_TAB_KEYS.SETTINGS,
