@@ -1145,10 +1145,11 @@ async def test_new_user_non_admin_omits_permissions_succeeds(mocker):
     data = NewUserRequest(
         user_email="alice@example.com",
         user_role=LitellmUserRoles.INTERNAL_USER,
+        organizations=["org1"],
     )
     assert "permissions" not in data.model_fields_set
     caller = UserAPIKeyAuth(
-        user_id="org-admin", user_role=LitellmUserRoles.ORG_ADMIN
+        user_id="org-admin", user_role=LitellmUserRoles.ORG_ADMIN, org_id="org1"
     )
 
     result = await new_user(data=data, user_api_key_dict=caller)
@@ -1519,7 +1520,9 @@ async def test_new_user_default_teams_flow(mocker):
         )
 
         # Mock user_api_key_dict
-        mock_user_api_key_dict = UserAPIKeyAuth(user_id="test_admin")
+        mock_user_api_key_dict = UserAPIKeyAuth(
+            user_id="test_admin", user_role="proxy_admin"
+        )
 
         # Call new_user function
         response = await new_user(

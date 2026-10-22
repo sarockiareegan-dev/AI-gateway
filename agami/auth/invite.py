@@ -5,7 +5,7 @@ still store a LiteLLM global role; this module decides who may invite where and 
 they may assign.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -95,12 +95,19 @@ def admin_team_ids(actor: Actor) -> frozenset[str]:
     )
 
 
-def invite_options(actor: Actor, known_teams: Mapping[str, TeamRef]) -> InviteOptions:
+def invite_options(
+    actor: Actor,
+    known_teams: Mapping[str, TeamRef],
+    known_organizations: Sequence[str] | None = None,
+) -> InviteOptions:
     if not actor.is_active or is_view_only(actor):
         return InviteOptions((), (), (), (), (), can_invite=False)
     if actor.is_super_admin:
+        all_orgs: Final = frozenset(known_organizations or ()) | frozenset(
+            t.organization_id for t in known_teams.values() if t.organization_id
+        )
         return InviteOptions(
-            organization_ids=tuple(sorted({t.organization_id for t in known_teams.values() if t.organization_id})),
+            organization_ids=tuple(sorted(all_orgs)),
             team_ids=tuple(sorted(known_teams)),
             global_roles=tuple(sorted(PROXY_GLOBAL_ROLES)),
             team_roles=("admin", "user"),
@@ -152,6 +159,17 @@ def validate_invite(actor: Actor, plan: InvitePlan, known_teams: Mapping[str, Te
     if not plan.organization_ids and not plan.team_ids:
         raise InviteDenied("Org admins and team admins must invite into an organization or team they manage")
 
+    only_team_admin: Final = bool(admin_team_ids(actor)) and not admin_org_ids(actor) and not actor.is_super_admin
+    if only_team_admin:
+        if plan.organization_ids:
+            raise InviteDenied("Team admins invite to their team only, not to an organization")
+        if plan.team_role != "user":
+            raise InviteDenied("Team admins can only invite members to their team, not other team admins")
+        if not plan.team_ids or not set(plan.team_ids) <= admin_team_ids(actor):
+            raise InviteDenied("Team admins can only invite users to teams they administer")
+        if plan.org_role == "org_admin":
+            raise InviteDenied("Team admins cannot grant organization admin")
+
     for org_id in plan.organization_ids:
         if not _can_manage_org(actor, org_id):
             raise InviteDenied(f"Not allowed to invite into organization '{org_id}'")
@@ -165,13 +183,3 @@ def validate_invite(actor: Actor, plan: InvitePlan, known_teams: Mapping[str, Te
         if plan.organization_ids and team.organization_id and team.organization_id not in plan.organization_ids:
             raise InviteDenied(f"Team '{team_id}' is not in the selected organization(s)")
 
-    only_team_admin: Final = bool(admin_team_ids(actor)) and not admin_org_ids(actor) and not actor.is_super_admin
-    if only_team_admin:
-        if plan.organization_ids:
-            raise InviteDenied("Team admins invite to their team only, not to an organization")
-        if plan.team_role != "user":
-            raise InviteDenied("Team admins can only invite members to their team, not other team admins")
-        if not plan.team_ids or not set(plan.team_ids) <= admin_team_ids(actor):
-            raise InviteDenied("Team admins can only invite users to teams they administer")
-        if plan.org_role == "org_admin":
-            raise InviteDenied("Team admins cannot grant organization admin")

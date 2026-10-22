@@ -11,10 +11,34 @@ if TYPE_CHECKING:
 
 
 async def load_request_actor(user_api_key_dict: UserAPIKeyAuth, prisma_client: "PrismaClient") -> Actor:
+    from types import MappingProxyType
+
+    if user_api_key_dict.user_role in (LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN.value):
+        return Actor(
+            user_id=user_api_key_dict.user_id or "",
+            is_super_admin=True,
+            is_active=True,
+            organization_roles=MappingProxyType({}),
+            team_memberships=MappingProxyType({}),
+        )
+
+    if user_api_key_dict.org_id and user_api_key_dict.user_role in (
+        LitellmUserRoles.ORG_ADMIN,
+        LitellmUserRoles.ORG_ADMIN.value,
+    ):
+        from agami.auth.roles import TenantRole
+
+        return Actor(
+            user_id=user_api_key_dict.user_id or "",
+            is_super_admin=False,
+            is_active=True,
+            organization_roles=MappingProxyType({user_api_key_dict.org_id: frozenset({TenantRole.ORG_ADMIN})}),
+            team_memberships=MappingProxyType({}),
+        )
+
     from litellm.proxy.auth.auth_checks import get_user_object
     from litellm.proxy.proxy_server import user_api_key_cache
     from litellm.repositories.team_repository import TeamRepository
-    from litellm.types.proxy.auth.auth_checks import UserNotFoundError
 
     async def fetch_user(user_id: str) -> LiteLLM_UserTable | None:
         try:
@@ -24,12 +48,15 @@ async def load_request_actor(user_api_key_dict: UserAPIKeyAuth, prisma_client: "
                 user_api_key_cache=user_api_key_cache,
                 user_id_upsert=False,
             )
-        except UserNotFoundError:
+        except Exception:
             return None
 
     async def fetch_teams(team_ids: Sequence[str]) -> Sequence[LiteLLM_TeamTable]:
-        rows: Final = await TeamRepository(prisma_client).table.find_many(where={"team_id": {"in": sorted(team_ids)}})
-        return tuple(LiteLLM_TeamTable.model_validate(row.model_dump()) for row in rows)
+        try:
+            rows: Final = await TeamRepository(prisma_client).table.find_many(where={"team_id": {"in": sorted(team_ids)}})
+            return tuple(LiteLLM_TeamTable.model_validate(row.model_dump()) for row in rows)
+        except Exception:
+            return ()
 
     return await load_actor(
         user_id=user_api_key_dict.user_id,

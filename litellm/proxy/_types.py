@@ -847,6 +847,8 @@ class LiteLLMRoutes(enum.Enum):
             # Create/update/delete and test_connection stay admin-only.
             "/search_tools/list",
             "/search_tools/ui/available_providers",
+            "/user/invite_options",
+            "/user/invite/options",
         ]
         + spend_tracking_routes
         + key_management_routes
@@ -861,10 +863,24 @@ class LiteLLMRoutes(enum.Enum):
             # their own keys in tag_management_endpoints.py.
             "/tag/daily/activity",
             "/tag/list",
+            "/user/invite_options",
+            "/user/invite/options",
         ]
     )
 
+    invite_routes = (
+        "/user/new",
+        "/management/v1/users/bulk",
+        "/user/invite_options",
+        "/user/invite/options",
+    )
+
     self_managed_routes = [
+        # user creation and invite routes enforce Agami RBAC via validate_invite / invite_options
+        "/user/new",
+        "/management/v1/users/bulk",
+        "/user/invite_options",
+        "/user/invite/options",
         # update_team resolves proxy/org/team admin itself and filters team admins
         # through the team_admin_editable_team_fields setting
         "/team/update",
@@ -1809,10 +1825,12 @@ class NewUserRequest(GenerateRequestBase):
         | None
     ) = None
     teams: list[str] | list[NewUserRequestTeam] | None = None
+    team_role: Literal["admin", "user"] | None = None
     auto_create_key: bool = True  # flag used for returning a key as part of the /user/new response
     send_invite_email: bool | None = None
     sso_user_id: str | None = None
     organizations: list[str] | None = None
+    org_role: Literal["org_admin", "internal_user"] | None = None
 
 
 class NewUserResponse(GenerateKeyResponse):

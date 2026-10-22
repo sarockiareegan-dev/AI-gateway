@@ -1,5 +1,5 @@
 import { brandDocsUrl } from "@/lib/brand";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
 import { MultiSelect } from "@/components/shared/MultiSelect";
 import { FieldGroup } from "@/components/ui/field";
@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/shared/Alert";
 import { ChevronRight, CircleHelp, Info, UserPlus } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import TeamDropdown from "./common_components/team_dropdown";
 import { getModelDisplayName } from "./key_team_helpers/fetch_available_models_team_key";
@@ -25,6 +25,8 @@ import {
   invitationCreateCall,
   modelAvailableCall,
   userCreateCall,
+  getInviteOptionsCall,
+  InviteOptionsResponse,
 } from "./networking";
 import OnboardingModal, { InvitationLink } from "./onboarding_link";
 
@@ -47,6 +49,7 @@ interface CreateuserProps {
   possibleUIRoles: null | Record<string, Record<string, string>>;
   onUserCreated?: (userId: string) => void;
   isEmbedded?: boolean;
+  inviteOptions?: InviteOptionsResponse | null;
 }
 
 // Define an interface for the UI settings
@@ -65,6 +68,8 @@ interface CreateUserFormValues {
   metadata?: string;
   send_invite_email: boolean;
   models?: string[];
+  team_role?: "admin" | "user";
+  org_role?: "org_admin" | "internal_user";
 }
 
 const EMBEDDED_DEFAULTS: CreateUserFormValues = {
@@ -99,7 +104,15 @@ const buildCreatePayload = (values: CreateUserFormValues): CreateUserFormValues 
   const withModels =
     (!values.models || values.models.length === 0) && values.user_role !== "proxy_admin"
       ? { ...values, models: ["no-default-models"] }
-      : values;
+      : { ...values };
+
+  if (!withModels.team_id || !withModels.team_role) {
+    delete (withModels as any).team_role;
+  }
+  if (!withModels.organization_ids || withModels.organization_ids.length === 0 || !withModels.org_role) {
+    delete (withModels as any).org_role;
+  }
+
   if (!withModels.organization_ids) {
     return withModels;
   }
@@ -154,8 +167,17 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
   possibleUIRoles,
   onUserCreated,
   isEmbedded = false,
+  inviteOptions: propInviteOptions,
 }) => {
   const queryClient = useQueryClient();
+  const { data: fetchedInviteOptions } = useQuery({
+    queryKey: ["inviteOptions", accessToken],
+    queryFn: () => getInviteOptionsCall(accessToken),
+    enabled: Boolean(accessToken) && propInviteOptions === undefined,
+    staleTime: 60_000,
+  });
+  const inviteOptions = propInviteOptions !== undefined ? propInviteOptions : fetchedInviteOptions;
+
   const [uiSettings, setUISettings] = useState<UISettings | null>(null);
   const defaultValues = isEmbedded ? EMBEDDED_DEFAULTS : STANDALONE_DEFAULTS;
   const form = useForm<CreateUserFormValues>({ defaultValues });
@@ -166,11 +188,79 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
   const [isInvitationLinkModalVisible, setIsInvitationLinkModalVisible] = useState(false);
   const [invitationLinkData, setInvitationLinkData] = useState<InvitationLink | null>(null);
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
+
   const { data: organizations = [] } = useOrganizations();
-  const organizationOptions = organizations.map((org) => ({
-    label: `${org.organization_alias} (${org.organization_id})`,
-    value: org.organization_id ?? "",
-  }));
+  const filteredOrganizations = useMemo(() => {
+    if (!inviteOptions) return organizations;
+    if (inviteOptions.organization_ids && inviteOptions.organization_ids.includes("*")) {
+      return organizations;
+    }
+    const allowedOrgs = new Set(inviteOptions.organization_ids || []);
+    return organizations.filter((org) => org.organization_id && allowedOrgs.has(org.organization_id));
+  }, [organizations, inviteOptions]);
+
+  const organizationOptions = useMemo(
+    () =>
+      filteredOrganizations.map((org) => ({
+        label: `${org.organization_alias} (${org.organization_id})`,
+        value: org.organization_id ?? "",
+      })),
+    [filteredOrganizations],
+  );
+
+  const selectedOrgIds = form.watch("organization_ids");
+  const selectedTeamId = form.watch("team_id");
+
+  const canAssignTeamRole = !inviteOptions || Boolean(inviteOptions.team_roles?.includes("admin"));
+  const canAssignOrgRole = !inviteOptions || Boolean(inviteOptions.org_roles?.includes("org_admin"));
+  const showOrgPicker =
+    !inviteOptions || (inviteOptions.organization_ids && inviteOptions.organization_ids.length > 0);
+  const hasSelectedOrgs = Boolean(selectedOrgIds && selectedOrgIds.length > 0);
+
+  const filterTeam = (team: any) => {
+    if (!inviteOptions) return true;
+    if (inviteOptions.team_ids && !inviteOptions.team_ids.includes("*")) {
+      if (!team.team_id || !inviteOptions.team_ids.includes(team.team_id)) {
+        return false;
+      }
+    }
+    if (
+      inviteOptions.organization_ids &&
+      !inviteOptions.organization_ids.includes("*") &&
+      inviteOptions.organization_ids.length > 0
+    ) {
+      if (!team.organization_id || !inviteOptions.organization_ids.includes(team.organization_id)) {
+        return false;
+      }
+    }
+    if (selectedOrgIds && selectedOrgIds.length > 0) {
+      if (!team.organization_id || !selectedOrgIds.includes(team.organization_id)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    if (isModalVisible && inviteOptions) {
+      if (
+        inviteOptions.organization_ids &&
+        inviteOptions.organization_ids.length === 1 &&
+        !inviteOptions.organization_ids.includes("*") &&
+        !form.getValues("organization_ids")
+      ) {
+        form.setValue("organization_ids", [inviteOptions.organization_ids[0]]);
+      }
+      if (
+        inviteOptions.team_ids &&
+        inviteOptions.team_ids.length === 1 &&
+        !inviteOptions.team_ids.includes("*") &&
+        !form.getValues("team_id")
+      ) {
+        form.setValue("team_id", inviteOptions.team_ids[0]);
+      }
+    }
+  }, [isModalVisible, inviteOptions, form]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -239,11 +329,21 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
     }
   };
 
-  const roleOptions = Object.entries(possibleUIRoles ?? {}).map(([role, { ui_label, description }]) => ({
-    value: role,
-    label: ui_label,
-    description,
-  }));
+  const roleOptions = useMemo(() => {
+    const rawRoles = Object.entries(possibleUIRoles ?? {}).map(([role, { ui_label, description }]) => ({
+      value: role,
+      label: ui_label,
+      description,
+    }));
+    if (!inviteOptions?.global_roles || inviteOptions.global_roles.length === 0) {
+      return rawRoles;
+    }
+    const allowed = new Set(inviteOptions.global_roles);
+    if (allowed.has("internal_user")) {
+      allowed.add("proxy_user");
+    }
+    return rawRoles.filter((opt) => allowed.has(opt.value));
+  }, [possibleUIRoles, inviteOptions]);
 
   const userEmailField = (
     <FormField control={form.control} name="user_email" label="User Email">
@@ -258,7 +358,79 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
       label="Team"
       description="If selected, user will be added as a 'user' role to the team."
     >
-      {({ id, value, onChange }) => <TeamDropdown id={id} value={value} onChange={onChange} />}
+      {({ id, value, onChange }) => (
+        <TeamDropdown id={id} value={value} onChange={onChange} filterTeam={filterTeam} />
+      )}
+    </FormField>
+  );
+
+  const teamRoleField = (
+    <FormField
+      control={form.control}
+      name="team_role"
+      label="Team Role"
+      description="Role for this user within the selected team."
+    >
+      {({ id, value, onChange }) => (
+        <Select
+          items={[
+            { value: "user", label: "Member (Default)" },
+            { value: "admin", label: "Team Admin" },
+          ]}
+          value={value ?? ""}
+          onValueChange={(selected: string | null) => onChange((selected as "admin" | "user") || undefined)}
+        >
+          <SelectTrigger id={id} className="w-full">
+            <SelectValue placeholder="Member (Default)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="user">
+              <span>Member</span>
+              <span className="ml-2 text-xs text-muted-foreground">Standard access to team models and keys</span>
+            </SelectItem>
+            <SelectItem value="admin">
+              <span>Team Admin</span>
+              <span className="ml-2 text-xs text-muted-foreground">Can approve key requests and manage team</span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      )}
+    </FormField>
+  );
+
+  const orgRoleField = (
+    <FormField
+      control={form.control}
+      name="org_role"
+      label="Organization Role"
+      description="Role for this user within the selected organization(s)."
+    >
+      {({ id, value, onChange }) => (
+        <Select
+          items={[
+            { value: "internal_user", label: "Member (Default)" },
+            { value: "org_admin", label: "Organization Admin" },
+          ]}
+          value={value ?? ""}
+          onValueChange={(selected: string | null) =>
+            onChange((selected as "org_admin" | "internal_user") || undefined)
+          }
+        >
+          <SelectTrigger id={id} className="w-full">
+            <SelectValue placeholder="Member (Default)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="internal_user">
+              <span>Member</span>
+              <span className="ml-2 text-xs text-muted-foreground">Standard organization member</span>
+            </SelectItem>
+            <SelectItem value="org_admin">
+              <span>Organization Admin</span>
+              <span className="ml-2 text-xs text-muted-foreground">Manages organization teams, members, and settings</span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      )}
     </FormField>
   );
 
@@ -312,6 +484,7 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
             {userEmailField}
             {roleField("User Role")}
             {teamField}
+            {selectedTeamId && canAssignTeamRole && teamRoleField}
             {metadataField}
             {sendInviteEmailField}
           </FieldGroup>
@@ -349,42 +522,46 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
                   ),
                 )}
                 {teamField}
+                {selectedTeamId && canAssignTeamRole && teamRoleField}
 
-                <FormField
-                  control={form.control}
-                  name="organization_ids"
-                  label="Organization"
-                  description="The user will be added to the selected organization(s)."
-                >
-                  {({ id, value, onChange }) => (
-                    <Select
-                      multiple
-                      items={organizationOptions}
-                      value={value ?? []}
-                      onValueChange={(selected: string[]) => onChange(selected.length === 0 ? undefined : selected)}
-                    >
-                      <SelectTrigger id={id} className="w-full">
-                        <SelectValue placeholder="Select Organization">
-                          {(selected: string[]) =>
-                            selected.length === 0
-                              ? "Select Organization"
-                              : organizationOptions
-                                  .filter((option) => selected.includes(option.value))
-                                  .map((option) => option.label)
-                                  .join(", ")
-                          }
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {organizationOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </FormField>
+                {showOrgPicker && (
+                  <FormField
+                    control={form.control}
+                    name="organization_ids"
+                    label="Organization"
+                    description="The user will be added to the selected organization(s)."
+                  >
+                    {({ id, value, onChange }) => (
+                      <Select
+                        multiple
+                        items={organizationOptions}
+                        value={value ?? []}
+                        onValueChange={(selected: string[]) => onChange(selected.length === 0 ? undefined : selected)}
+                      >
+                        <SelectTrigger id={id} className="w-full">
+                          <SelectValue placeholder="Select Organization">
+                            {(selected: string[]) =>
+                              selected.length === 0
+                                ? "Select Organization"
+                                : organizationOptions
+                                    .filter((option) => selected.includes(option.value))
+                                    .map((option) => option.label)
+                                    .join(", ")
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {organizationOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </FormField>
+                )}
+                {showOrgPicker && hasSelectedOrgs && canAssignOrgRole && orgRoleField}
 
                 {metadataField}
                 {sendInviteEmailField}
