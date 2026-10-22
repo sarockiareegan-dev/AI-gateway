@@ -53,7 +53,9 @@ async def load_request_actor(user_api_key_dict: UserAPIKeyAuth, prisma_client: "
 
     async def fetch_teams(team_ids: Sequence[str]) -> Sequence[LiteLLM_TeamTable]:
         try:
-            rows: Final = await TeamRepository(prisma_client).table.find_many(where={"team_id": {"in": sorted(team_ids)}})
+            rows: Final = await TeamRepository(prisma_client).table.find_many(
+                where={"team_id": {"in": sorted(team_ids)}}
+            )
             return tuple(LiteLLM_TeamTable.model_validate(row.model_dump()) for row in rows)
         except Exception:
             return ()

@@ -203,12 +203,9 @@ def _requested_teams(item: BulkNewUserItem) -> tuple[NewUserRequestTeam, ...]:
     if teams is None:
         return ()
     return tuple(
-        team
-        if isinstance(team, NewUserRequestTeam)
-        else NewUserRequestTeam(team_id=team, user_role=team_role)
+        team if isinstance(team, NewUserRequestTeam) else NewUserRequestTeam(team_id=team, user_role=team_role)
         for team in teams
     )
-
 
 
 def _row_error(item: BulkNewUserItem, user_api_key_dict: UserAPIKeyAuth) -> str | None:
@@ -351,7 +348,6 @@ def _db_failure(
     if invite_errors and user.index in invite_errors:
         return _RowFailure(user.index, user.user_id, user.request.user_email, invite_errors[user.index])
     return None
-
 
 
 async def _prepare_user(user: _PendingUser, prisma_client: PrismaClient) -> _PreparedUser | _RowFailure:
@@ -714,7 +710,6 @@ async def _add_to_organizations(
         )
 
 
-
 async def _run_per_user(
     created: Sequence[_PreparedUser],
     select: Callable[[_PreparedUser], bool],
@@ -809,8 +804,7 @@ async def bulk_create_users(
 
     actor: Final = await load_request_actor(user_api_key_dict, prisma_client)
     known_teams: Final = {
-        team.team_id: TeamRef(team_id=team.team_id, organization_id=team.organization_id)
-        for team in teams.values()
+        team.team_id: TeamRef(team_id=team.team_id, organization_id=team.organization_id) for team in teams.values()
     }
     invite_errors: Final[dict[int, str]] = {}
     for user in pending:
@@ -839,7 +833,6 @@ async def bulk_create_users(
     )
     failed_indexes: Final = frozenset(failure.index for failure in db_failures)
     creatable: Final = tuple(user for user in pending if user.index not in failed_indexes)
-
 
     billable_users: Final = await UserRepository(prisma_client).count_billable_users()
     if creatable and license_check.is_over_limit(total_users=billable_users + len(creatable)):

@@ -17023,6 +17023,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/user/invite/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Invite Options */
+        get: operations["get_invite_options_user_invite_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/invite_options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Invite Options */
+        get: operations["get_invite_options_user_invite_options_get_2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/user/list": {
         parameters: {
             query?: never;
@@ -17123,6 +17157,8 @@ export interface paths {
          *     - object_permission: Optional[LiteLLM_ObjectPermissionBase] - internal user-specific object permission. Example - {"vector_stores": ["vector_store_1"], "mcp_servers": ["github"], "mcp_tool_permissions": {"github": ["list_issues"]}}. The MCP grants act as a ceiling on every key this user holds. IF null or {} then no object permission.
          *     - prompts: Optional[List[str]] - List of allowed prompts for the user. If specified, the user will only be able to use these specific prompts.
          *     - organizations: List[str] - List of organization id's the user is a member of
+         *     - org_role: Optional[str] - Role of the user in the organizations listed above - "org_admin" or "internal_user". Default is "internal_user".
+         *     - team_role: Optional[str] - Role of the user in the teams listed above - "admin" or "user". Default is "user".
          *     - budget_limits: Optional[list] - List of concurrent budget windows for the user. Each window specifies a budget_limit, time_period, and optional budget_duration. Example - [{"budget_limit": 10.0, "time_period": "1d"}, {"budget_limit": 50.0, "time_period": "7d"}].
          *     Returns:
          *     - key: (str) The generated api key for the user
@@ -24993,6 +25029,8 @@ export interface components {
              */
             models: unknown[] | null;
             object_permission?: components["schemas"]["LiteLLM_ObjectPermissionBase"] | null;
+            /** Org Role */
+            org_role?: ("org_admin" | "internal_user") | null;
             /** Organizations */
             organizations?: string[] | null;
             /**
@@ -25023,6 +25061,8 @@ export interface components {
             } | null;
             /** Team Id */
             team_id?: string | null;
+            /** Team Role */
+            team_role?: ("admin" | "user") | null;
             /** Teams */
             teams?: string[] | components["schemas"]["NewUserRequestTeam"][] | null;
             /** Tpm Limit */
@@ -29216,6 +29256,21 @@ export interface components {
             invitation_id: string;
             /** Is Accepted */
             is_accepted: boolean;
+        };
+        /** InviteOptionsResponse */
+        InviteOptionsResponse: {
+            /** Can Invite */
+            can_invite: boolean;
+            /** Global Roles */
+            global_roles: string[];
+            /** Org Roles */
+            org_roles: string[];
+            /** Organization Ids */
+            organization_ids: string[];
+            /** Team Ids */
+            team_ids: string[];
+            /** Team Roles */
+            team_roles: string[];
         };
         /** JWTKeyMappingResponse */
         JWTKeyMappingResponse: {
@@ -33987,6 +34042,8 @@ export interface components {
              */
             models: unknown[] | null;
             object_permission?: components["schemas"]["LiteLLM_ObjectPermissionBase"] | null;
+            /** Org Role */
+            org_role?: ("org_admin" | "internal_user") | null;
             /** Organizations */
             organizations?: string[] | null;
             /**
@@ -34017,6 +34074,8 @@ export interface components {
             } | null;
             /** Team Id */
             team_id?: string | null;
+            /** Team Role */
+            team_role?: ("admin" | "user") | null;
             /** Teams */
             teams?: string[] | components["schemas"]["NewUserRequestTeam"][] | null;
             /** Tpm Limit */
@@ -62985,6 +63044,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_invite_options_user_invite_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteOptionsResponse"];
+                };
+            };
+        };
+    };
+    get_invite_options_user_invite_options_get_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteOptionsResponse"];
                 };
             };
         };

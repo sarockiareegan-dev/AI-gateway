@@ -311,11 +311,7 @@ async def _add_user_to_organizations(
     member_role: Literal[
         LitellmUserRoles.ORG_ADMIN,
         LitellmUserRoles.INTERNAL_USER,
-    ] = (
-        LitellmUserRoles.ORG_ADMIN
-        if org_role == "org_admin"
-        else LitellmUserRoles.INTERNAL_USER
-    )
+    ] = LitellmUserRoles.ORG_ADMIN if org_role == "org_admin" else LitellmUserRoles.INTERNAL_USER
 
     tasks: Final[list[Awaitable[object]]] = []
     for organization_id in organizations:
@@ -337,7 +333,6 @@ async def _add_user_to_organizations(
             )
         )
     await asyncio.gather(*tasks, return_exceptions=True)
-
 
 
 async def _add_user_to_team(
@@ -457,7 +452,6 @@ async def add_new_user_to_default_team(
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
-
 async def _fetch_user_team_ids(user_id: str, prisma_client: "PrismaClient") -> tuple[str, ...]:
     user_row: Final = await _user_table(prisma_client).find_unique(where={"user_id": user_id})
     return tuple(user_row.teams) if user_row is not None else ()
@@ -518,6 +512,8 @@ async def new_user(
     - object_permission: Optional[LiteLLM_ObjectPermissionBase] - internal user-specific object permission. Example - {"vector_stores": ["vector_store_1"], "mcp_servers": ["github"], "mcp_tool_permissions": {"github": ["list_issues"]}}. The MCP grants act as a ceiling on every key this user holds. IF null or {} then no object permission.
     - prompts: Optional[List[str]] - List of allowed prompts for the user. If specified, the user will only be able to use these specific prompts.
     - organizations: List[str] - List of organization id's the user is a member of
+    - org_role: Optional[str] - Role of the user in the organizations listed above - "org_admin" or "internal_user". Default is "internal_user".
+    - team_role: Optional[str] - Role of the user in the teams listed above - "admin" or "user". Default is "user".
     - budget_limits: Optional[list] - List of concurrent budget windows for the user. Each window specifies a budget_limit, time_period, and optional budget_duration. Example - [{"budget_limit": 10.0, "time_period": "1d"}, {"budget_limit": 50.0, "time_period": "7d"}].
     Returns:
     - key: (str) The generated api key for the user
@@ -613,8 +609,7 @@ async def new_user(
         except Exception:
             team_rows_for_validation = ()
             known_teams_for_validation = {
-                team_id: TeamRef(team_id=team_id, organization_id=None)
-                for team_id in requested_team_ids
+                team_id: TeamRef(team_id=team_id, organization_id=None) for team_id in requested_team_ids
             }
 
         resolved_team_role: TeamMemberRole = data.team_role or "user"
@@ -692,7 +687,6 @@ async def new_user(
                 user_api_key_dict=user_api_key_dict,
                 org_role=invite_plan.org_role,
             )
-
 
         special_keys: Final = ["token", "token_id"]
         response_dict: Final = {}
@@ -810,8 +804,7 @@ async def get_invite_options(
     if actor.is_super_admin:
         team_rows = await TeamRepository(prisma_client).table.find_many()
         known_teams = {
-            row.team_id: TeamRef(team_id=row.team_id, organization_id=row.organization_id)
-            for row in team_rows
+            row.team_id: TeamRef(team_id=row.team_id, organization_id=row.organization_id) for row in team_rows
         }
         org_rows = await OrganizationRepository(prisma_client).table.find_many()
         known_orgs = [row.organization_id for row in org_rows]
@@ -830,8 +823,7 @@ async def get_invite_options(
             where_clause = {"OR": team_conditions} if len(team_conditions) > 1 else team_conditions[0]
             team_rows = await TeamRepository(prisma_client).table.find_many(where=where_clause)
             known_teams = {
-                row.team_id: TeamRef(team_id=row.team_id, organization_id=row.organization_id)
-                for row in team_rows
+                row.team_id: TeamRef(team_id=row.team_id, organization_id=row.organization_id) for row in team_rows
             }
             opts = invite_options(actor=actor, known_teams=known_teams, known_organizations=list(org_ids))
 
@@ -843,7 +835,6 @@ async def get_invite_options(
         org_roles=list(opts.org_roles),
         can_invite=opts.can_invite,
     )
-
 
 
 def get_team_from_list(

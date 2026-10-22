@@ -213,6 +213,7 @@ def rbac_setup(mocker):
 # Tests for GET /user/invite_options
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_invite_options_proxy_admin(rbac_setup):
     auth = UserAPIKeyAuth(user_id="proxy-admin", user_role=LitellmUserRoles.PROXY_ADMIN)
@@ -290,6 +291,7 @@ async def test_invite_options_plain_member(rbac_setup):
 # =====================================================================
 # Tests for POST /user/new
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_new_user_proxy_admin_can_invite_anywhere(rbac_setup):
@@ -447,6 +449,7 @@ async def test_new_user_member_and_viewers_denied(rbac_setup):
 # =====================================================================
 # Tests for Bulk User Creation /management/v1/users/bulk
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_bulk_create_users_team_admin_matrix(rbac_setup):

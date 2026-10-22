@@ -66,7 +66,6 @@ def test_team_admin_invites_member_to_own_team_only() -> None:
         validate_invite(actor, InvitePlan(team_ids=(OTHER_TEAM,), team_role="user"), TEAMS)
 
 
-
 def test_view_only_and_member_cannot_invite() -> None:
     with pytest.raises(InviteDenied, match="View-only"):
         validate_invite(
@@ -143,4 +142,3 @@ def test_inactive_actor_cannot_invite() -> None:
     inactive: Final = replace(_actor(is_super_admin=True), is_active=False)
     with pytest.raises(InviteDenied, match="Inactive users cannot invite"):
         validate_invite(inactive, InvitePlan(), TEAMS)
-

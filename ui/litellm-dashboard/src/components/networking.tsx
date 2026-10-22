@@ -999,25 +999,9 @@ export interface InviteOptionsResponse {
   can_invite: boolean;
 }
 
-export const getInviteOptionsCall = async (
-  accessToken: string,
-): Promise<InviteOptionsResponse> => {
+export const getInviteOptionsCall = async (accessToken: string): Promise<InviteOptionsResponse> => {
   try {
-    const url = proxyBaseUrl ? `${proxyBaseUrl}/user/invite_options` : `/user/invite_options`;
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || "Failed to fetch invite options");
-    }
-
-    return await response.json();
+    return await apiClient.get<InviteOptionsResponse>(`/user/invite_options`, { accessToken });
   } catch (error) {
     console.error("Failed to fetch invite options:", error);
     throw error;

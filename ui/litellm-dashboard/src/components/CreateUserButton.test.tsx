@@ -798,9 +798,7 @@ describe("CreateUserButton", () => {
         can_invite: true,
       };
 
-      renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />,
-      );
+      renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
       const dialog = await openStandaloneModal(user);
 
       await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
@@ -820,9 +818,7 @@ describe("CreateUserButton", () => {
         can_invite: true,
       };
 
-      renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />,
-      );
+      renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
       const dialog = await openStandaloneModal(user);
 
       expect(within(dialog).queryByRole("combobox", { name: /^organization$/i })).not.toBeInTheDocument();
@@ -855,9 +851,7 @@ describe("CreateUserButton", () => {
         can_invite: true,
       };
 
-      renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />,
-      );
+      renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
       const dialog = await openStandaloneModal(user);
 
       await user.type(within(dialog).getByLabelText(/user email/i), "orgadmin@example.com");

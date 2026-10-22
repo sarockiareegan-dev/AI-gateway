@@ -392,7 +392,10 @@ async def test_non_admin_cannot_create_admin_users_but_other_rows_proceed():
     prisma.db.litellm_usertable.rows["someone"] = _UserRow(user_id="someone", teams=["t1"])
     response = await _run(
         prisma,
-        [{"user_id": "u1", "user_role": "proxy_admin"}, {"user_id": "u2", "user_role": "internal_user", "teams": ["t1"]}],
+        [
+            {"user_id": "u1", "user_role": "proxy_admin"},
+            {"user_id": "u2", "user_role": "internal_user", "teams": ["t1"]},
+        ],
         caller=INTERNAL,
     )
 

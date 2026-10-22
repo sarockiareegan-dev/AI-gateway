@@ -182,4 +182,3 @@ def validate_invite(actor: Actor, plan: InvitePlan, known_teams: Mapping[str, Te
             raise InviteDenied(f"Not allowed to invite into team '{team_id}'")
         if plan.organization_ids and team.organization_id and team.organization_id not in plan.organization_ids:
             raise InviteDenied(f"Team '{team_id}' is not in the selected organization(s)")
-

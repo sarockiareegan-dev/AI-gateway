@@ -170,12 +170,13 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
   inviteOptions: propInviteOptions,
 }) => {
   const queryClient = useQueryClient();
-  const { data: fetchedInviteOptions } = useQuery({
+  const inviteOptionsQueryOptions = {
     queryKey: ["inviteOptions", accessToken],
     queryFn: () => getInviteOptionsCall(accessToken),
     enabled: Boolean(accessToken) && propInviteOptions === undefined,
     staleTime: 60_000,
-  });
+  };
+  const { data: fetchedInviteOptions } = useQuery(inviteOptionsQueryOptions);
   const inviteOptions = propInviteOptions !== undefined ? propInviteOptions : fetchedInviteOptions;
 
   const [uiSettings, setUISettings] = useState<UISettings | null>(null);
@@ -213,9 +214,9 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
 
   const canAssignTeamRole = !inviteOptions || Boolean(inviteOptions.team_roles?.includes("admin"));
   const canAssignOrgRole = !inviteOptions || Boolean(inviteOptions.org_roles?.includes("org_admin"));
-  const showOrgPicker =
-    !inviteOptions || (inviteOptions.organization_ids && inviteOptions.organization_ids.length > 0);
+  const showOrgPicker = !inviteOptions || (inviteOptions.organization_ids && inviteOptions.organization_ids.length > 0);
   const hasSelectedOrgs = Boolean(selectedOrgIds && selectedOrgIds.length > 0);
+  const showOrgRoleField = showOrgPicker && hasSelectedOrgs && canAssignOrgRole;
 
   const filterTeam = (team: any) => {
     if (!inviteOptions) return true;
@@ -243,21 +244,15 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
 
   useEffect(() => {
     if (isModalVisible && inviteOptions) {
-      if (
-        inviteOptions.organization_ids &&
-        inviteOptions.organization_ids.length === 1 &&
-        !inviteOptions.organization_ids.includes("*") &&
-        !form.getValues("organization_ids")
-      ) {
-        form.setValue("organization_ids", [inviteOptions.organization_ids[0]]);
+      const orgIds = inviteOptions.organization_ids;
+      const singleOrgId = orgIds && orgIds.length === 1 && !orgIds.includes("*") ? orgIds[0] : undefined;
+      if (singleOrgId && !form.getValues("organization_ids")) {
+        form.setValue("organization_ids", [singleOrgId]);
       }
-      if (
-        inviteOptions.team_ids &&
-        inviteOptions.team_ids.length === 1 &&
-        !inviteOptions.team_ids.includes("*") &&
-        !form.getValues("team_id")
-      ) {
-        form.setValue("team_id", inviteOptions.team_ids[0]);
+      const teamIds = inviteOptions.team_ids;
+      const singleTeamId = teamIds && teamIds.length === 1 && !teamIds.includes("*") ? teamIds[0] : undefined;
+      if (singleTeamId && !form.getValues("team_id")) {
+        form.setValue("team_id", singleTeamId);
       }
     }
   }, [isModalVisible, inviteOptions, form]);
@@ -358,9 +353,7 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
       label="Team"
       description="If selected, user will be added as a 'user' role to the team."
     >
-      {({ id, value, onChange }) => (
-        <TeamDropdown id={id} value={value} onChange={onChange} filterTeam={filterTeam} />
-      )}
+      {({ id, value, onChange }) => <TeamDropdown id={id} value={value} onChange={onChange} filterTeam={filterTeam} />}
     </FormField>
   );
 
@@ -426,7 +419,9 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
             </SelectItem>
             <SelectItem value="org_admin">
               <span>Organization Admin</span>
-              <span className="ml-2 text-xs text-muted-foreground">Manages organization teams, members, and settings</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                Manages organization teams, members, and settings
+              </span>
             </SelectItem>
           </SelectContent>
         </Select>
@@ -561,7 +556,7 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
                     )}
                   </FormField>
                 )}
-                {showOrgPicker && hasSelectedOrgs && canAssignOrgRole && orgRoleField}
+                {showOrgRoleField && orgRoleField}
 
                 {metadataField}
                 {sendInviteEmailField}
