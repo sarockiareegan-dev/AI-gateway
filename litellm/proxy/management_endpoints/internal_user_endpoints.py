@@ -299,6 +299,7 @@ async def _add_user_to_organizations(
     organizations: list[str],
     prisma_client: "PrismaClient",
     user_api_key_dict: UserAPIKeyAuth,
+    org_role: str = "internal_user",
 ):
     """
     Add a user to organizations
@@ -306,6 +307,11 @@ async def _add_user_to_organizations(
     from litellm.proxy.management_endpoints.organization_endpoints import (
         organization_member_add,
     )
+
+    member_role: Literal[
+        LitellmUserRoles.ORG_ADMIN,
+        LitellmUserRoles.INTERNAL_USER,
+    ] = LitellmUserRoles.ORG_ADMIN if org_role == "org_admin" else LitellmUserRoles.INTERNAL_USER
 
     tasks: Final[list[Awaitable[object]]] = []
     for organization_id in organizations:
@@ -316,7 +322,7 @@ async def _add_user_to_organizations(
                     member=[
                         OrgMember(
                             user_id=user_id,
-                            role=LitellmUserRoles.INTERNAL_USER,
+                            role=member_role,
                         )
                     ],
                 ),
@@ -418,16 +424,17 @@ async def add_new_user_to_default_team(
     user_api_key_dict: UserAPIKeyAuth,
     teams: list[str] | list[NewUserRequestTeam],
     prisma_client: "PrismaClient",
+    default_team_role: Literal["user", "admin"] = "user",
 ):
     tasks: Final[list[Awaitable[object]]] = []
     for team in teams:
-        user_role: Literal["user", "admin"] = "user"
+        user_role: Literal["user", "admin"] = default_team_role
         max_budget_in_team: float | None = None
         if isinstance(team, str):
             team_id = team
         elif isinstance(team, NewUserRequestTeam):
             team_id = team.team_id
-            user_role = team.user_role
+            user_role = team.user_role or default_team_role
             max_budget_in_team = team.max_budget_in_team
         else:
             raise ValueError(f"Invalid team type: {type(team)}")
@@ -505,6 +512,8 @@ async def new_user(
     - object_permission: Optional[LiteLLM_ObjectPermissionBase] - internal user-specific object permission. Example - {"vector_stores": ["vector_store_1"], "mcp_servers": ["github"], "mcp_tool_permissions": {"github": ["list_issues"]}}. The MCP grants act as a ceiling on every key this user holds. IF null or {} then no object permission.
     - prompts: Optional[List[str]] - List of allowed prompts for the user. If specified, the user will only be able to use these specific prompts.
     - organizations: List[str] - List of organization id's the user is a member of
+    - org_role: Optional[str] - Role of the user in the organizations listed above - "org_admin" or "internal_user". Default is "internal_user".
+    - team_role: Optional[str] - Role of the user in the teams listed above - "admin" or "user". Default is "user".
     - budget_limits: Optional[list] - List of concurrent budget windows for the user. Each window specifies a budget_limit, time_period, and optional budget_duration. Example - [{"budget_limit": 10.0, "time_period": "1d"}, {"budget_limit": 50.0, "time_period": "7d"}].
     Returns:
     - key: (str) The generated api key for the user
@@ -567,6 +576,66 @@ async def new_user(
             user_api_key_dict=user_api_key_dict,
         )
 
+        # Agami RBAC invite validation
+        from agami.auth.invite import InviteDenied, InvitePlan, TeamMemberRole, TeamRef, validate_invite
+        from litellm.proxy.auth.agami_access import load_request_actor
+        from litellm.repositories.team_repository import TeamRepository
+
+        requested_team_ids: list[str] = []
+        effective_teams = data.teams
+        if effective_teams is None and not data.team_id:
+            effective_teams = check_if_default_team_set()
+        if effective_teams:
+            for t in effective_teams:
+                if isinstance(t, str):
+                    requested_team_ids.append(t)
+                elif isinstance(t, NewUserRequestTeam) and t.team_id:
+                    requested_team_ids.append(t.team_id)
+                elif isinstance(t, dict) and t.get("team_id"):
+                    requested_team_ids.append(cast(str, t["team_id"]))
+        if data.team_id and data.team_id not in requested_team_ids:
+            requested_team_ids.append(data.team_id)
+
+        try:
+            team_rows_for_validation = (
+                await TeamRepository(prisma_client).table.find_many(where={"team_id": {"in": requested_team_ids}})
+                if requested_team_ids
+                else ()
+            )
+            known_teams_for_validation = {
+                row.team_id: TeamRef(team_id=row.team_id, organization_id=getattr(row, "organization_id", None))
+                for row in team_rows_for_validation
+            }
+        except Exception:
+            team_rows_for_validation = ()
+            known_teams_for_validation = {
+                team_id: TeamRef(team_id=team_id, organization_id=None) for team_id in requested_team_ids
+            }
+
+        resolved_team_role: TeamMemberRole = data.team_role or "user"
+        if not data.team_role and effective_teams:
+            for t in effective_teams:
+                if isinstance(t, NewUserRequestTeam) and t.user_role in ("admin", "user"):
+                    resolved_team_role = t.user_role
+                    break
+                elif isinstance(t, dict) and t.get("user_role") in ("admin", "user"):
+                    resolved_team_role = cast(TeamMemberRole, t["user_role"])
+                    break
+
+        invite_plan = InvitePlan(
+            organization_ids=tuple(data.organizations or ()),
+            team_ids=tuple(requested_team_ids),
+            global_role=data.user_role or "internal_user",
+            team_role=resolved_team_role,
+            org_role=data.org_role or "internal_user",
+        )
+
+        actor = await load_request_actor(user_api_key_dict, prisma_client)
+        try:
+            validate_invite(actor=actor, plan=invite_plan, known_teams=known_teams_for_validation)
+        except InviteDenied as exc:
+            raise HTTPException(status_code=403, detail=exc.message)
+
         data_json = data.json()
         data_json = _update_internal_new_user_params(data_json, data)
         # Persist the requested grants as their own row and link it, mirroring key/team creation.
@@ -591,7 +660,7 @@ async def new_user(
                 user_api_key_dict=user_api_key_dict,
                 user_email=data.user_email,
                 max_budget_in_team=None,
-                user_role="user",
+                user_role=invite_plan.team_role,
             )
         elif teams is not None:
             await add_new_user_to_default_team(
@@ -600,6 +669,7 @@ async def new_user(
                 user_api_key_dict=user_api_key_dict,
                 teams=teams,
                 prisma_client=prisma_client,
+                default_team_role=invite_plan.team_role,
             )
 
         user_id: Final = cast(str | None, response.get("user_id", None))
@@ -615,6 +685,7 @@ async def new_user(
                 organizations=organization_ids,
                 prisma_client=prisma_client,
                 user_api_key_dict=user_api_key_dict,
+                org_role=invite_plan.org_role,
             )
 
         special_keys: Final = ["token", "token_id"]
@@ -682,6 +753,88 @@ async def ui_get_available_role(
                 "ui_label": role.ui_label,
             }
     return _data_to_return
+
+
+class InviteOptionsResponse(LiteLLMPydanticObjectBase):
+    organization_ids: list[str]
+    team_ids: list[str]
+    global_roles: list[str]
+    team_roles: list[str]
+    org_roles: list[str]
+    can_invite: bool
+
+
+@router.get(
+    "/user/invite_options",
+    tags=["Internal User management"],
+    dependencies=[Depends(user_api_key_auth)],
+    response_model=InviteOptionsResponse,
+)
+@router.get(
+    "/user/invite/options",
+    tags=["Internal User management"],
+    dependencies=[Depends(user_api_key_auth)],
+    response_model=InviteOptionsResponse,
+    include_in_schema=False,
+)
+async def get_invite_options(
+    user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
+) -> InviteOptionsResponse:
+    from agami.auth.invite import TeamRef, admin_org_ids, admin_team_ids, invite_options, is_view_only
+    from litellm.proxy.auth.agami_access import load_request_actor
+    from litellm.proxy.proxy_server import prisma_client
+    from litellm.repositories.organization_repository import OrganizationRepository
+    from litellm.repositories.team_repository import TeamRepository
+
+    if prisma_client is None:
+        raise HTTPException(status_code=500, detail=CommonProxyErrors.db_not_connected_error.value)
+
+    actor = await load_request_actor(user_api_key_dict, prisma_client)
+    if not actor.is_active or is_view_only(actor):
+        opts = invite_options(actor=actor, known_teams={})
+        return InviteOptionsResponse(
+            organization_ids=list(opts.organization_ids),
+            team_ids=list(opts.team_ids),
+            global_roles=list(opts.global_roles),
+            team_roles=list(opts.team_roles),
+            org_roles=list(opts.org_roles),
+            can_invite=opts.can_invite,
+        )
+
+    if actor.is_super_admin:
+        team_rows = await TeamRepository(prisma_client).table.find_many()
+        known_teams = {
+            row.team_id: TeamRef(team_id=row.team_id, organization_id=row.organization_id) for row in team_rows
+        }
+        org_rows = await OrganizationRepository(prisma_client).table.find_many()
+        known_orgs = [row.organization_id for row in org_rows]
+        opts = invite_options(actor=actor, known_teams=known_teams, known_organizations=known_orgs)
+    else:
+        org_ids = admin_org_ids(actor)
+        team_ids = admin_team_ids(actor)
+        if not org_ids and not team_ids:
+            opts = invite_options(actor=actor, known_teams={})
+        else:
+            team_conditions = []
+            if team_ids:
+                team_conditions.append({"team_id": {"in": list(team_ids)}})
+            if org_ids:
+                team_conditions.append({"organization_id": {"in": list(org_ids)}})
+            where_clause = {"OR": team_conditions} if len(team_conditions) > 1 else team_conditions[0]
+            team_rows = await TeamRepository(prisma_client).table.find_many(where=where_clause)
+            known_teams = {
+                row.team_id: TeamRef(team_id=row.team_id, organization_id=row.organization_id) for row in team_rows
+            }
+            opts = invite_options(actor=actor, known_teams=known_teams, known_organizations=list(org_ids))
+
+    return InviteOptionsResponse(
+        organization_ids=list(opts.organization_ids),
+        team_ids=list(opts.team_ids),
+        global_roles=list(opts.global_roles),
+        team_roles=list(opts.team_roles),
+        org_roles=list(opts.org_roles),
+        can_invite=opts.can_invite,
+    )
 
 
 def get_team_from_list(

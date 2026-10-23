@@ -12,6 +12,7 @@ vi.mock("./networking", () => ({
   modelAvailableCall: vi.fn().mockResolvedValue({ data: [] }),
   invitationCreateCall: vi.fn(),
   organizationMemberAddCall: vi.fn(),
+  getInviteOptionsCall: vi.fn().mockResolvedValue(null),
   getProxyUISettings: vi.fn().mockResolvedValue({
     PROXY_BASE_URL: null,
     PROXY_LOGOUT_URL: null,
@@ -23,6 +24,25 @@ vi.mock("./networking", () => ({
 
 vi.mock("@/app/(dashboard)/hooks/organizations/useOrganizations", () => ({
   useOrganizations: vi.fn().mockReturnValue({ data: [], isLoading: false }),
+}));
+
+vi.mock("@/app/(dashboard)/hooks/teams/useTeams", () => ({
+  useInfiniteTeams: vi.fn().mockReturnValue({
+    data: {
+      pages: [
+        {
+          teams: [
+            { team_id: "team-1", team_alias: "Alpha Team", organization_id: "org-1" },
+            { team_id: "team-2", team_alias: "Beta Team", organization_id: "org-2" },
+          ],
+        },
+      ],
+    },
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    isLoading: false,
+  }),
 }));
 
 const mockUserCreateCall = vi.mocked(networking.userCreateCall);
@@ -749,6 +769,181 @@ describe("CreateUserButton", () => {
         expect(mockUserCreateCall).toHaveBeenCalled();
       });
       expect(submittedPayload().models).toEqual(["no-default-models"]);
+    });
+  });
+
+  describe("Agami RBAC scoped invites", () => {
+    const ROLES = {
+      proxy_admin: { ui_label: "Admin", description: "Proxy Admin" },
+      internal_user: { ui_label: "Member", description: "Internal User" },
+      internal_user_viewer: { ui_label: "Viewer", description: "View only" },
+    };
+
+    const openStandaloneModal = async (user: ReturnType<typeof userEvent.setup>) => {
+      expect(await screen.findByRole("button", { name: /\+ invite user/i })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /\+ invite user/i }));
+      return screen.getByRole("dialog", { name: /invite user/i });
+    };
+
+    const submittedPayload = () => mockUserCreateCall.mock.calls[0][2];
+
+    it("restricts global role options when inviteOptions specifies global_roles", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
+      const inviteOpts: networking.InviteOptionsResponse = {
+        organization_ids: ["org-1"],
+        team_ids: ["team-1"],
+        global_roles: ["internal_user", "internal_user_viewer"],
+        team_roles: ["admin", "user"],
+        org_roles: ["org_admin", "internal_user"],
+        can_invite: true,
+      };
+
+      renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
+      const dialog = await openStandaloneModal(user);
+
+      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
+      expect(screen.getByText("Member")).toBeInTheDocument();
+      expect(screen.getAllByText("Viewer").length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+    });
+
+    it("hides organization field when inviteOptions organization_ids is empty (e.g. Team Admin)", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
+      const inviteOpts: networking.InviteOptionsResponse = {
+        organization_ids: [],
+        team_ids: ["team-1"],
+        global_roles: ["internal_user", "internal_user_viewer"],
+        team_roles: ["user"],
+        org_roles: [],
+        can_invite: true,
+      };
+
+      renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
+      const dialog = await openStandaloneModal(user);
+
+      expect(within(dialog).queryByRole("combobox", { name: /^organization$/i })).not.toBeInTheDocument();
+    });
+
+    it("scopes organization picker to inviteOptions.organization_ids and sends org_role when selected", async () => {
+      const { useOrganizations } = await import("@/app/(dashboard)/hooks/organizations/useOrganizations");
+      vi.mocked(useOrganizations).mockReturnValue({
+        data: [
+          { organization_id: "org-1", organization_alias: "Allowed Org" },
+          { organization_id: "org-2", organization_alias: "Disallowed Org" },
+        ],
+        isLoading: false,
+      } as any);
+
+      const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
+      mockUserCreateCall.mockResolvedValue({ data: { user_id: "scoped-org-user" } });
+      mockInvitationCreateCall.mockResolvedValue({
+        id: "inv-scoped",
+        user_id: "scoped-org-user",
+        has_user_setup_sso: false,
+      } as any);
+
+      const inviteOpts: networking.InviteOptionsResponse = {
+        organization_ids: ["org-1", "org-3"],
+        team_ids: ["team-1"],
+        global_roles: ["internal_user", "internal_user_viewer"],
+        team_roles: ["admin", "user"],
+        org_roles: ["org_admin", "internal_user"],
+        can_invite: true,
+      };
+
+      renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
+      const dialog = await openStandaloneModal(user);
+
+      await user.type(within(dialog).getByLabelText(/user email/i), "orgadmin@example.com");
+
+      // Verify org options
+      const orgSelect = within(dialog).getByRole("combobox", { name: /^organization$/i });
+      await user.click(orgSelect);
+      expect(screen.getByText("Allowed Org (org-1)")).toBeInTheDocument();
+      expect(screen.queryByText("Disallowed Org (org-2)")).not.toBeInTheDocument();
+
+      // Click Allowed Org
+      await user.click(screen.getByText("Allowed Org (org-1)"));
+
+      // Select org role as Organization Admin
+      const orgRoleSelect = within(dialog).getByRole("combobox", { name: /^organization role$/i });
+      await user.click(orgRoleSelect);
+      await user.click(screen.getByText("Organization Admin"));
+
+      await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
+
+      await waitFor(() => {
+        expect(mockUserCreateCall).toHaveBeenCalled();
+      });
+      expect(submittedPayload()).toMatchObject({
+        user_email: "orgadmin@example.com",
+        organizations: ["org-1"],
+        org_role: "org_admin",
+      });
+    });
+
+    it("allows selecting team_role as admin when caller has permission", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
+      mockUserCreateCall.mockResolvedValue({ data: { user_id: "team-admin-user" } });
+
+      const inviteOpts: networking.InviteOptionsResponse = {
+        organization_ids: ["org-1"],
+        team_ids: ["team-1"],
+        global_roles: ["internal_user"],
+        team_roles: ["admin", "user"],
+        org_roles: ["internal_user"],
+        can_invite: true,
+      };
+
+      renderWithProviders(
+        <CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} isEmbedded />,
+      );
+
+      await user.type(screen.getByLabelText(/user email/i), "teamadmin@example.com");
+
+      // Select team
+      const teamInput = screen.getByPlaceholderText(/search or select a team/i);
+      await user.click(teamInput);
+      await user.click(screen.getByText("Alpha Team"));
+
+      // Select team role
+      const teamRoleSelect = screen.getByRole("combobox", { name: /team role/i });
+      await user.click(teamRoleSelect);
+      await user.click(screen.getByText("Team Admin"));
+
+      await user.click(screen.getByRole("button", { name: /create user/i }));
+
+      await waitFor(() => {
+        expect(mockUserCreateCall).toHaveBeenCalled();
+      });
+      expect(submittedPayload()).toMatchObject({
+        user_email: "teamadmin@example.com",
+        team_id: "team-1",
+        team_role: "admin",
+      });
+    });
+
+    it("does not show team_role selector when inviteOptions does not allow admin (e.g. Team Admin caller)", async () => {
+      const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
+      const inviteOpts: networking.InviteOptionsResponse = {
+        organization_ids: [],
+        team_ids: ["team-1"],
+        global_roles: ["internal_user"],
+        team_roles: ["user"],
+        org_roles: [],
+        can_invite: true,
+      };
+
+      renderWithProviders(
+        <CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} isEmbedded />,
+      );
+
+      // Select team
+      const teamInput = screen.getByPlaceholderText(/search or select a team/i);
+      await user.click(teamInput);
+      await user.click(screen.getByText("Alpha Team"));
+
+      expect(screen.queryByRole("combobox", { name: /team role/i })).not.toBeInTheDocument();
     });
   });
 });

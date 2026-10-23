@@ -990,6 +990,24 @@ export const userCreateCall = async (
   }
 };
 
+export interface InviteOptionsResponse {
+  organization_ids: string[];
+  team_ids: string[];
+  global_roles: string[];
+  team_roles: string[];
+  org_roles: string[];
+  can_invite: boolean;
+}
+
+export const getInviteOptionsCall = async (accessToken: string): Promise<InviteOptionsResponse> => {
+  try {
+    return await apiClient.get<InviteOptionsResponse>(`/user/invite_options`, { accessToken });
+  } catch (error) {
+    console.error("Failed to fetch invite options:", error);
+    throw error;
+  }
+};
+
 export const keyDeleteCall = async (accessToken: string, user_key: string) => {
   try {
     return await apiClient.post(`/key/delete`, { accessToken, body: { keys: [user_key] } });

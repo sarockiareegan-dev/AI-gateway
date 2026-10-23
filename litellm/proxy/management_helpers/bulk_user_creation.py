@@ -196,12 +196,16 @@ def _error_message(exc: BaseException) -> str:
 
 
 def _requested_teams(item: BulkNewUserItem) -> tuple[NewUserRequestTeam, ...]:
+    team_role: TeamRole = item.team_role or "user"
     if item.team_id is not None:
-        return (NewUserRequestTeam(team_id=item.team_id),)
+        return (NewUserRequestTeam(team_id=item.team_id, user_role=team_role),)
     teams: Final = item.teams if item.teams is not None else check_if_default_team_set()
     if teams is None:
         return ()
-    return tuple(team if isinstance(team, NewUserRequestTeam) else NewUserRequestTeam(team_id=team) for team in teams)
+    return tuple(
+        team if isinstance(team, NewUserRequestTeam) else NewUserRequestTeam(team_id=team, user_role=team_role)
+        for team in teams
+    )
 
 
 def _row_error(item: BulkNewUserItem, user_api_key_dict: UserAPIKeyAuth) -> str | None:
@@ -329,6 +333,7 @@ def _db_failure(
     existing_ids: frozenset[str],
     existing_emails: frozenset[str],
     team_errors: Mapping[str, str],
+    invite_errors: Mapping[int, str] | None = None,
 ) -> _RowFailure | None:
     email: Final = _normalized_email(user.request.user_email)
     if user.user_id in existing_ids:
@@ -340,6 +345,8 @@ def _db_failure(
     errors: Final = tuple(team_errors[team.team_id] for team in user.teams if team.team_id in team_errors)
     if errors:
         return _RowFailure(user.index, user.user_id, user.request.user_email, "; ".join(errors))
+    if invite_errors and user.index in invite_errors:
+        return _RowFailure(user.index, user.user_id, user.request.user_email, invite_errors[user.index])
     return None
 
 
@@ -687,11 +694,16 @@ async def _generate_key(prepared: _PreparedUser, generate_key: KeyGenerator) -> 
 async def _add_to_organizations(
     prepared: _PreparedUser, organizations: Sequence[str], user_api_key_dict: UserAPIKeyAuth
 ) -> None:
+    role = (
+        LitellmUserRoles.ORG_ADMIN
+        if prepared.pending.request.org_role == "org_admin"
+        else LitellmUserRoles.INTERNAL_USER
+    )
     for organization_id in organizations:
         await organization_member_add(
             data=OrganizationMemberAddRequest(
                 organization_id=organization_id,
-                member=OrgMember(user_id=prepared.row.user_id, role=LitellmUserRoles.INTERNAL_USER),
+                member=OrgMember(user_id=prepared.row.user_id, role=role),
             ),
             http_request=Request(scope={"type": "http", "path": "/user/bulk_new"}),  # mutable-ok: ASGI scopes are dicts
             user_api_key_dict=user_api_key_dict,
@@ -786,10 +798,38 @@ async def bulk_create_users(
     pending, request_failures = _partition_rows(users, user_api_key_dict)
     existing_ids, existing_emails = await _existing_user_conflicts(prisma_client, pending)
     teams, team_errors = await _unusable_teams(prisma_client, pending, user_api_key_dict)
+
+    from agami.auth.invite import InviteDenied, InvitePlan, TeamRef, validate_invite
+    from litellm.proxy.auth.agami_access import load_request_actor
+
+    actor: Final = await load_request_actor(user_api_key_dict, prisma_client)
+    known_teams: Final = {
+        team.team_id: TeamRef(team_id=team.team_id, organization_id=team.organization_id) for team in teams.values()
+    }
+    invite_errors: Final[dict[int, str]] = {}
+    for user in pending:
+        resolved_team_role: TeamRole = user.request.team_role or "user"
+        if not user.request.team_role and user.teams:
+            for t in user.teams:
+                if t.user_role in ("admin", "user"):
+                    resolved_team_role = t.user_role
+                    break
+        plan = InvitePlan(
+            organization_ids=tuple(user.request.organizations or ()),
+            team_ids=tuple(t.team_id for t in user.teams),
+            global_role=user.request.user_role or "internal_user",
+            team_role=resolved_team_role,
+            org_role=user.request.org_role or "internal_user",
+        )
+        try:
+            validate_invite(actor=actor, plan=plan, known_teams=known_teams)
+        except InviteDenied as exc:
+            invite_errors[user.index] = exc.message
+
     db_failures: Final = tuple(
         failure
         for user in pending
-        if (failure := _db_failure(user, existing_ids, existing_emails, team_errors)) is not None
+        if (failure := _db_failure(user, existing_ids, existing_emails, team_errors, invite_errors)) is not None
     )
     failed_indexes: Final = frozenset(failure.index for failure in db_failures)
     creatable: Final = tuple(user for user in pending if user.index not in failed_indexes)

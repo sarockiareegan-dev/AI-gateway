@@ -811,7 +811,32 @@ Hierarchy: proxy admin → org admin → team admin → member. Invite is scoped
 
 Shipped so far is not full Agami RBAC: #16 only changed LiteLLM role text; #17 added key requests on LiteLLM membership roles. `agami/auth/*` and `litellm_compat` exist but Invite User and most routes still use `LitellmUserRoles`. After Agami RBAC is complete, remove the LiteLLM RBAC surface from invite UI and live checks.
 
-Also landed a pure invite-scope helper (not wired): `agami/auth/invite.py` with `invite_options` / `validate_invite` and unit tests. Next agent wires it into `/user/new`, bulk create, and Invite User UI.
+Also landed a pure invite-scope helper: `agami/auth/invite.py` with `invite_options` / `validate_invite` and unit tests.
+
+### 9.14 Agami RBAC invite API & UI (`iagami_rbac_api_ui`)
+
+Implemented invite authorization enforcement and scoped UI picker controls adhering to the Agami hierarchy (Proxy Admin > Org Admin > Team Admin > Member) and view-only twin restrictions:
+
+1. **Authorization API**:
+   - `agami/auth/invite.py`: pure validation module calculating allowed scopes (`invite_options`) and validating invite requests (`validate_invite`), supporting known organizations and team-level hierarchy.
+   - Actor context resolution: updated `litellm/proxy/auth/agami_access.py` to support proxy admin fast-path, and key/user resolution for org admin and team admin callers.
+   - Endpoint integration:
+     - `GET /user/invite_options` and `/user/invite/options` (`internal_user_endpoints.py`): returns caller permissions, allowed `organization_ids`, `team_ids`, `global_roles`, `team_roles`, and `org_roles`.
+     - `POST /user/new` (`internal_user_endpoints.py`): validates requested scopes with `validate_invite`, resolves default team when not explicitly passed, and honours requested `team_role` (`admin` | `user`) and `org_role` (`org_admin` | `internal_user`).
+     - `POST /management/v1/users/bulk` (`bulk_user_creation.py`): validates each row via `validate_invite` while preserving existing team error formats.
+     - `litellm/proxy/auth/route_checks.py`: registered `invite_routes` under internal user routes so route checks allow tenant actors through to the endpoint's RBAC validation.
+   - Testing: added `tests/test_litellm/proxy/management_endpoints/test_agami_rbac_invite.py` covering the full role matrix across proxy admin, org admin, team admin, view-only twins, and members for `/user/invite_options`, `/user/new`, and `/management/v1/users/bulk`.
+
+2. **Invite User UI**:
+   - `ui/litellm-dashboard/src/components/networking.tsx`: added `InviteOptionsResponse` interface and `getInviteOptionsCall`.
+   - `ui/litellm-dashboard/src/app/(dashboard)/users/_components/view_users.tsx`: queries invite options and gates the Invite User button on `canInvite` (`isProxyAdmin || inviteOptionsQuery.data?.can_invite`).
+   - `ui/litellm-dashboard/src/components/CreateUserButton.tsx`:
+     - Dynamically filters the organization selector by `inviteOptions.organization_ids` (and hides the organization input when the caller has no organization invite scope).
+     - Scopes teams in `TeamDropdown` via `filterTeam` matching caller team/organization permissions and user-selected organizations.
+     - Filters global role options to `inviteOptions.global_roles`.
+     - Renders dedicated Team Role selector (`admin` vs `user`) and Organization Role selector (`org_admin` vs `internal_user`) when permitted by caller role options.
+     - Preserves payload key parity when team/org roles are untouched.
+   - Testing: added 5 Agami RBAC test cases to `ui/litellm-dashboard/src/components/CreateUserButton.test.tsx` (all 33 tests passing).
 
 ---
 
@@ -980,7 +1005,7 @@ rg "agami-org/" litellm agami                      # org model naming
 
 ## 16. What is still open
 
-- Agami RBAC complete (invite hierarchy, view-only twins, wire `agami/auth`), then remove LiteLLM RBAC. See section 9.13 and `HANDOFF_AGAMI_RBAC.md`
+- Agami RBAC invite API & UI complete (see section 9.14). Remaining: view-only enforcement across other management routes, align member + key requests, then remove LiteLLM RBAC surface once live paths are migrated
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)

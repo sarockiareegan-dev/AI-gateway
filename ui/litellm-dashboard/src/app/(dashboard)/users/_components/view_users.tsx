@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  getInviteOptionsCall,
   getPossibleUserRoles,
   getProxyBaseUrl,
   invitationCreateCall,
@@ -60,6 +61,15 @@ const ViewUserDashboard: React.FC<ViewUserDashboardProps> = ({
 }) => {
   const isProxyAdmin = userRole ? isProxyAdminRole(userRole) : false;
   const queryClient = useQueryClient();
+
+  const inviteOptionsQueryOptions = {
+    queryKey: ["inviteOptions", accessToken],
+    queryFn: () => getInviteOptionsCall(accessToken!),
+    enabled: Boolean(accessToken),
+    staleTime: 60_000,
+  };
+  const inviteOptionsQuery = useQuery(inviteOptionsQueryOptions);
+  const canInvite = isProxyAdmin || Boolean(inviteOptionsQuery.data?.can_invite);
 
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: DEFAULT_PAGE_SIZE });
   const [sorting, setSorting] = useState<SortingState>(DEFAULT_SORTING);
@@ -261,7 +271,7 @@ const ViewUserDashboard: React.FC<ViewUserDashboardProps> = ({
     placeholderData: (previousData) => previousData,
   });
 
-  const userRolesQuery = useQuery<Record<string, Record<string, string>>>({
+  const userRolesQueryOptions = {
     queryKey: ["userRoles"],
     initialData: () => ({}),
     queryFn: async () => {
@@ -269,7 +279,8 @@ const ViewUserDashboard: React.FC<ViewUserDashboardProps> = ({
       return await getPossibleUserRoles(accessToken);
     },
     enabled: Boolean(accessToken && token && userRole && userID),
-  });
+  };
+  const userRolesQuery = useQuery<Record<string, Record<string, string>>>(userRolesQueryOptions);
   const possibleUIRoles = userRolesQuery.data;
 
   const users = useMemo<UserInfo[]>(() => userListQuery.data?.users ?? [], [userListQuery.data]);
@@ -328,8 +339,13 @@ const ViewUserDashboard: React.FC<ViewUserDashboardProps> = ({
           )}
           {!userListQuery.isLoading && userID && accessToken && (
             <>
-              {isProxyAdmin && (
-                <CreateUserButton userID={userID} accessToken={accessToken} possibleUIRoles={possibleUIRoles} />
+              {canInvite && (
+                <CreateUserButton
+                  userID={userID}
+                  accessToken={accessToken}
+                  possibleUIRoles={possibleUIRoles}
+                  inviteOptions={inviteOptionsQuery.data}
+                />
               )}
 
               {isProxyAdmin && (

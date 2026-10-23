@@ -307,7 +307,10 @@ class RouteChecks:
                 )
         elif (
             _user_role == LitellmUserRoles.INTERNAL_USER.value
-            and RouteChecks.check_route_access(route=route, allowed_routes=LiteLLMRoutes.internal_user_routes.value)
+            and (
+                RouteChecks.check_route_access(route=route, allowed_routes=LiteLLMRoutes.internal_user_routes.value)
+                or RouteChecks.check_route_access(route=route, allowed_routes=LiteLLMRoutes.invite_routes.value)
+            )
             or _user_is_org_admin(request_data=request_data, user_object=user_obj)
             and RouteChecks.check_route_access(route=route, allowed_routes=LiteLLMRoutes.org_admin_allowed_routes.value)
             or _user_role == LitellmUserRoles.INTERNAL_USER_VIEW_ONLY.value

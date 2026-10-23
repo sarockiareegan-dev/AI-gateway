@@ -28,6 +28,7 @@ class _UserRow(BaseModel):
     user_role: str | None = None
     teams: list[str] = []
     max_budget: float | None = None
+    organization_memberships: list = []
 
 
 class _UserTable:
@@ -47,6 +48,10 @@ class _UserTable:
 
     async def count(self, where: object = None) -> int:
         return 0 if where is not None else len(self.rows)
+
+    async def find_unique(self, where: dict[str, object], include: object = None) -> _UserRow | None:
+        user_id = where.get("user_id")
+        return self.rows.get(str(user_id))
 
     async def find_many(self, where: dict[str, dict[str, object]]) -> list[_UserRow]:
         if "user_id" in where:
@@ -378,16 +383,25 @@ async def test_keys_are_opt_in_per_row():
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_create_admin_users_but_other_rows_proceed():
-    prisma = _FakePrisma()
+    team = LiteLLM_TeamTable(
+        team_id="t1",
+        organization_id="org1",
+        members_with_roles=[Member(user_id="someone", role="admin")],
+    )
+    prisma = _FakePrisma(teams=[team])
+    prisma.db.litellm_usertable.rows["someone"] = _UserRow(user_id="someone", teams=["t1"])
     response = await _run(
         prisma,
-        [{"user_id": "u1", "user_role": "proxy_admin"}, {"user_id": "u2", "user_role": "internal_user"}],
+        [
+            {"user_id": "u1", "user_role": "proxy_admin"},
+            {"user_id": "u2", "user_role": "internal_user", "teams": ["t1"]},
+        ],
         caller=INTERNAL,
     )
 
     assert [r.success for r in response.data] == [False, True]
     assert "Only proxy admins" in (response.data[0].error or "")
-    assert set(prisma.db.litellm_usertable.rows) == {"u2"}
+    assert set(prisma.db.litellm_usertable.rows) == {"someone", "u2"}
 
 
 @pytest.mark.asyncio
