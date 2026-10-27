@@ -846,9 +846,10 @@ async def test_new_team_with_mcp_tool_permissions(mock_db_client, mock_admin_aut
 @pytest.mark.parametrize(
     "user_role,user_id,flag_value,expected",
     [
+        # Proxy admins stay outside team memberships regardless of the legacy flag.
+        (LitellmUserRoles.PROXY_ADMIN, "admin-1", False, False),
+        (LitellmUserRoles.PROXY_ADMIN, "admin-1", None, False),
         (LitellmUserRoles.PROXY_ADMIN, "admin-1", True, False),
-        (LitellmUserRoles.PROXY_ADMIN, "admin-1", False, True),
-        (LitellmUserRoles.PROXY_ADMIN, "admin-1", None, True),
         (LitellmUserRoles.INTERNAL_USER, "user-1", True, True),
         (LitellmUserRoles.ORG_ADMIN, "org-admin-1", True, True),
         (LitellmUserRoles.PROXY_ADMIN, None, False, False),
@@ -867,18 +868,9 @@ def test_should_auto_add_team_creator(user_role, user_id, flag_value, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "disable_flag,expect_creator_added", [(True, False), (False, True)]
-)
-async def test_new_team_disable_auto_add_proxy_admin_flag(
-    mock_db_client, disable_flag, expect_creator_added
-):
-    """
-    When general_settings.disable_auto_add_proxy_admin_to_teams is True, a proxy
-    admin calling /team/new must NOT be auto-added to the team's members. When
-    the flag is off, the creator is auto-added as a team admin (default
-    behavior, regression guard for LIT-3739).
-    """
+@pytest.mark.parametrize("disable_flag", [True, False])
+async def test_new_team_never_auto_adds_proxy_admin(mock_db_client, disable_flag):
+    """Proxy admins are never auto-added to teams (Agami: no org/team presence)."""
     mock_db_client.jsonify_team_object = lambda db_data: db_data
     mock_db_client.get_data = AsyncMock(return_value=None)
     mock_db_client.update_data = AsyncMock(return_value=MagicMock())
@@ -920,7 +912,7 @@ async def test_new_team_disable_auto_add_proxy_admin_flag(
     mock_add_members.assert_called_once()
     member_add_request = mock_add_members.call_args.kwargs["data"]
     member_user_ids = [m.user_id for m in member_add_request.member]
-    assert ("admin-user-1" in member_user_ids) is expect_creator_added
+    assert "admin-user-1" not in member_user_ids
 
 
 @pytest.mark.asyncio
@@ -13544,8 +13536,8 @@ async def test_new_team_created_audit_event_carries_the_final_roster(monkeypatch
 
     created_events = _team_roster_events(audit_logger, "created")
     assert [e["object_id"] for e in created_events] == ["team-audit-roster"]
+    # Proxy admin creator is not auto-added to the roster.
     assert _roster_user_roles(created_events[0]["updated_values"]) == {
-        "admin-1": "admin",
         "alice": "admin",
         "bob": "user",
     }

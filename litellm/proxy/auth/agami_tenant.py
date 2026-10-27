@@ -76,14 +76,23 @@ async def require_team_create(
     prisma_client: PrismaClient,
     organization_id: str,
 ) -> None:
-    await require_action(
-        user_api_key_dict,
-        prisma_client,
-        Action.CREATE,
+    """Team create is org-admin (or proxy). Callers with no Agami tenant context yet
+    (memberships not loaded on the key) fall through to the route's LiteLLM org checks.
+    """
+    actor: Final = await load_request_actor(user_api_key_dict, prisma_client)
+    if is_view_only(actor):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="View-only roles cannot modify organizations or teams",
+        )
+    if not actor.is_super_admin and not actor.organization_roles and not actor.team_memberships:
+        return
+    resource: Final = Resource(
         resource_type=ResourceType.TEAM,
         organization_id=organization_id,
         team_id=None,
     )
+    raise_for_decision(authorize(actor, Action.CREATE, resource), Action.CREATE, resource)
 
 
 async def require_team_edit(

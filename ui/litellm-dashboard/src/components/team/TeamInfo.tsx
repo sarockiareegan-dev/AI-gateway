@@ -1424,7 +1424,9 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                         ref={ref}
                         value={value ?? ""}
                         disabled={!canRenameTeam}
-                        title={canRenameTeam ? undefined : "Only an organization admin or proxy admin can rename a team"}
+                        title={
+                          canRenameTeam ? undefined : "Only an organization admin or proxy admin can rename a team"
+                        }
                       />
                     )}
                   </FormField>

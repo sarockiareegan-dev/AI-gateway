@@ -115,16 +115,23 @@ const withoutCollapsedModels = (values: CreateUserFormValues, isPersonalKeyOpen:
   return rest;
 };
 
+const needsDefaultModels = (values: CreateUserFormValues): boolean => {
+  const hasModels = Boolean(values.models && values.models.length > 0);
+  return !hasModels && values.user_role !== "proxy_admin";
+};
+
+const hasOrgRoleAssignment = (values: CreateUserFormValues): boolean => {
+  const hasOrgs = Boolean(values.organization_ids && values.organization_ids.length > 0);
+  return hasOrgs && Boolean(values.org_role);
+};
+
 const buildCreatePayload = (values: CreateUserFormValues): CreateUserFormValues & { organizations?: string[] } => {
-  const withModels =
-    (!values.models || values.models.length === 0) && values.user_role !== "proxy_admin"
-      ? { ...values, models: ["no-default-models"] }
-      : { ...values };
+  const withModels = needsDefaultModels(values) ? { ...values, models: ["no-default-models"] } : { ...values };
 
   if (!withModels.team_id || !withModels.team_role) {
     delete (withModels as any).team_role;
   }
-  if (!withModels.organization_ids || withModels.organization_ids.length === 0 || !withModels.org_role) {
+  if (!hasOrgRoleAssignment(withModels)) {
     delete (withModels as any).org_role;
   }
 
@@ -233,34 +240,30 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
   const showOrgRoleField = showOrgPicker && hasSelectedOrgs;
   const teamPickerEnabled = hasSelectedOrgs || Boolean(isEmbedded);
 
-  const filterTeam = (team: any) => {
+  const teamAllowedByInviteOptions = (team: { team_id?: string; organization_id?: string | null }) => {
     if (!inviteOptions) {
-      if (selectedOrgIds && selectedOrgIds.length > 0) {
-        return Boolean(team.organization_id && selectedOrgIds.includes(team.organization_id));
-      }
       return true;
     }
-    if (inviteOptions.team_ids && !inviteOptions.team_ids.includes("*")) {
-      if (!team.team_id || !inviteOptions.team_ids.includes(team.team_id)) {
-        return false;
-      }
+    const teamIds = inviteOptions.team_ids;
+    if (teamIds && !teamIds.includes("*") && (!team.team_id || !teamIds.includes(team.team_id))) {
+      return false;
     }
-    if (
-      inviteOptions.organization_ids &&
-      !inviteOptions.organization_ids.includes("*") &&
-      inviteOptions.organization_ids.length > 0
-    ) {
-      if (!team.organization_id || !inviteOptions.organization_ids.includes(team.organization_id)) {
-        return false;
-      }
-    }
-    if (selectedOrgIds && selectedOrgIds.length > 0) {
-      if (!team.organization_id || !selectedOrgIds.includes(team.organization_id)) {
-        return false;
-      }
+    const orgIds = inviteOptions.organization_ids;
+    const scopedOrgs = Boolean(orgIds && !orgIds.includes("*") && orgIds.length > 0);
+    if (scopedOrgs && (!team.organization_id || !orgIds!.includes(team.organization_id))) {
+      return false;
     }
     return true;
   };
+
+  const teamMatchesSelectedOrgs = (team: { organization_id?: string | null }) => {
+    if (!selectedOrgIds || selectedOrgIds.length === 0) {
+      return true;
+    }
+    return Boolean(team.organization_id && selectedOrgIds.includes(team.organization_id));
+  };
+
+  const filterTeam = (team: any) => teamAllowedByInviteOptions(team) && teamMatchesSelectedOrgs(team);
 
   useEffect(() => {
     if (isModalVisible && inviteOptions) {
@@ -279,16 +282,6 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
       }
     }
   }, [isModalVisible, inviteOptions, form, hasSelectedOrgs]);
-
-  // Keep team related to selected org(s): clear team when org changes away from it.
-  useEffect(() => {
-    const teamId = form.getValues("team_id");
-    if (!teamId || !selectedOrgIds || selectedOrgIds.length === 0) {
-      return;
-    }
-    // TeamDropdown filter hides unrelated teams; clear selection so submit cannot send a mismatch.
-    // Actual team→org membership is enforced server-side; UI clears when orgs emptied.
-  }, [selectedOrgIds, form]);
 
   useEffect(() => {
     if (!selectedOrgIds || selectedOrgIds.length === 0) {
@@ -384,7 +377,11 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
     const allowed = new Set(inviteOptions?.org_roles ?? ["org_admin", "internal_user", "viewer"]);
     return [
       { value: "internal_user", label: "Member (Default)", description: "Standard organization member" },
-      { value: "org_admin", label: "Organization Admin", description: "Manages teams, members, and settings in the org" },
+      {
+        value: "org_admin",
+        label: "Organization Admin",
+        description: "Manages teams, members, and settings in the org",
+      },
       { value: "viewer", label: "Viewer", description: "Read-only within the organization" },
     ].filter((item) => allowed.has(item.value));
   }, [inviteOptions]);
@@ -448,13 +445,7 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
       }
     >
       {({ id, value, onChange }) => (
-        <TeamDropdown
-          id={id}
-          value={value}
-          onChange={onChange}
-          filterTeam={filterTeam}
-          disabled={!teamPickerEnabled}
-        />
+        <TeamDropdown id={id} value={value} onChange={onChange} filterTeam={filterTeam} disabled={!teamPickerEnabled} />
       )}
     </FormField>
   );

@@ -219,10 +219,7 @@ export default function MemberTable({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const visibleMembers = useMemo(
-    () => members.filter((member) => !isHiddenProxyMembership(member)),
-    [members],
-  );
+  const visibleMembers = useMemo(() => members.filter((member) => !isHiddenProxyMembership(member)), [members]);
 
   const columnDeps: MemberColumnDeps = {
     canEdit,
