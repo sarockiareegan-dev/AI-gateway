@@ -774,9 +774,9 @@ describe("CreateUserButton", () => {
 
   describe("Agami RBAC scoped invites", () => {
     const ROLES = {
-      proxy_admin: { ui_label: "Admin", description: "Proxy Admin" },
+      proxy_admin: { ui_label: "Proxy Admin", description: "Proxy Admin" },
       internal_user: { ui_label: "Member", description: "Internal User" },
-      internal_user_viewer: { ui_label: "Viewer", description: "View only" },
+      viewer: { ui_label: "Viewer", description: "View only" },
     };
 
     const openStandaloneModal = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -792,27 +792,27 @@ describe("CreateUserButton", () => {
       const inviteOpts: networking.InviteOptionsResponse = {
         organization_ids: ["org-1"],
         team_ids: ["team-1"],
-        global_roles: ["internal_user", "internal_user_viewer"],
+        global_roles: ["internal_user", "viewer"],
         team_roles: ["admin", "user"],
-        org_roles: ["org_admin", "internal_user"],
+        org_roles: ["org_admin", "internal_user", "viewer"],
         can_invite: true,
       };
 
       renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
       const dialog = await openStandaloneModal(user);
 
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
+      await user.click(within(dialog).getByRole("combobox", { name: /platform role/i }));
       expect(screen.getByText("Member")).toBeInTheDocument();
       expect(screen.getAllByText("Viewer").length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+      expect(screen.queryByText("Proxy Admin")).not.toBeInTheDocument();
     });
 
-    it("hides organization field when inviteOptions organization_ids is empty (e.g. Team Admin)", async () => {
+    it("hides organization field when inviteOptions organization_ids is empty", async () => {
       const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
       const inviteOpts: networking.InviteOptionsResponse = {
         organization_ids: [],
         team_ids: ["team-1"],
-        global_roles: ["internal_user", "internal_user_viewer"],
+        global_roles: ["internal_user", "viewer"],
         team_roles: ["user"],
         org_roles: [],
         can_invite: true,
@@ -845,9 +845,9 @@ describe("CreateUserButton", () => {
       const inviteOpts: networking.InviteOptionsResponse = {
         organization_ids: ["org-1", "org-3"],
         team_ids: ["team-1"],
-        global_roles: ["internal_user", "internal_user_viewer"],
+        global_roles: ["internal_user", "viewer"],
         team_roles: ["admin", "user"],
-        org_roles: ["org_admin", "internal_user"],
+        org_roles: ["org_admin", "internal_user", "viewer"],
         can_invite: true,
       };
 

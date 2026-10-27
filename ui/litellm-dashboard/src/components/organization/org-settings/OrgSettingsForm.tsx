@@ -45,6 +45,8 @@ interface OrgSettingsFormProps {
   accessToken: string;
   onCancel: () => void;
   onSaved: () => void;
+  /** Org rename is proxy-admin only under Agami RBAC. */
+  canRename?: boolean;
   patchOrganization?: (organizationId: string, body: OrgPatchBody) => Promise<unknown>;
 }
 
@@ -54,6 +56,7 @@ export const OrgSettingsForm = ({
   accessToken,
   onCancel,
   onSaved,
+  canRename = false,
   patchOrganization = defaultPatchOrganization,
 }: OrgSettingsFormProps) => {
   const queryClient = useQueryClient();
@@ -72,14 +75,25 @@ export const OrgSettingsForm = ({
   });
 
   const onSubmit = form.handleSubmit((values) => {
-    mutation.mutate(buildOrgPatch(pickDirty(values, form.formState.dirtyFields)));
+    const dirty = pickDirty(values, form.formState.dirtyFields);
+    if (!canRename) {
+      delete dirty.organization_alias;
+    }
+    mutation.mutate(buildOrgPatch(dirty));
   });
 
   return (
     <form onSubmit={onSubmit} noValidate>
       <FieldGroup>
         <FormField control={form.control} name="organization_alias" label="Organization Name">
-          {({ ref, ...field }) => <Input {...field} ref={ref} />}
+          {({ ref, ...field }) => (
+            <Input
+              {...field}
+              ref={ref}
+              disabled={!canRename}
+              title={canRename ? undefined : "Only a proxy admin can rename an organization"}
+            />
+          )}
         </FormField>
 
         <FormField control={form.control} name="models" label="Models">

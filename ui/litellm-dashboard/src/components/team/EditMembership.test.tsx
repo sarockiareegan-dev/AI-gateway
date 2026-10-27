@@ -8,7 +8,7 @@ describe("EditMembership", () => {
   const mockOnSubmit = vi.fn();
 
   const defaultConfig = {
-    title: "Add Member",
+    title: "Invite User",
     roleOptions: [
       { label: "Admin", value: "admin" },
       { label: "Member", value: "member" },
@@ -46,7 +46,7 @@ describe("EditMembership", () => {
     );
 
     const emailInput = screen.getByPlaceholderText("user@example.com");
-    const submitButton = screen.getByRole("button", { name: "Add Member" });
+    const submitButton = screen.getByRole("button", { name: "Invite User" });
 
     act(() => {
       fireEvent.change(emailInput, { target: { value: "test@example.com" } });

@@ -35,7 +35,11 @@ AuthDep = Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)]
 KeyRequestStatus = Literal["pending", "approved", "rejected", "cancelled"]
 MAX_PENDING_PER_TEAM: Final = 10
 VIEW_ONLY_ROLES: Final = frozenset(
-    {LitellmUserRoles.INTERNAL_USER_VIEW_ONLY.value, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value}
+    {
+        LitellmUserRoles.INTERNAL_USER_VIEW_ONLY.value,
+        LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
+        "viewer",
+    }
 )
 
 
@@ -142,6 +146,8 @@ def is_member(scope: CallerScope, team: LiteLLM_TeamTable) -> bool:
 
 
 def is_reviewer(scope: CallerScope, team: LiteLLM_TeamTable) -> bool:
+    if scope.user_role in VIEW_ONLY_ROLES:
+        return False
     if scope.is_proxy_admin or (team.organization_id is not None and team.organization_id in scope.admin_org_ids):
         return True
     return scope.user_id is not None and any(

@@ -1815,12 +1815,15 @@ class NewUserRequest(GenerateRequestBase):
     max_budget: float | None = None
     user_email: str | None = None
     user_alias: str | None = None
+    # Agami invite roles: proxy_admin | internal_user | viewer.
+    # Legacy LiteLLM view-only strings are still accepted and mapped at the storage boundary.
     user_role: (
         Literal[
             LitellmUserRoles.PROXY_ADMIN,
             LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
             LitellmUserRoles.INTERNAL_USER,
             LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
+            "viewer",
         ]
         | None
     ) = None
@@ -1830,7 +1833,7 @@ class NewUserRequest(GenerateRequestBase):
     send_invite_email: bool | None = None
     sso_user_id: str | None = None
     organizations: list[str] | None = None
-    org_role: Literal["org_admin", "internal_user"] | None = None
+    org_role: Literal["org_admin", "internal_user", "viewer"] | None = None
 
 
 class NewUserResponse(GenerateKeyResponse):

@@ -44,15 +44,16 @@ _ADMINS: Final = _row(Grant.ANY, Grant.ANY)
 _ORG_ADMIN: Final = _row(Grant.ANY)
 _PERSONAL_KEYS: Final = _row(Grant.ANY, Grant.ANY, Grant.OWN)
 
-# Pairs absent from the matrix are reserved for super admins: creating and deleting organizations.
+# Pairs absent from the matrix are reserved for super admins:
+# - organization CREATE / DELETE / EDIT (rename)
+# Team CREATE / EDIT / DELETE are org-admin (or super admin) only — not team admin.
 PERMISSION_MATRIX: Final[Mapping[tuple[ResourceType, Action], Mapping[TenantRole, Grant]]] = MappingProxyType(
     {
         (ResourceType.ORGANIZATION, Action.VIEW): _EVERYONE,
-        (ResourceType.ORGANIZATION, Action.EDIT): _ORG_ADMIN,
         (ResourceType.ORGANIZATION, Action.MANAGE_MEMBERS): _ORG_ADMIN,
         (ResourceType.TEAM, Action.VIEW): _EVERYONE,
-        (ResourceType.TEAM, Action.CREATE): _ADMINS,
-        (ResourceType.TEAM, Action.EDIT): _ADMINS,
+        (ResourceType.TEAM, Action.CREATE): _ORG_ADMIN,
+        (ResourceType.TEAM, Action.EDIT): _ORG_ADMIN,
         (ResourceType.TEAM, Action.MANAGE_MEMBERS): _ADMINS,
         (ResourceType.TEAM, Action.DELETE): _ORG_ADMIN,
         (ResourceType.KEY, Action.VIEW): _EVERYONE,

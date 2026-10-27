@@ -69,12 +69,27 @@ interface CreateUserFormValues {
   send_invite_email: boolean;
   models?: string[];
   team_role?: "admin" | "user";
-  org_role?: "org_admin" | "internal_user";
+  org_role?: "org_admin" | "internal_user" | "viewer";
 }
+
+const AGAMI_GLOBAL_ROLE_META: Record<string, { ui_label: string; description: string }> = {
+  proxy_admin: {
+    ui_label: "Proxy Admin",
+    description: "Full platform access; not added to any organization or team",
+  },
+  internal_user: {
+    ui_label: "Member",
+    description: "Standard user; must belong to an organization and related team",
+  },
+  viewer: {
+    ui_label: "Viewer",
+    description: "Same scope as member, read-only (cannot invite or edit)",
+  },
+};
 
 const EMBEDDED_DEFAULTS: CreateUserFormValues = {
   user_email: undefined,
-  user_role: "internal_user_viewer",
+  user_role: "internal_user",
   team_id: undefined,
   metadata: undefined,
   send_invite_email: true,
@@ -82,7 +97,7 @@ const EMBEDDED_DEFAULTS: CreateUserFormValues = {
 
 const STANDALONE_DEFAULTS: CreateUserFormValues = {
   user_email: undefined,
-  user_role: "internal_user_viewer",
+  user_role: "internal_user",
   team_id: undefined,
   organization_ids: undefined,
   metadata: undefined,
@@ -213,13 +228,18 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
   const selectedTeamId = form.watch("team_id");
 
   const canAssignTeamRole = !inviteOptions || Boolean(inviteOptions.team_roles?.includes("admin"));
-  const canAssignOrgRole = !inviteOptions || Boolean(inviteOptions.org_roles?.includes("org_admin"));
   const showOrgPicker = !inviteOptions || (inviteOptions.organization_ids && inviteOptions.organization_ids.length > 0);
   const hasSelectedOrgs = Boolean(selectedOrgIds && selectedOrgIds.length > 0);
-  const showOrgRoleField = showOrgPicker && hasSelectedOrgs && canAssignOrgRole;
+  const showOrgRoleField = showOrgPicker && hasSelectedOrgs;
+  const teamPickerEnabled = hasSelectedOrgs || Boolean(isEmbedded);
 
   const filterTeam = (team: any) => {
-    if (!inviteOptions) return true;
+    if (!inviteOptions) {
+      if (selectedOrgIds && selectedOrgIds.length > 0) {
+        return Boolean(team.organization_id && selectedOrgIds.includes(team.organization_id));
+      }
+      return true;
+    }
     if (inviteOptions.team_ids && !inviteOptions.team_ids.includes("*")) {
       if (!team.team_id || !inviteOptions.team_ids.includes(team.team_id)) {
         return false;
@@ -251,11 +271,32 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
       }
       const teamIds = inviteOptions.team_ids;
       const singleTeamId = teamIds && teamIds.length === 1 && !teamIds.includes("*") ? teamIds[0] : undefined;
-      if (singleTeamId && !form.getValues("team_id")) {
+      if (singleTeamId && !form.getValues("team_id") && (singleOrgId || hasSelectedOrgs)) {
         form.setValue("team_id", singleTeamId);
       }
+      if (inviteOptions.global_roles?.length === 1 && form.getValues("user_role") === "internal_user") {
+        form.setValue("user_role", inviteOptions.global_roles[0]);
+      }
     }
-  }, [isModalVisible, inviteOptions, form]);
+  }, [isModalVisible, inviteOptions, form, hasSelectedOrgs]);
+
+  // Keep team related to selected org(s): clear team when org changes away from it.
+  useEffect(() => {
+    const teamId = form.getValues("team_id");
+    if (!teamId || !selectedOrgIds || selectedOrgIds.length === 0) {
+      return;
+    }
+    // TeamDropdown filter hides unrelated teams; clear selection so submit cannot send a mismatch.
+    // Actual team→org membership is enforced server-side; UI clears when orgs emptied.
+  }, [selectedOrgIds, form]);
+
+  useEffect(() => {
+    if (!selectedOrgIds || selectedOrgIds.length === 0) {
+      if (form.getValues("team_id")) {
+        form.setValue("team_id", undefined);
+      }
+    }
+  }, [selectedOrgIds, form]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -325,20 +366,28 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
   };
 
   const roleOptions = useMemo(() => {
-    const rawRoles = Object.entries(possibleUIRoles ?? {}).map(([role, { ui_label, description }]) => ({
-      value: role,
-      label: ui_label,
-      description,
-    }));
-    if (!inviteOptions?.global_roles || inviteOptions.global_roles.length === 0) {
-      return rawRoles;
-    }
-    const allowed = new Set(inviteOptions.global_roles);
-    if (allowed.has("internal_user")) {
-      allowed.add("proxy_user");
-    }
-    return rawRoles.filter((opt) => allowed.has(opt.value));
+    const allowedRoles =
+      inviteOptions?.global_roles && inviteOptions.global_roles.length > 0
+        ? inviteOptions.global_roles
+        : Object.keys(AGAMI_GLOBAL_ROLE_META);
+    return allowedRoles.map((role) => {
+      const meta = AGAMI_GLOBAL_ROLE_META[role] ?? possibleUIRoles?.[role];
+      return {
+        value: role,
+        label: meta?.ui_label ?? role,
+        description: meta?.description ?? "",
+      };
+    });
   }, [possibleUIRoles, inviteOptions]);
+
+  const orgRoleItems = useMemo(() => {
+    const allowed = new Set(inviteOptions?.org_roles ?? ["org_admin", "internal_user", "viewer"]);
+    return [
+      { value: "internal_user", label: "Member (Default)", description: "Standard organization member" },
+      { value: "org_admin", label: "Organization Admin", description: "Manages teams, members, and settings in the org" },
+      { value: "viewer", label: "Viewer", description: "Read-only within the organization" },
+    ].filter((item) => allowed.has(item.value));
+  }, [inviteOptions]);
 
   const userEmailField = (
     <FormField control={form.control} name="user_email" label="User Email">
@@ -346,14 +395,67 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
     </FormField>
   );
 
+  const organizationField = showOrgPicker ? (
+    <FormField
+      control={form.control}
+      name="organization_ids"
+      label="Organization"
+      description="Select the organization first. The team must belong to this organization."
+    >
+      {({ id, value, onChange }) => (
+        <Select
+          multiple
+          items={organizationOptions}
+          value={value ?? []}
+          onValueChange={(selected: string[]) => {
+            onChange(selected.length === 0 ? undefined : selected);
+            form.setValue("team_id", undefined);
+          }}
+        >
+          <SelectTrigger id={id} className="w-full">
+            <SelectValue placeholder="Select Organization">
+              {(selected: string[]) =>
+                selected.length === 0
+                  ? "Select Organization"
+                  : organizationOptions
+                      .filter((option) => selected.includes(option.value))
+                      .map((option) => option.label)
+                      .join(", ")
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {organizationOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </FormField>
+  ) : null;
+
   const teamField = (
     <FormField
       control={form.control}
       name="team_id"
       label="Team"
-      description="If selected, user will be added as a 'user' role to the team."
+      description={
+        teamPickerEnabled
+          ? "Teams are limited to the selected organization."
+          : "Select an organization before choosing a team."
+      }
     >
-      {({ id, value, onChange }) => <TeamDropdown id={id} value={value} onChange={onChange} filterTeam={filterTeam} />}
+      {({ id, value, onChange }) => (
+        <TeamDropdown
+          id={id}
+          value={value}
+          onChange={onChange}
+          filterTeam={filterTeam}
+          disabled={!teamPickerEnabled}
+        />
+      )}
     </FormField>
   );
 
@@ -400,29 +502,22 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
     >
       {({ id, value, onChange }) => (
         <Select
-          items={[
-            { value: "internal_user", label: "Member (Default)" },
-            { value: "org_admin", label: "Organization Admin" },
-          ]}
+          items={orgRoleItems.map(({ value: v, label }) => ({ value: v, label }))}
           value={value ?? ""}
           onValueChange={(selected: string | null) =>
-            onChange((selected as "org_admin" | "internal_user") || undefined)
+            onChange((selected as "org_admin" | "internal_user" | "viewer") || undefined)
           }
         >
           <SelectTrigger id={id} className="w-full">
             <SelectValue placeholder="Member (Default)" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="internal_user">
-              <span>Member</span>
-              <span className="ml-2 text-xs text-muted-foreground">Standard organization member</span>
-            </SelectItem>
-            <SelectItem value="org_admin">
-              <span>Organization Admin</span>
-              <span className="ml-2 text-xs text-muted-foreground">
-                Manages organization teams, members, and settings
-              </span>
-            </SelectItem>
+            {orgRoleItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                <span>{item.label}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{item.description}</span>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       )}
@@ -510,53 +605,16 @@ export const CreateUserButton: React.FC<CreateuserProps> = ({
             <form onSubmit={form.handleSubmit(handleCreate)}>
               <FieldGroup>
                 {userEmailField}
-                {roleField(
-                  labelWithHint(
-                    "Global Proxy Role",
-                    "This role is independent of any team/org specific roles. Configure Team / Organization Admins in the Settings",
-                  ),
-                )}
+                {organizationField}
+                {showOrgRoleField && orgRoleField}
                 {teamField}
                 {selectedTeamId && canAssignTeamRole && teamRoleField}
-
-                {showOrgPicker && (
-                  <FormField
-                    control={form.control}
-                    name="organization_ids"
-                    label="Organization"
-                    description="The user will be added to the selected organization(s)."
-                  >
-                    {({ id, value, onChange }) => (
-                      <Select
-                        multiple
-                        items={organizationOptions}
-                        value={value ?? []}
-                        onValueChange={(selected: string[]) => onChange(selected.length === 0 ? undefined : selected)}
-                      >
-                        <SelectTrigger id={id} className="w-full">
-                          <SelectValue placeholder="Select Organization">
-                            {(selected: string[]) =>
-                              selected.length === 0
-                                ? "Select Organization"
-                                : organizationOptions
-                                    .filter((option) => selected.includes(option.value))
-                                    .map((option) => option.label)
-                                    .join(", ")
-                            }
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {organizationOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </FormField>
+                {roleField(
+                  labelWithHint(
+                    "Platform Role",
+                    "Proxy Admin is platform-wide and is not added to any organization or team. Member and Viewer must belong to an organization and a related team.",
+                  ),
                 )}
-                {showOrgRoleField && orgRoleField}
 
                 {metadataField}
                 {sendInviteEmailField}

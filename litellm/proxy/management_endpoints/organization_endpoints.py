@@ -722,6 +722,15 @@ async def update_organization(
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
     )
+    # Rename is proxy-admin only (Agami ORGANIZATION.EDIT is absent from the tenant matrix).
+    if data.organization_alias is not None:
+        from litellm.proxy.auth.agami_tenant import require_org_rename
+
+        await require_org_rename(
+            user_api_key_dict=user_api_key_dict,
+            prisma_client=prisma_client,
+            organization_id=data.organization_id,
+        )
 
     existing_organization_row: Final = await OrganizationRepository(prisma_client).table.find_unique(
         where={"organization_id": data.organization_id},
@@ -893,6 +902,14 @@ async def update_organization_v2(
         user_api_key_dict=user_api_key_dict,
         prisma_client=prisma_client,
     )
+    if "organization_alias" in data.model_fields_set:
+        from litellm.proxy.auth.agami_tenant import require_org_rename
+
+        await require_org_rename(
+            user_api_key_dict=user_api_key_dict,
+            prisma_client=prisma_client,
+            organization_id=organization_id,
+        )
 
     existing_organization_row: Final = await _table(OrganizationRepository(prisma_client)).find_unique(
         where={"organization_id": organization_id},
@@ -1297,14 +1314,13 @@ async def organization_member_add(
         if prisma_client is None:
             raise HTTPException(status_code=500, detail={"error": "No db connected"})
 
-        # IDOR guard: docstring says "Only proxy_admin or org_admin of
-        # organization, allowed to access this endpoint" — but the code
-        # never enforced that. Any authenticated key holder could add
-        # members to any org. Now gated explicitly.
-        await _verify_org_access(
-            organization_id=data.organization_id,
+        # Agami MANAGE_MEMBERS: org admin (or proxy) of this organization.
+        from litellm.proxy.auth.agami_tenant import require_manage_org_members
+
+        await require_manage_org_members(
             user_api_key_dict=user_api_key_dict,
             prisma_client=prisma_client,
+            organization_id=data.organization_id,
         )
 
         # Check if organization exists

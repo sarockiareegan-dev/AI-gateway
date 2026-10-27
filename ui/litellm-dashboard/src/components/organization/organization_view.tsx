@@ -292,6 +292,7 @@ const OrganizationInfoView: React.FC<OrganizationInfoProps> = ({
                   organizationId={organizationId}
                   org={orgData}
                   accessToken={accessToken || ""}
+                  canRename={is_proxy_admin}
                   onCancel={() => setIsEditing(false)}
                   onSaved={() => setIsEditing(false)}
                 />
@@ -351,7 +352,7 @@ const OrganizationInfoView: React.FC<OrganizationInfoProps> = ({
         onCancel={() => setIsAddMemberModalVisible(false)}
         onSubmit={handleMemberAdd}
         accessToken={accessToken}
-        title="Add Organization Member"
+        title="Invite Organization User"
         roles={[
           {
             label: "org_admin",
@@ -364,9 +365,9 @@ const OrganizationInfoView: React.FC<OrganizationInfoProps> = ({
             description: "Can view/create keys for themselves within organization.",
           },
           {
-            label: "internal_user_viewer",
-            value: "internal_user_viewer",
-            description: "Can only view their keys within organization.",
+            label: "viewer",
+            value: "viewer",
+            description: "Read-only within the organization.",
           },
         ]}
         defaultRole="internal_user"

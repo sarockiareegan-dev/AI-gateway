@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Literal, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeVar, cast
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
@@ -799,7 +799,15 @@ async def bulk_create_users(
     existing_ids, existing_emails = await _existing_user_conflicts(prisma_client, pending)
     teams, team_errors = await _unusable_teams(prisma_client, pending, user_api_key_dict)
 
-    from agami.auth.invite import InviteDenied, InvitePlan, TeamRef, validate_invite
+    from agami.auth.invite import (
+        InviteDenied,
+        InvitePlan,
+        TeamRef,
+        normalize_global_role,
+        to_storage_global_role,
+        to_storage_org_role,
+        validate_invite,
+    )
     from litellm.proxy.auth.agami_access import load_request_actor
 
     actor: Final = await load_request_actor(user_api_key_dict, prisma_client)
@@ -817,12 +825,16 @@ async def bulk_create_users(
         plan = InvitePlan(
             organization_ids=tuple(user.request.organizations or ()),
             team_ids=tuple(t.team_id for t in user.teams),
-            global_role=user.request.user_role or "internal_user",
+            global_role=normalize_global_role(user.request.user_role),
             team_role=resolved_team_role,
             org_role=user.request.org_role or "internal_user",
         )
         try:
             validate_invite(actor=actor, plan=plan, known_teams=known_teams)
+            # Persist LiteLLM storage strings on the request used for writes.
+            user.request.user_role = cast(Any, to_storage_global_role(plan.global_role))
+            if user.request.organizations:
+                user.request.org_role = cast(Any, to_storage_org_role(plan.org_role))
         except InviteDenied as exc:
             invite_errors[user.index] = exc.message
 

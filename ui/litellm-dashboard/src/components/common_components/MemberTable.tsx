@@ -1,6 +1,6 @@
 import type { ColumnDef, ColumnFiltersState } from "@tanstack/react-table";
 import { Crown, Info, User, UserPlus } from "lucide-react";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import { Member } from "@/components/networking";
 import {
@@ -14,6 +14,7 @@ import { StatusBadge } from "@/components/shared/table_cells";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { isHiddenProxyMembership } from "@/utils/sentinels";
 
 import TableIconActionButton from "./IconActionButton/TableIconActionButtons/TableIconActionButton";
 
@@ -218,6 +219,11 @@ export default function MemberTable({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  const visibleMembers = useMemo(
+    () => members.filter((member) => !isHiddenProxyMembership(member)),
+    [members],
+  );
+
   const columnDeps: MemberColumnDeps = {
     canEdit,
     onEdit,
@@ -232,7 +238,7 @@ export default function MemberTable({
   const columns = buildColumns(columnDeps);
   const roleFilterItems = [
     { value: ALL_ROLES, label: "All Roles" },
-    ...memberRoleOptions(members).map((role) => ({ value: role, label: role })),
+    ...memberRoleOptions(visibleMembers).map((role) => ({ value: role, label: role })),
   ];
 
   const isNarrowed = globalFilter !== "" || columnFilters.length > 0;
@@ -240,10 +246,10 @@ export default function MemberTable({
   return (
     <div className="flex w-full flex-col gap-2">
       <span className="inline-flex text-sm text-foreground">
-        {members.length} Member{members.length !== 1 ? "s" : ""}
+        {visibleMembers.length} Member{visibleMembers.length !== 1 ? "s" : ""}
       </span>
       <DataTable
-        data={members}
+        data={visibleMembers}
         columns={columns}
         getRowId={memberRowId}
         sortingMode="client"
@@ -302,7 +308,7 @@ export default function MemberTable({
       {onAddMember && canEdit && (
         <Button onClick={onAddMember} className="self-start">
           <UserPlus className="size-4" />
-          Add Member
+          Invite User
         </Button>
       )}
     </div>

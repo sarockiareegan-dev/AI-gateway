@@ -104,11 +104,12 @@ export const formatUserRole = (userRole: string): string => {
 export const isOrgAdminSessionRole = (userRole?: string | null): boolean =>
   userRole === ORG_ADMIN_MEMBERSHIP_ROLE || userRole === formatUserRole(ORG_ADMIN_MEMBERSHIP_ROLE);
 
-const viewOnlyRawRoles = ["proxy_admin_viewer", "internal_user_viewer", "internal_viewer"];
+const viewOnlyRawRoles = ["proxy_admin_viewer", "internal_user_viewer", "internal_viewer", "viewer"];
 
 export const effectiveSessionRole = (rawUserRole?: string): string => {
-  if (rawUserRole?.toLowerCase() === "proxy_admin_viewer") {
-    return "Admin";
+  const lowered = rawUserRole?.toLowerCase();
+  if (lowered === "proxy_admin_viewer" || lowered === "viewer") {
+    return lowered === "viewer" ? "Viewer" : "Admin";
   }
   return formatUserRole(rawUserRole ?? "");
 };

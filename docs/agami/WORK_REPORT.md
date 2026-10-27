@@ -844,6 +844,22 @@ Implemented invite authorization enforcement and scoped UI picker controls adher
 
 Rebuilt `litellm/proxy/_experimental/out` from current dashboard source so source/pip runs serve the Agami invite UI (#19). Windows nested `__next.*` segment folders were flattened to dotted names (same fix as draft #15).
 
+### 9.15 Remove LiteLLM RBAC — Agami hierarchy (`agami_rbac_replace_litellm`)
+
+Product rules locked Oct 27: org admin cannot create/delete/rename orgs; team admin cannot create/delete/rename teams; Agami `viewer` is the only view-only role; non–proxy users must be invited into a related org+team; proxy admin has no presence on org/team memberships.
+
+Backend:
+
+- `agami/auth/roles.py`: org `EDIT` (rename) proxy-only; team `CREATE`/`EDIT` org-admin only (not team admin); `MANAGE_MEMBERS` still org+team admin.
+- `agami/auth/invite.py`: require org **and** team for non–proxy invites; always enforce team↔org; expose Agami roles (`proxy_admin` / `internal_user` / `viewer`); `to_storage_*` maps to LiteLLM DB strings; team admins see their team's org in `invite_options`.
+- `litellm/proxy/auth/agami_tenant.py`: `authorize`-backed helpers for org rename, team create/edit/delete, manage-members.
+- Org/team endpoints use those helpers; proxy admin is never auto-added to new teams; key-request reviewers exclude view-only.
+
+UI:
+
+- Invite User is org-first then related team; platform role picker uses Agami labels (no LiteLLM `*_VIEW_ONLY`).
+- Member tables hide proxy admins; Add Member → Invite User; org name editable only for proxy admin; team name editable only when edit access is unrestricted (org/proxy).
+
 ## 10. Dependency bumps (PR #2)
 
 Python lock: `pyjwt` 2.15.1, `pypdf` 6.19.0, `mlflow` 3.17.0, `oauthlib` 4.0.0, `urllib3` 2.8.0, `tornado` 6.5.10, plus `fsspec`, `gitpython`, `langgraph-sdk`, `mako`, `multidict`, `werkzeug`. UI: `next` 16.3.8, `moment` 2.31.0, `brace-expansion` 5.0.12, `sharp` 0.35.5, plus `smol-toml` and `source-map-js`. Dockerfiles pin the `wolfi-base` digest with glibc 2.44-r8, and `apk add` asks for `openssl~3.6` because the pinned Prisma CLI cannot detect OpenSSL 4.0
@@ -1009,7 +1025,7 @@ rg "agami-org/" litellm agami                      # org model naming
 
 ## 16. What is still open
 
-- Agami RBAC invite API & UI complete (see section 9.14). Remaining: view-only enforcement across other management routes, align member + key requests, then remove LiteLLM RBAC surface once live paths are migrated
+- Agami RBAC invite + org/team hierarchy live (sections 9.14–9.15). Optional: route remaining non-tenant `PROXY_ADMIN` gates through `actor.is_super_admin`; migrate DB membership role strings off LiteLLM names
 - Step 6: rename the `litellm` package to `agami` (about 2,470 Python files, about 4,300 importers), keeping a thin `litellm` shim
 - Docker Compose demo run (the files are committed in #8; the run needs Docker Desktop, which was not running)
 - Step 7: refactor (scope not decided)

@@ -26,17 +26,17 @@ ORG_ADMIN, TEAM_ADMIN, TEAM_MEMBER, VIEWER = (
 ALL_ROLES: Final = frozenset(TenantRole)
 OWN: Final = "own"
 
-# The Agami RBAC spec's permission matrix, plus the product decisions that only super admins
-# create or delete organizations and that org admins manage their organization's models.
+# The Agami RBAC spec's permission matrix. Super admins alone create/delete/rename orgs;
+# org admins create/edit/delete teams; team admins manage members only (no team rename/delete).
 SPEC_MATRIX: Final[dict[tuple[ResourceType, Action], dict[TenantRole, bool | str]]] = {
     (R.ORGANIZATION, A.VIEW): {ORG_ADMIN: True, TEAM_ADMIN: True, TEAM_MEMBER: True, VIEWER: True},
-    (R.ORGANIZATION, A.EDIT): {ORG_ADMIN: True},
+    (R.ORGANIZATION, A.EDIT): {},
     (R.ORGANIZATION, A.MANAGE_MEMBERS): {ORG_ADMIN: True},
     (R.ORGANIZATION, A.CREATE): {},
     (R.ORGANIZATION, A.DELETE): {},
     (R.TEAM, A.VIEW): {ORG_ADMIN: True, TEAM_ADMIN: True, TEAM_MEMBER: True, VIEWER: True},
-    (R.TEAM, A.CREATE): {ORG_ADMIN: True, TEAM_ADMIN: True},
-    (R.TEAM, A.EDIT): {ORG_ADMIN: True, TEAM_ADMIN: True},
+    (R.TEAM, A.CREATE): {ORG_ADMIN: True},
+    (R.TEAM, A.EDIT): {ORG_ADMIN: True},
     (R.TEAM, A.MANAGE_MEMBERS): {ORG_ADMIN: True, TEAM_ADMIN: True},
     (R.TEAM, A.DELETE): {ORG_ADMIN: True},
     (R.KEY, A.VIEW): {ORG_ADMIN: True, TEAM_ADMIN: True, TEAM_MEMBER: True, VIEWER: True},
@@ -142,8 +142,10 @@ def test_no_role_reaches_another_organization(resource_type: ResourceType, actio
 def test_team_role_does_not_cross_into_a_sibling_team() -> None:
     team_admin: Final = _actor(team_roles=frozenset({TEAM_ADMIN}))
 
-    assert authorize(team_admin, A.EDIT, _resource(R.TEAM, team_id=TEAM)) == Allowed()
-    assert authorize(team_admin, A.EDIT, _resource(R.TEAM, team_id=OTHER_TEAM)) == Denied(DenialReason.NOT_A_MEMBER)
+    assert authorize(team_admin, A.MANAGE_MEMBERS, _resource(R.TEAM, team_id=TEAM)) == Allowed()
+    assert authorize(team_admin, A.MANAGE_MEMBERS, _resource(R.TEAM, team_id=OTHER_TEAM)) == Denied(
+        DenialReason.NOT_A_MEMBER
+    )
 
 
 def test_team_role_counts_only_inside_the_teams_own_organization() -> None:
@@ -152,10 +154,19 @@ def test_team_role_counts_only_inside_the_teams_own_organization() -> None:
     assert authorize(misbound, A.VIEW, _resource(R.ORGANIZATION)) == Denied(DenialReason.NOT_A_MEMBER)
 
 
-def test_team_role_grants_org_level_actions_inside_its_organization() -> None:
+def test_team_admin_cannot_create_or_rename_team() -> None:
     team_admin: Final = _actor(team_roles=frozenset({TEAM_ADMIN}))
 
-    assert authorize(team_admin, A.CREATE, _resource(R.TEAM, team_id=None)) == Allowed()
+    assert authorize(team_admin, A.CREATE, _resource(R.TEAM, team_id=None)) == Denied(DenialReason.NOT_PERMITTED)
+    assert authorize(team_admin, A.EDIT, _resource(R.TEAM, team_id=TEAM)) == Denied(DenialReason.NOT_PERMITTED)
+    assert authorize(team_admin, A.DELETE, _resource(R.TEAM, team_id=TEAM)) == Denied(DenialReason.NOT_PERMITTED)
+
+
+def test_org_admin_cannot_rename_organization() -> None:
+    org_admin: Final = _actor(org_roles=frozenset({ORG_ADMIN}))
+
+    assert authorize(org_admin, A.EDIT, _resource(R.ORGANIZATION, team_id=None)) == Denied(DenialReason.NOT_PERMITTED)
+    assert authorize(org_admin, A.CREATE, _resource(R.TEAM, team_id=None)) == Allowed()
 
 
 def test_strongest_role_wins_when_actor_holds_several() -> None:

@@ -222,14 +222,9 @@ async def test_invite_options_proxy_admin(rbac_setup):
     assert opts.can_invite is True
     assert set(opts.organization_ids) == {"org-a", "org-b"}
     assert set(opts.team_ids) == {"team-a1", "team-a2", "team-b1"}
-    assert set(opts.global_roles) == {
-        "proxy_admin",
-        "proxy_admin_viewer",
-        "internal_user",
-        "internal_user_viewer",
-    }
+    assert set(opts.global_roles) == {"proxy_admin", "internal_user", "viewer"}
     assert set(opts.team_roles) == {"admin", "user"}
-    assert set(opts.org_roles) == {"org_admin", "internal_user"}
+    assert set(opts.org_roles) == {"org_admin", "internal_user", "viewer"}
 
 
 @pytest.mark.asyncio
@@ -241,9 +236,9 @@ async def test_invite_options_org_admin(rbac_setup):
     assert opts.organization_ids == ["org-a"]
     # teams within org-a only
     assert set(opts.team_ids) == {"team-a1", "team-a2"}
-    assert set(opts.global_roles) == {"internal_user", "internal_user_viewer"}
+    assert set(opts.global_roles) == {"internal_user", "viewer"}
     assert set(opts.team_roles) == {"admin", "user"}
-    assert set(opts.org_roles) == {"org_admin", "internal_user"}
+    assert set(opts.org_roles) == {"org_admin", "internal_user", "viewer"}
 
 
 @pytest.mark.asyncio
@@ -252,14 +247,15 @@ async def test_invite_options_team_admin(rbac_setup):
     opts = await get_invite_options(user_api_key_dict=auth)
 
     assert opts.can_invite is True
-    assert opts.organization_ids == []
+    # Team admin sees their team's org so Invite UI can enforce org → team hierarchy.
+    assert opts.organization_ids == ["org-a"]
     # team-a1 only
     assert opts.team_ids == ["team-a1"]
-    assert set(opts.global_roles) == {"internal_user", "internal_user_viewer"}
+    assert set(opts.global_roles) == {"internal_user", "viewer"}
     # team admin can only invite members, not other team admins
     assert opts.team_roles == ["user"]
-    # team admin cannot assign organization roles
-    assert opts.org_roles == []
+    # team admin can assign member/viewer org membership, not org_admin
+    assert set(opts.org_roles) == {"internal_user", "viewer"}
 
 
 @pytest.mark.asyncio
@@ -297,7 +293,7 @@ async def test_invite_options_plain_member(rbac_setup):
 async def test_new_user_proxy_admin_can_invite_anywhere(rbac_setup):
     auth = UserAPIKeyAuth(user_id="proxy-admin", user_role=LitellmUserRoles.PROXY_ADMIN)
 
-    # Proxy admin invites user to any org and any team
+    # Proxy admin invites user to any org and related team
     req = NewUserRequest(
         user_email="new-user@example.com",
         organizations=["org-b"],
@@ -308,13 +304,33 @@ async def test_new_user_proxy_admin_can_invite_anywhere(rbac_setup):
     res = await new_user(data=req, user_api_key_dict=auth)
     assert res is not None
 
-    # Proxy admin invites global user without org or team
+    # Proxy admin may create another platform admin without org/team
     req_global = NewUserRequest(
         user_email="global-user@example.com",
-        user_role="proxy_admin_viewer",
+        user_role="proxy_admin",
     )
     res_global = await new_user(data=req_global, user_api_key_dict=auth)
     assert res_global is not None
+
+    # Non–proxy-admin invites need org + related team
+    req_member_no_scope = NewUserRequest(
+        user_email="member-no-scope@example.com",
+        user_role="internal_user",
+    )
+    with pytest.raises(ProxyException) as exc:
+        await new_user(data=req_member_no_scope, user_api_key_dict=auth)
+    assert exc.value.code == 403 or exc.value.code == "403"
+
+    # Unrelated org/team rejected
+    req_mismatch = NewUserRequest(
+        user_email="mismatch@example.com",
+        organizations=["org-a"],
+        teams=["team-b1"],
+    )
+    with pytest.raises(ProxyException) as exc:
+        await new_user(data=req_mismatch, user_api_key_dict=auth)
+    assert exc.value.code == 403 or exc.value.code == "403"
+    assert "not in the selected organization" in str(exc.value.message)
 
 
 @pytest.mark.asyncio
@@ -336,15 +352,17 @@ async def test_new_user_org_admin_scope(rbac_setup):
     req_bad_org = NewUserRequest(
         user_email="bad-org@example.com",
         organizations=["org-b"],
+        teams=["team-b1"],
     )
     with pytest.raises(ProxyException) as exc:
         await new_user(data=req_bad_org, user_api_key_dict=auth)
     assert exc.value.code == 403 or exc.value.code == "403"
     assert "Not allowed to invite into organization 'org-b'" in str(exc.value.message)
 
-    # Denied: invite into team-b1 (in org-b)
+    # Denied: invite into team-b1 without matching org
     req_bad_team = NewUserRequest(
         user_email="bad-team@example.com",
+        organizations=["org-a"],
         teams=["team-b1"],
     )
     with pytest.raises(ProxyException) as exc:
@@ -355,6 +373,7 @@ async def test_new_user_org_admin_scope(rbac_setup):
     req_bad_role = NewUserRequest(
         user_email="bad-role@example.com",
         organizations=["org-a"],
+        teams=["team-a1"],
         user_role="proxy_admin",
     )
     with pytest.raises(ProxyException) as exc:
@@ -368,16 +387,17 @@ async def test_new_user_org_admin_scope(rbac_setup):
     with pytest.raises(ProxyException) as exc:
         await new_user(data=req_no_scope, user_api_key_dict=auth)
     assert exc.value.code == 403 or exc.value.code == "403"
-    assert "Org admins and team admins must invite into an organization or team they manage" in str(exc.value.message)
+    assert "organization and a related team" in str(exc.value.message)
 
 
 @pytest.mark.asyncio
 async def test_new_user_team_admin_scope(rbac_setup):
     auth = UserAPIKeyAuth(user_id="team-admin-a1", user_role=LitellmUserRoles.INTERNAL_USER)
 
-    # Allowed: invite into team-a1 with role "user"
+    # Allowed: invite into org-a + team-a1 with role "user"
     req_ok = NewUserRequest(
         user_email="team-member@example.com",
+        organizations=["org-a"],
         teams=["team-a1"],
         team_role="user",
     )
@@ -387,6 +407,7 @@ async def test_new_user_team_admin_scope(rbac_setup):
     # Denied: invite into team-a1 with role "admin"
     req_admin_role = NewUserRequest(
         user_email="team-admin2@example.com",
+        organizations=["org-a"],
         teams=["team-a1"],
         team_role="admin",
     )
@@ -398,6 +419,7 @@ async def test_new_user_team_admin_scope(rbac_setup):
     # Denied: invite into another team (team-a2)
     req_other_team = NewUserRequest(
         user_email="other-team@example.com",
+        organizations=["org-a"],
         teams=["team-a2"],
         team_role="user",
     )
@@ -406,20 +428,10 @@ async def test_new_user_team_admin_scope(rbac_setup):
     assert exc.value.code == 403 or exc.value.code == "403"
     assert "Team admins can only invite users to teams they administer" in str(exc.value.message)
 
-    # Denied: invite into an organization
-    req_org = NewUserRequest(
-        user_email="org-target@example.com",
-        organizations=["org-a"],
-        teams=["team-a1"],
-    )
-    with pytest.raises(ProxyException) as exc:
-        await new_user(data=req_org, user_api_key_dict=auth)
-    assert exc.value.code == 403 or exc.value.code == "403"
-    assert "Team admins invite to their team only, not to an organization" in str(exc.value.message)
-
     # Denied: grant org_admin
     req_grant_org = NewUserRequest(
         user_email="grant-org@example.com",
+        organizations=["org-a"],
         teams=["team-a1"],
         org_role="org_admin",
     )
@@ -427,6 +439,17 @@ async def test_new_user_team_admin_scope(rbac_setup):
         await new_user(data=req_grant_org, user_api_key_dict=auth)
     assert exc.value.code == 403 or exc.value.code == "403"
     assert "Team admins cannot grant organization admin" in str(exc.value.message)
+
+    # Denied: team without org
+    req_team_only = NewUserRequest(
+        user_email="team-only@example.com",
+        teams=["team-a1"],
+        team_role="user",
+    )
+    with pytest.raises(ProxyException) as exc:
+        await new_user(data=req_team_only, user_api_key_dict=auth)
+    assert exc.value.code == 403 or exc.value.code == "403"
+    assert "organization and a related team" in str(exc.value.message)
 
 
 @pytest.mark.asyncio
@@ -457,14 +480,38 @@ async def test_bulk_create_users_team_admin_matrix(rbac_setup):
     auth = UserAPIKeyAuth(user_id="team-admin-a1", user_role=LitellmUserRoles.INTERNAL_USER)
 
     items = [
-        # row 0: valid invite to team-a1 with team_role="user"
-        BulkNewUserItem(user_id="bulk-u1", user_email="b1@example.com", teams=["team-a1"], team_role="user"),
+        # row 0: valid invite to org-a + team-a1 with team_role="user"
+        BulkNewUserItem(
+            user_id="bulk-u1",
+            user_email="b1@example.com",
+            organizations=["org-a"],
+            teams=["team-a1"],
+            team_role="user",
+        ),
         # row 1: invalid team_role="admin"
-        BulkNewUserItem(user_id="bulk-u2", user_email="b2@example.com", teams=["team-a1"], team_role="admin"),
+        BulkNewUserItem(
+            user_id="bulk-u2",
+            user_email="b2@example.com",
+            organizations=["org-a"],
+            teams=["team-a1"],
+            team_role="admin",
+        ),
         # row 2: invalid team (team-a2)
-        BulkNewUserItem(user_id="bulk-u3", user_email="b3@example.com", teams=["team-a2"], team_role="user"),
+        BulkNewUserItem(
+            user_id="bulk-u3",
+            user_email="b3@example.com",
+            organizations=["org-a"],
+            teams=["team-a2"],
+            team_role="user",
+        ),
         # row 3: invalid global role proxy_admin
-        BulkNewUserItem(user_id="bulk-u4", user_email="b4@example.com", teams=["team-a1"], user_role="proxy_admin"),
+        BulkNewUserItem(
+            user_id="bulk-u4",
+            user_email="b4@example.com",
+            organizations=["org-a"],
+            teams=["team-a1"],
+            user_role="proxy_admin",
+        ),
     ]
 
     res = await bulk_create_users(

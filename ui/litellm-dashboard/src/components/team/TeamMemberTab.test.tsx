@@ -197,7 +197,7 @@ describe("TeamMembersComponent", () => {
     expect(screen.getAllByText("user2@test.com").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("should render Add Member button", () => {
+  it("should render Invite User button", () => {
     renderWithProviders(
       <TeamMembersComponent
         teamData={createMockTeamData()}
@@ -210,7 +210,7 @@ describe("TeamMembersComponent", () => {
       />,
     );
 
-    expect(screen.getByText("Add Member")).toBeInTheDocument();
+    expect(screen.getByText("Invite User")).toBeInTheDocument();
   });
 
   it("should display dash when user email is null", () => {
@@ -426,7 +426,7 @@ describe("TeamMembersComponent", () => {
     });
   });
 
-  it("should call setIsAddMemberModalVisible when Add Member button is clicked", async () => {
+  it("should call setIsAddMemberModalVisible when Invite User button is clicked", async () => {
     const user = userEvent.setup();
 
     renderWithProviders(
