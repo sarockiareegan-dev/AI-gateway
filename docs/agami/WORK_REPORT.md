@@ -840,6 +840,10 @@ Implemented invite authorization enforcement and scoped UI picker controls adher
 
 ---
 
+### 9.14 Admin UI bundle rebuild (Oct 23)
+
+Rebuilt `litellm/proxy/_experimental/out` from current dashboard source so source/pip runs serve the Agami invite UI (#19). Windows nested `__next.*` segment folders were flattened to dotted names (same fix as draft #15).
+
 ## 10. Dependency bumps (PR #2)
 
 Python lock: `pyjwt` 2.15.1, `pypdf` 6.19.0, `mlflow` 3.17.0, `oauthlib` 4.0.0, `urllib3` 2.8.0, `tornado` 6.5.10, plus `fsspec`, `gitpython`, `langgraph-sdk`, `mako`, `multidict`, `werkzeug`. UI: `next` 16.3.8, `moment` 2.31.0, `brace-expansion` 5.0.12, `sharp` 0.35.5, plus `smol-toml` and `source-map-js`. Dockerfiles pin the `wolfi-base` digest with glibc 2.44-r8, and `apk add` asks for `openssl~3.6` because the pinned Prisma CLI cannot detect OpenSSL 4.0
