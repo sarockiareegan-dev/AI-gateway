@@ -627,6 +627,8 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
 
   const teamEditAccess = useMemo(() => parseTeamEditAccess(teamData?.team_info?.caller_edit_access), [teamData]);
   const canEditTeam = is_team_admin || is_proxy_admin || teamEditAccess.kind !== "none";
+  // Team rename is org-admin / proxy only — not team admin (Agami TEAM.EDIT).
+  const canRenameTeam = is_proxy_admin || teamEditAccess.kind === "unrestricted";
   const visibleTabs = useMemo(() => getTeamInfoVisibleTabs(canEditTeam), [canEditTeam]);
   const defaultTabKey = useMemo(() => getTeamInfoDefaultTab(editTeam, canEditTeam), [editTeam, canEditTeam]);
   const { onTabChange, hasVisited } = useVisitedTabs(defaultTabKey);
@@ -1416,7 +1418,17 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
               <form onSubmit={(event) => void form.handleSubmit(onTeamUpdateSubmit)(event)}>
                 <FieldGroup>
                   <FormField control={form.control} name="team_alias" label="Team Name">
-                    {({ ref, value, ...field }) => <UIInput {...field} ref={ref} value={value ?? ""} />}
+                    {({ ref, value, ...field }) => (
+                      <UIInput
+                        {...field}
+                        ref={ref}
+                        value={value ?? ""}
+                        disabled={!canRenameTeam}
+                        title={
+                          canRenameTeam ? undefined : "Only an organization admin or proxy admin can rename a team"
+                        }
+                      />
+                    )}
                   </FormField>
 
                   <FormField

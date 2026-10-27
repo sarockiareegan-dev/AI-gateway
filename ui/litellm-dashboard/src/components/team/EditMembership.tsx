@@ -191,7 +191,7 @@ const MemberModal = <T extends BaseMember>({
     <Dialog open={visible} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[1000px]">
         <DialogHeader>
-          <DialogTitle>{config.title || (mode === "add" ? "Add Member" : "Edit Member")}</DialogTitle>
+          <DialogTitle>{config.title || (mode === "add" ? "Invite User" : "Edit Member")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)}>
           <FieldGroup>
@@ -271,7 +271,7 @@ const MemberModal = <T extends BaseMember>({
               {mode === "add"
                 ? isSubmitting
                   ? "Adding..."
-                  : "Add Member"
+                  : "Invite User"
                 : isSubmitting
                   ? "Saving..."
                   : "Save Changes"}

@@ -558,17 +558,18 @@ async def new_user(
                 detail=CommonProxyErrors.license_over_limit.value,
             )
 
-        # Only proxy admins can create administrative users
-        # Check if user_api_key_dict is actually a UserAPIKeyAuth instance (not a Depends object)
-        # This can happen when the function is called directly in tests
+        # Only proxy admins can create platform administrators
         if (
-            data.user_role in [LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY]
+            data.user_role in (LitellmUserRoles.PROXY_ADMIN, LitellmUserRoles.PROXY_ADMIN.value, "proxy_admin")
             and isinstance(user_api_key_dict, UserAPIKeyAuth)
             and user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN
         ):
             raise HTTPException(
                 status_code=403,
-                detail=f"Only proxy admins can create administrative users (proxy_admin, proxy_admin_viewer). Attempted to create user with role: {data.user_role}. Your role: {user_api_key_dict.user_role}",
+                detail=(
+                    "Only proxy admins can create proxy admin users. "
+                    f"Attempted to create user with role: {data.user_role}. Your role: {user_api_key_dict.user_role}"
+                ),
             )
 
         _check_permissions_caller_permission(
@@ -577,7 +578,16 @@ async def new_user(
         )
 
         # Agami RBAC invite validation
-        from agami.auth.invite import InviteDenied, InvitePlan, TeamMemberRole, TeamRef, validate_invite
+        from agami.auth.invite import (
+            InviteDenied,
+            InvitePlan,
+            TeamMemberRole,
+            TeamRef,
+            normalize_global_role,
+            to_storage_global_role,
+            to_storage_org_role,
+            validate_invite,
+        )
         from litellm.proxy.auth.agami_access import load_request_actor
         from litellm.repositories.team_repository import TeamRepository
 
@@ -622,10 +632,13 @@ async def new_user(
                     resolved_team_role = cast(TeamMemberRole, t["user_role"])
                     break
 
+        agami_global_role: Final = normalize_global_role(
+            data.user_role.value if isinstance(data.user_role, LitellmUserRoles) else data.user_role
+        )
         invite_plan = InvitePlan(
             organization_ids=tuple(data.organizations or ()),
             team_ids=tuple(requested_team_ids),
-            global_role=data.user_role or "internal_user",
+            global_role=agami_global_role,
             team_role=resolved_team_role,
             org_role=data.org_role or "internal_user",
         )
@@ -637,6 +650,8 @@ async def new_user(
             raise HTTPException(status_code=403, detail=exc.message)
 
         data_json = data.json()
+        # Persist LiteLLM storage role strings; invite API accepts Agami names (viewer).
+        data_json["user_role"] = to_storage_global_role(invite_plan.global_role)
         data_json = _update_internal_new_user_params(data_json, data)
         # Persist the requested grants as their own row and link it, mirroring key/team creation.
         # generate_key_helper_fn only forwards object_permission_id, so without this the entitlement
@@ -685,7 +700,7 @@ async def new_user(
                 organizations=organization_ids,
                 prisma_client=prisma_client,
                 user_api_key_dict=user_api_key_dict,
-                org_role=invite_plan.org_role,
+                org_role=to_storage_org_role(invite_plan.org_role),
             )
 
         special_keys: Final = ["token", "token_id"]

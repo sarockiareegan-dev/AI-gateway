@@ -904,7 +904,8 @@ async def test_new_user_license_gate_counts_only_billable_users(mocker):
         return client
 
     admin = UserAPIKeyAuth(user_id="admin", user_role=LitellmUserRoles.PROXY_ADMIN)
-    request = NewUserRequest(user_role="internal_user")
+    # Platform admin invites do not require org/team (Agami hierarchy).
+    request = NewUserRequest(user_role="proxy_admin")
 
     # 2 active + 3 deactivated -> billable 2, not over max_users 2: gate passes
     mocker.patch(
@@ -984,18 +985,14 @@ async def test_new_user_non_admin_cannot_create_admin(mocker):
 
     # Verify the exception details
     assert exc_info.value.code == 403 or exc_info.value.code == "403"
-    assert "Only proxy admins can create administrative users" in str(
-        exc_info.value.message
-    )
+    assert "Only proxy admins can create proxy admin users" in str(exc_info.value.message)
     assert "proxy_admin" in str(exc_info.value.message)
-    assert "proxy_admin_viewer" in str(exc_info.value.message)
-    assert str(LitellmUserRoles.PROXY_ADMIN) in str(exc_info.value.message)
     assert str(LitellmUserRoles.INTERNAL_USER) in str(exc_info.value.message)
 
-    # Test Case 2: INTERNAL_USER trying to create PROXY_ADMIN_VIEW_ONLY
+    # Test Case 2: INTERNAL_USER trying to create a viewer (scoped) without org/team is denied by Agami
     user_request_viewer = NewUserRequest(
         user_email="admin_viewer@example.com",
-        user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY,
+        user_role="viewer",
     )
 
     with pytest.raises(ProxyException) as exc_info2:
@@ -1003,12 +1000,8 @@ async def test_new_user_non_admin_cannot_create_admin(mocker):
             data=user_request_viewer, user_api_key_dict=mock_user_api_key_dict
         )
 
-    # Verify the exception details
     assert exc_info2.value.code == 403 or exc_info2.value.code == "403"
-    assert "Only proxy admins can create administrative users" in str(
-        exc_info2.value.message
-    )
-    assert str(LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY) in str(exc_info2.value.message)
+    assert "organization and a related team" in str(exc_info2.value.message)
 
 
 @pytest.mark.asyncio
@@ -1151,6 +1144,12 @@ async def test_new_user_non_admin_omits_permissions_succeeds(mocker):
     caller = UserAPIKeyAuth(
         user_id="org-admin", user_role=LitellmUserRoles.ORG_ADMIN, org_id="org1"
     )
+    # Invite hierarchy covered in Agami tests; this asserts the permissions gate only.
+    mocker.patch("agami.auth.invite.validate_invite")
+    mocker.patch(
+        "litellm.proxy.management_endpoints.internal_user_endpoints._add_user_to_organizations",
+        mocker.AsyncMock(),
+    )
 
     result = await new_user(data=data, user_api_key_dict=caller)
     assert result is not None
@@ -1195,9 +1194,10 @@ async def test_new_user_admin_can_set_permissions(mocker):
 
     admin = UserAPIKeyAuth(user_id="admin", user_role=LitellmUserRoles.PROXY_ADMIN)
     for permissions_value in ({"get_spend_routes": True}, {}, None):
+        # Platform proxy_admin invites need no org/team; permissions attach to that user.
         data = NewUserRequest(
             user_email=f"alice-{permissions_value}@example.com",
-            user_role=LitellmUserRoles.INTERNAL_USER,
+            user_role=LitellmUserRoles.PROXY_ADMIN,
             permissions=permissions_value,
         )
         result = await new_user(data=data, user_api_key_dict=admin)
@@ -1514,7 +1514,9 @@ async def test_new_user_default_teams_flow(mocker):
             mock_user_created_hook,
         )
 
-        # Create test request data WITHOUT teams (teams should come from defaults)
+        # Create test request data WITHOUT teams (teams should come from defaults).
+        # Agami invite scope is covered elsewhere; this test asserts default-team wiring.
+        mocker.patch("agami.auth.invite.validate_invite")
         user_request = NewUserRequest(
             user_email="test@example.com", user_role="internal_user"
         )
@@ -4469,6 +4471,7 @@ async def test_new_user_persists_the_requested_mcp_entitlement(mocker):
     await new_user(
         data=NewUserRequest(
             user_id="new-human",
+            user_role=LitellmUserRoles.PROXY_ADMIN,
             object_permission={"mcp_tool_permissions": {"github": ["list_issues"]}},
         ),
         user_api_key_dict=UserAPIKeyAuth(

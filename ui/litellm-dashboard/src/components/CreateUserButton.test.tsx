@@ -116,15 +116,24 @@ describe("CreateUserButton", () => {
       expect(screen.getByText("Email invitations")).toBeInTheDocument();
     });
 
-    it("should display user role options when possibleUIRoles is provided", async () => {
-      const possibleUIRoles = {
-        proxy_admin: { ui_label: "Admin", description: "Full access" },
-        proxy_user: { ui_label: "User", description: "Limited access" },
-      };
-      renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={possibleUIRoles} isEmbedded />);
+    it("should display Agami user role options", async () => {
+      renderWithProviders(
+        <CreateUserButton
+          {...defaultProps}
+          isEmbedded
+          inviteOptions={{
+            organization_ids: [],
+            team_ids: [],
+            global_roles: ["proxy_admin", "internal_user"],
+            team_roles: ["user"],
+            org_roles: [],
+            can_invite: true,
+          }}
+        />,
+      );
       await userEvent.click(screen.getByRole("combobox", { name: /user role/i }));
-      expect(screen.getByText("Admin")).toBeInTheDocument();
-      expect(screen.getByText("User")).toBeInTheDocument();
+      expect(screen.getAllByText("Proxy Admin").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Member").length).toBeGreaterThanOrEqual(1);
     });
 
     it("should close modal when cancel is clicked in standalone mode", async () => {
@@ -156,14 +165,12 @@ describe("CreateUserButton", () => {
       renderWithProviders(
         <CreateUserButton
           {...defaultProps}
-          possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
           isEmbedded
         />,
       );
 
       await user.type(screen.getByLabelText(/user email/i), "test@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
       await waitFor(() => {
@@ -172,7 +179,7 @@ describe("CreateUserButton", () => {
           null,
           expect.objectContaining({
             user_email: "test@example.com",
-            user_role: "proxy_user",
+            user_role: "internal_user",
           }),
         );
       });
@@ -187,14 +194,12 @@ describe("CreateUserButton", () => {
         <CreateUserButton
           {...defaultProps}
           onUserCreated={onUserCreated}
-          possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
           isEmbedded
         />,
       );
 
       await user.type(screen.getByLabelText(/user email/i), "embedded@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
       await waitFor(() => {
@@ -209,14 +214,12 @@ describe("CreateUserButton", () => {
       renderWithProviders(
         <CreateUserButton
           {...defaultProps}
-          possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
           isEmbedded
         />,
       );
 
       await user.type(screen.getByLabelText(/user email/i), "duplicate@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
       await waitFor(() => {
@@ -236,14 +239,12 @@ describe("CreateUserButton", () => {
       renderWithProviders(
         <CreateUserButton
           {...defaultProps}
-          possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
           isEmbedded
         />,
       );
 
       await user.type(screen.getByLabelText(/user email/i), "info@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
       await waitFor(() => {
@@ -263,7 +264,10 @@ describe("CreateUserButton", () => {
       } as any);
 
       renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }} />,
+        <CreateUserButton
+          {...defaultProps}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
+        />,
       );
 
       await waitFor(() => {
@@ -273,8 +277,6 @@ describe("CreateUserButton", () => {
 
       const dialog = screen.getByRole("dialog", { name: /invite user/i });
       await user.type(within(dialog).getByLabelText(/user email/i), "standalone@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
 
       await waitFor(() => {
@@ -292,7 +294,10 @@ describe("CreateUserButton", () => {
       } as any);
 
       renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }} />,
+        <CreateUserButton
+          {...defaultProps}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
+        />,
       );
 
       await waitFor(() => {
@@ -302,8 +307,6 @@ describe("CreateUserButton", () => {
 
       const dialog = screen.getByRole("dialog", { name: /invite user/i });
       await user.type(within(dialog).getByLabelText(/user email/i), "sso@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
 
       await waitFor(() => {
@@ -346,7 +349,10 @@ describe("CreateUserButton", () => {
       } as any);
 
       renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }} />,
+        <CreateUserButton
+          {...defaultProps}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
+        />,
       );
 
       await waitFor(() => {
@@ -356,8 +362,6 @@ describe("CreateUserButton", () => {
 
       const dialog = screen.getByRole("dialog", { name: /invite user/i });
       await user.type(within(dialog).getByLabelText(/user email/i), "org@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
 
       // Select org from the dropdown
       const orgSelect = within(dialog).getByRole("combobox", { name: /organization/i });
@@ -393,7 +397,10 @@ describe("CreateUserButton", () => {
       } as any);
 
       renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }} />,
+        <CreateUserButton
+          {...defaultProps}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
+        />,
       );
 
       await waitFor(() => {
@@ -403,8 +410,6 @@ describe("CreateUserButton", () => {
 
       const dialog = screen.getByRole("dialog", { name: /invite user/i });
       await user.type(within(dialog).getByLabelText(/user email/i), "nomemberadd@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
 
       await waitFor(() => {
@@ -422,14 +427,12 @@ describe("CreateUserButton", () => {
       renderWithProviders(
         <CreateUserButton
           {...defaultProps}
-          possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
           isEmbedded
         />,
       );
 
       await user.type(screen.getByLabelText(/user email/i), "default@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
       await waitFor(() => {
@@ -450,14 +453,12 @@ describe("CreateUserButton", () => {
       renderWithProviders(
         <CreateUserButton
           {...defaultProps}
-          possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
           isEmbedded
         />,
       );
 
       await user.type(screen.getByLabelText(/user email/i), "off@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(screen.getByRole("checkbox", { name: /send invitation email/i }));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
@@ -482,7 +483,10 @@ describe("CreateUserButton", () => {
       } as any);
 
       renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }} />,
+        <CreateUserButton
+          {...defaultProps}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
+        />,
       );
 
       await waitFor(() => {
@@ -492,8 +496,6 @@ describe("CreateUserButton", () => {
 
       const dialog = screen.getByRole("dialog", { name: /invite user/i });
       await user.type(within(dialog).getByLabelText(/user email/i), "standalone-default@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
 
       await waitFor(() => {
@@ -517,7 +519,10 @@ describe("CreateUserButton", () => {
       } as any);
 
       renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }} />,
+        <CreateUserButton
+          {...defaultProps}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
+        />,
       );
 
       await waitFor(() => {
@@ -527,8 +532,6 @@ describe("CreateUserButton", () => {
 
       const dialog = screen.getByRole("dialog", { name: /invite user/i });
       await user.type(within(dialog).getByLabelText(/user email/i), "standalone-off@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(within(dialog).getByRole("checkbox", { name: /send invitation email/i }));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
 
@@ -547,7 +550,10 @@ describe("CreateUserButton", () => {
       const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
 
       renderWithProviders(
-        <CreateUserButton {...defaultProps} possibleUIRoles={{ proxy_user: { ui_label: "User", description: "" } }} />,
+        <CreateUserButton
+          {...defaultProps}
+          possibleUIRoles={{ internal_user: { ui_label: "Member", description: "" } }}
+        />,
       );
 
       await waitFor(() => {
@@ -561,7 +567,7 @@ describe("CreateUserButton", () => {
   });
   describe("submit payload parity", () => {
     const ROLES = {
-      proxy_user: { ui_label: "User", description: "" },
+      internal_user: { ui_label: "Member", description: "" },
       proxy_admin: { ui_label: "Admin", description: "" },
     };
 
@@ -582,8 +588,6 @@ describe("CreateUserButton", () => {
       const dialog = await openStandaloneModal(user);
 
       await user.type(within(dialog).getByLabelText(/user email/i), "parity@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
 
       await waitFor(() => {
@@ -600,7 +604,7 @@ describe("CreateUserButton", () => {
       ]);
       expect(submittedPayload()).toStrictEqual({
         user_email: "parity@example.com",
-        user_role: "proxy_user",
+        user_role: "internal_user",
         team_id: undefined,
         organization_ids: undefined,
         metadata: undefined,
@@ -616,8 +620,6 @@ describe("CreateUserButton", () => {
       renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} isEmbedded />);
 
       await user.type(screen.getByLabelText(/user email/i), "embedded-parity@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
       await waitFor(() => {
@@ -633,7 +635,7 @@ describe("CreateUserButton", () => {
       ]);
       expect(submittedPayload()).toStrictEqual({
         user_email: "embedded-parity@example.com",
-        user_role: "proxy_user",
+        user_role: "internal_user",
         team_id: undefined,
         metadata: undefined,
         send_invite_email: true,
@@ -649,7 +651,7 @@ describe("CreateUserButton", () => {
 
       await user.type(screen.getByLabelText(/user email/i), "admin-parity@example.com");
       await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("Admin"));
+      await user.click(screen.getByText("Proxy Admin"));
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
       await waitFor(() => {
@@ -680,8 +682,6 @@ describe("CreateUserButton", () => {
       const dialog = await openStandaloneModal(user);
 
       await user.type(within(dialog).getByLabelText(/user email/i), "org-parity@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
       await user.click(within(dialog).getByRole("combobox", { name: /organization/i }));
       await user.click(screen.getByText("My Org (org-1)"));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
@@ -709,8 +709,6 @@ describe("CreateUserButton", () => {
       renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} isEmbedded />);
 
       await user.type(screen.getByLabelText(/user email/i), "meta-parity@example.com");
-      await user.click(screen.getByRole("combobox", { name: /user role/i }));
-      await user.click(screen.getByText("User"));
       await user.type(screen.getByLabelText(/metadata/i), '{{"a":1}');
       await user.click(screen.getByRole("button", { name: /create user/i }));
 
@@ -728,8 +726,8 @@ describe("CreateUserButton", () => {
       const dialog = await openStandaloneModal(user);
 
       await user.type(within(dialog).getByLabelText(/user email/i), "standalone-admin@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("Admin"));
+      await user.click(within(dialog).getByRole("combobox", { name: /platform role/i }));
+      await user.click(screen.getByText("Proxy Admin"));
       await user.click(within(dialog).getByRole("button", { name: /invite user/i }));
 
       await waitFor(() => {
@@ -754,8 +752,6 @@ describe("CreateUserButton", () => {
       const dialog = await openStandaloneModal(user);
 
       await user.type(within(dialog).getByLabelText(/user email/i), "collapsed@example.com");
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      await user.click(screen.getByText("User"));
 
       await user.click(within(dialog).getByText("Personal Key Creation"));
       const modelsSelect = within(dialog).getByRole("combobox", { name: /select models/i });
@@ -774,9 +770,9 @@ describe("CreateUserButton", () => {
 
   describe("Agami RBAC scoped invites", () => {
     const ROLES = {
-      proxy_admin: { ui_label: "Admin", description: "Proxy Admin" },
+      proxy_admin: { ui_label: "Proxy Admin", description: "Proxy Admin" },
       internal_user: { ui_label: "Member", description: "Internal User" },
-      internal_user_viewer: { ui_label: "Viewer", description: "View only" },
+      viewer: { ui_label: "Viewer", description: "View only" },
     };
 
     const openStandaloneModal = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -792,27 +788,27 @@ describe("CreateUserButton", () => {
       const inviteOpts: networking.InviteOptionsResponse = {
         organization_ids: ["org-1"],
         team_ids: ["team-1"],
-        global_roles: ["internal_user", "internal_user_viewer"],
+        global_roles: ["internal_user", "viewer"],
         team_roles: ["admin", "user"],
-        org_roles: ["org_admin", "internal_user"],
+        org_roles: ["org_admin", "internal_user", "viewer"],
         can_invite: true,
       };
 
       renderWithProviders(<CreateUserButton {...defaultProps} possibleUIRoles={ROLES} inviteOptions={inviteOpts} />);
       const dialog = await openStandaloneModal(user);
 
-      await user.click(within(dialog).getByRole("combobox", { name: /global proxy role/i }));
-      expect(screen.getByText("Member")).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("combobox", { name: /platform role/i }));
+      expect(screen.getAllByText("Member").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Viewer").length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+      expect(screen.queryByText("Proxy Admin")).not.toBeInTheDocument();
     });
 
-    it("hides organization field when inviteOptions organization_ids is empty (e.g. Team Admin)", async () => {
+    it("hides organization field when inviteOptions organization_ids is empty", async () => {
       const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
       const inviteOpts: networking.InviteOptionsResponse = {
         organization_ids: [],
         team_ids: ["team-1"],
-        global_roles: ["internal_user", "internal_user_viewer"],
+        global_roles: ["internal_user", "viewer"],
         team_roles: ["user"],
         org_roles: [],
         can_invite: true,
@@ -845,9 +841,9 @@ describe("CreateUserButton", () => {
       const inviteOpts: networking.InviteOptionsResponse = {
         organization_ids: ["org-1", "org-3"],
         team_ids: ["team-1"],
-        global_roles: ["internal_user", "internal_user_viewer"],
+        global_roles: ["internal_user", "viewer"],
         team_roles: ["admin", "user"],
-        org_roles: ["org_admin", "internal_user"],
+        org_roles: ["org_admin", "internal_user", "viewer"],
         can_invite: true,
       };
 

@@ -67,7 +67,12 @@ const org: Organization = {
   },
 };
 
-const renderForm = (overrides?: { patchOrganization?: Mock; onSaved?: () => void; org?: Organization }) => {
+const renderForm = (overrides?: {
+  patchOrganization?: Mock;
+  onSaved?: () => void;
+  org?: Organization;
+  canRename?: boolean;
+}) => {
   const patchOrganization = overrides?.patchOrganization ?? vi.fn().mockResolvedValue({});
   const onSaved = overrides?.onSaved ?? vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -79,6 +84,7 @@ const renderForm = (overrides?: { patchOrganization?: Mock; onSaved?: () => void
         accessToken="token"
         onCancel={vi.fn()}
         onSaved={onSaved}
+        canRename={overrides?.canRename ?? true}
         patchOrganization={patchOrganization}
       />
     </QueryClientProvider>,

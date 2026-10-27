@@ -1380,11 +1380,12 @@ def _should_auto_add_team_creator(
     user_api_key_dict: UserAPIKeyAuth,
     general_settings: Mapping[str, object],
 ) -> bool:
+    """Proxy admins stay outside org/team memberships — never auto-add them."""
     if user_api_key_dict.user_id is None:
         return False
-    if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
-        return True
-    return general_settings.get("disable_auto_add_proxy_admin_to_teams") is not True
+    if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
+        return False
+    return True
 
 
 #### TEAM MANAGEMENT ####
@@ -1618,6 +1619,13 @@ async def new_team(
 
         # check org key limits - done here to handle inheriting org id from team
         if data.organization_id is not None and prisma_client is not None:
+            from litellm.proxy.auth.agami_tenant import require_team_create
+
+            await require_team_create(
+                user_api_key_dict=user_api_key_dict,
+                prisma_client=prisma_client,
+                organization_id=data.organization_id,
+            )
             try:
                 org_table = await get_org_object(
                     org_id=data.organization_id,
@@ -2301,6 +2309,20 @@ async def update_team(
         access_role: Final = await _resolve_team_access(team_obj=existing_team, user_api_key_dict=user_api_key_dict)
         if access_role is None:
             _raise_team_access_denied()
+        # Rename / structural EDIT is org-admin (or proxy) only — team admins cannot rename.
+        if data.team_alias is not None and data.team_alias != existing_team.team_alias:
+            if existing_team.organization_id is None:
+                if access_role != "proxy_admin":
+                    _raise_team_access_denied()
+            else:
+                from litellm.proxy.auth.agami_tenant import require_team_edit
+
+                await require_team_edit(
+                    user_api_key_dict=user_api_key_dict,
+                    prisma_client=prisma_client,
+                    organization_id=existing_team.organization_id,
+                    team_id=existing_team.team_id,
+                )
         if access_role == "team_admin":
             data = team_admin_request_or_raise(  # rebind-ok: resent values must not reach the derived writes below
                 team_admin_edit_verdict(
@@ -2836,6 +2858,24 @@ async def _validate_team_member_add_permissions(
     the request matches the caller's own ``user_id`` and is being
     added with ``role="user"``.
     """
+    from litellm.proxy.proxy_server import prisma_client as _prisma
+
+    if complete_team_data.organization_id and _prisma is not None:
+        from litellm.proxy.auth.agami_tenant import require_manage_team_members
+
+        # Agami MANAGE_MEMBERS covers proxy / org admin / team admin.
+        # Available-team self-join falls through when authorize denies.
+        try:
+            await require_manage_team_members(
+                user_api_key_dict=user_api_key_dict,
+                prisma_client=_prisma,
+                organization_id=complete_team_data.organization_id,
+                team_id=complete_team_data.team_id,
+            )
+            return
+        except HTTPException:
+            pass  # may still be an available-team self-join below
+
     if getattr(user_api_key_dict, "user_role", None) == LitellmUserRoles.PROXY_ADMIN.value:
         return
     if _is_user_team_admin(user_api_key_dict=user_api_key_dict, team_obj=complete_team_data):
@@ -4309,11 +4349,19 @@ async def delete_team(
             )
         team_row_pydantic = LiteLLM_TeamTable.model_validate(team_row_base.model_dump())
 
-        # Verify caller has access to manage this team
-        await _verify_team_access(
-            team_obj=team_row_pydantic,
-            user_api_key_dict=user_api_key_dict,
-        )
+        # Team delete is org-admin (or proxy) only — not team admin.
+        if team_row_pydantic.organization_id is None:
+            if user_api_key_dict.user_role != LitellmUserRoles.PROXY_ADMIN:
+                _raise_team_access_denied()
+        else:
+            from litellm.proxy.auth.agami_tenant import require_team_delete
+
+            await require_team_delete(
+                user_api_key_dict=user_api_key_dict,
+                prisma_client=prisma_client,
+                organization_id=team_row_pydantic.organization_id,
+                team_id=team_row_pydantic.team_id,
+            )
 
         team_rows.append(team_row_pydantic)
 

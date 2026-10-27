@@ -25030,7 +25030,7 @@ export interface components {
             models: unknown[] | null;
             object_permission?: components["schemas"]["LiteLLM_ObjectPermissionBase"] | null;
             /** Org Role */
-            org_role?: ("org_admin" | "internal_user") | null;
+            org_role?: ("org_admin" | "internal_user" | "viewer") | null;
             /** Organizations */
             organizations?: string[] | null;
             /**
@@ -25074,7 +25074,7 @@ export interface components {
             /** User Id */
             user_id?: string | null;
             /** User Role */
-            user_role?: ("proxy_admin" | "proxy_admin_viewer" | "internal_user" | "internal_user_viewer") | null;
+            user_role?: ("proxy_admin" | "proxy_admin_viewer" | "internal_user" | "internal_user_viewer" | "viewer") | null;
         };
         /** BulkNewUserMeta */
         BulkNewUserMeta: {
@@ -34043,7 +34043,7 @@ export interface components {
             models: unknown[] | null;
             object_permission?: components["schemas"]["LiteLLM_ObjectPermissionBase"] | null;
             /** Org Role */
-            org_role?: ("org_admin" | "internal_user") | null;
+            org_role?: ("org_admin" | "internal_user" | "viewer") | null;
             /** Organizations */
             organizations?: string[] | null;
             /**
@@ -34087,7 +34087,7 @@ export interface components {
             /** User Id */
             user_id?: string | null;
             /** User Role */
-            user_role?: ("proxy_admin" | "proxy_admin_viewer" | "internal_user" | "internal_user_viewer") | null;
+            user_role?: ("proxy_admin" | "proxy_admin_viewer" | "internal_user" | "internal_user_viewer" | "viewer") | null;
         };
         /** NewUserRequestTeam */
         NewUserRequestTeam: {
